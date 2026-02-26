@@ -113,8 +113,11 @@ app.post("/api/orders", upload.single("art_file"), async (req, res) => {
             });
 
         if (uploadError) {
-            console.error("Erro no upload", uploadError);
-            return res.status(500).json({ error: "Erro ao fazer upload da arte. Veja se o bucket 'artes' foi criado e se tem políticas de inserção públicas ou autenticadas." });
+            console.error("Erro no upload da arte para o Supabase:", uploadError);
+            return res.status(500).json({
+                error: "Erro ao fazer upload da arte. Veja se o bucket 'artes' foi criado e se tem políticas de inserção públicas ou autenticadas.",
+                details: uploadError.message
+            });
         }
 
         // Configura Public URL
