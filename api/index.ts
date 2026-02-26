@@ -10,6 +10,7 @@ app.use(express.json());
 
 const supabaseUrl = process.env.SUPABASE_URL?.trim() || "";
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim() || "";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
 
 if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith("http")) {
     console.warn("⚠️ SUPABASE_URL ou SUPABASE_ANON_KEY não estão definidos. Configure as Environment Variables no Vercel.");
@@ -18,6 +19,11 @@ if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith("http")) {
 const supabase = createClient(
     supabaseUrl || "https://placeholder.supabase.co",
     supabaseAnonKey || "placeholder"
+);
+
+const supabaseAdmin = createClient(
+    supabaseUrl || "https://placeholder.supabase.co",
+    supabaseServiceRoleKey || supabaseAnonKey // Fallback to anon key if not provided (will fail on restricted actions)
 );
 
 // Utilizando memória ao invés de disco local
@@ -443,12 +449,46 @@ app.get("/api/users", async (req, res) => {
 
 app.post("/api/users", async (req, res) => {
     const { name, email, password, role, hourly_cost } = req.body;
-    const { data, error } = await supabase
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        return res.status(500).json({ error: "Variável SUPABASE_SERVICE_ROLE_KEY não configurada no backend." });
+    }
+
+    // 1. Criar o usuário no Supabase Auth primeiro
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: password || "123456",
+        email_confirm: true, // Ignorar verificação de email forçadamente
+        user_metadata: { name }
+    });
+
+    if (authError) {
+        console.error("Erro ao criar usuário no Supabase Auth:", authError);
+        return res.status(400).json({ error: authError.message });
+    }
+
+    // 2. Inserir os dados na tabela pública 'users'
+    const { data, error } = await supabaseAdmin
         .from("users")
-        .insert({ name, email, password: password || "123456", role, hourly_cost: hourly_cost || 0 })
+        .insert({
+            name,
+            email,
+            password: "-", // A senha verdadeira fica apenas no Auth por segurança
+            role,
+            hourly_cost: hourly_cost || 0,
+            active: 1
+        })
         .select("id")
         .single();
-    if (checkError(error, res)) return;
+
+    if (error) {
+        // Se falhou a inserção na tabela pública, desfazemos a criação no Auth
+        if (authData?.user?.id) {
+            await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        }
+        return checkError(error, res, "Erro ao criar perfil de usuário na tabela.") ? undefined : undefined;
+    }
+
     return res.json({ id: data.id });
 });
 
