@@ -27,9 +27,13 @@ import {
   FileText,
   TrendingUp,
   DollarSign,
-  Menu
+  Menu,
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from './lib/supabase';
+import { Session } from '@supabase/supabase-js';
 import {
   BarChart,
   Bar,
@@ -113,7 +117,60 @@ export default function App() {
   const [selectedStageStatus, setSelectedStageStatus] = useState<'Pending' | 'Finished'>('Pending');
   const [productTypeFilter, setProductTypeFilter] = useState<string>('');
   const [printTypeFilter, setPrintTypeFilter] = useState<string>('');
-  const [currentUser] = useState<User>({ id: 2, name: 'Operador 1', email: 'op1@uniflow.com', role: 'Produção', hourly_cost: 25, active: true });
+
+  // Auth States
+  const [session, setSession] = useState<Session | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (session?.user?.email) {
+      safeFetch(`/api/users?search=${encodeURIComponent(session.user.email)}`).then(data => {
+        const found = data?.find((u: User) => u.email === session.user.email);
+        if (found) {
+          setCurrentUser(found);
+        } else {
+          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Produção', hourly_cost: 0, active: true });
+        }
+      });
+    } else {
+      setCurrentUser(null);
+    }
+  }, [session]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password: authPassword,
+    });
+    if (error) setAuthError(error.message);
+    setIsAuthLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   const safeFetch = async (url: string, options?: RequestInit) => {
     try {
@@ -274,6 +331,64 @@ export default function App() {
 
   const COLORS = ['#18181b', '#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8'];
 
+  if (isAuthLoading) {
+    return <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA]"><div className="animate-spin text-zinc-400"><RefreshCw size={24} /></div></div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA] p-4 font-sans">
+        <Card className="w-full max-w-md p-8 shadow-xl border-t-4 border-t-zinc-900 border-x-0 border-b-0 rounded-2xl">
+          <div className="flex items-center gap-2 mb-8 justify-center">
+            <div className="w-12 h-12 bg-zinc-900 rounded-xl flex items-center justify-center text-white shadow-md">
+              <Package size={26} />
+            </div>
+            <h1 className="font-bold text-3xl tracking-tight text-zinc-900">UniFlow</h1>
+          </div>
+
+          <h2 className="text-xl font-bold mb-6 text-center text-zinc-800">Acesso Restrito</h2>
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            {authError && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm font-medium text-center border border-red-100">
+                Ocorreu um erro: {authError}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">E-mail Corporativo</label>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
+                placeholder="seu@email.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Senha</label>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-bold py-3.5 rounded-lg mt-6 flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg active:scale-[0.98]">
+              Entrar no Sistema <ChevronRight size={18} />
+            </button>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <div className="flex h-screen items-center justify-center bg-[#F8F9FA]"><p className="text-zinc-500 font-medium animate-pulse">Carregando permissões de perfil...</p></div>;
+  }
+
   return (
     <div className="flex h-screen bg-[#F8F9FA] font-sans text-zinc-900 overflow-hidden">
       {/* Mobile Overlay */}
@@ -346,15 +461,19 @@ export default function App() {
         </nav>
 
         <div className="mt-auto pt-6 border-t border-zinc-100">
-          <div className="flex items-center gap-3 px-2">
+          <div className="flex items-center gap-3 px-2 mb-4">
             <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600">
               <UserIcon size={20} />
             </div>
-            <div>
-              <p className="text-sm font-semibold">{currentUser.name}</p>
-              <p className="text-xs text-zinc-500">{currentUser.role}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate">{currentUser.name}</p>
+              <p className="text-xs text-zinc-500 truncate">{currentUser.role}</p>
             </div>
           </div>
+          <button onClick={handleLogout} className="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-medium text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+            <LogOut size={16} />
+            Sair da Conta
+          </button>
         </div>
       </aside>
 
