@@ -398,6 +398,22 @@ export default function App() {
   };
 
   useEffect(() => {
+    fetchData();
+  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'collaborators') {
+      fetchUsers();
+    }
+  }, [activeTab, userSearchTerm]);
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReports();
+    }
+  }, [activeTab, reportPeriod, reportUser, reportStage]);
+
+  useEffect(() => {
     if (currentUser && currentUser.id !== 0) {
       fetchActiveExecution();
       const interval = setInterval(fetchActiveExecution, 30000);
