@@ -153,6 +153,7 @@ export default function App() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [newStageName, setNewStageName] = useState('');
+  const [isUploadingArt, setIsUploadingArt] = useState(false);
   const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [editingStageName, setEditingStageName] = useState('');
   const [simOperadores, setSimOperadores] = useState<number>(0);
@@ -256,66 +257,6 @@ export default function App() {
     setActiveExecution(data);
   };
 
-  useEffect(() => {
-    if (currentUser && currentUser.id !== 0) {
-      fetchActiveExecution();
-      const interval = setInterval(fetchActiveExecution, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [currentUser]);
-
-  // New Order Form State
-  const [newOrderForm, setNewOrderForm] = useState({
-    client_name: '',
-    product_type: 'Dry Fit',
-    print_type: 'Silk',
-    quantity: '',
-    deadline: '',
-    observations: ''
-  });
-
-  const applyTemplate = (template: OrderTemplate) => {
-    setNewOrderForm(prev => ({
-      ...prev,
-      product_type: template.product_type,
-      print_type: template.print_type,
-      quantity: template.quantity.toString(),
-      observations: template.observations
-    }));
-
-    // Fallback: Se o template não tiver etapas, carrega todas as ativas
-    if (template.required_stages && template.required_stages.length > 0) {
-      setNewOrderRequiredStages(template.required_stages);
-    } else {
-      setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [dateRange, searchTerm, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter]);
-
-  useEffect(() => {
-    if (activeTab === 'reports') {
-      fetchReports();
-    }
-  }, [activeTab, reportPeriod, reportUser, reportStage]);
-
-  const fetchReports = async () => {
-    let url = `/api/reports?period=${reportPeriod}`;
-    if (reportUser) url += `&user_id=${reportUser}`;
-    if (reportStage) url += `&stage_id=${reportStage}`;
-
-    const data = await safeFetch(url);
-    if (data) setReportData(data);
-  };
-
-  useEffect(() => {
-    if (stats?.capacity.config.operadores_ativos) {
-      setSimOperadores(stats.capacity.config.operadores_ativos);
-    }
-  }, [stats]);
-
   const fetchData = async () => {
     let statsUrl = '/api/dashboard/stats?';
     if (dateRange) {
@@ -356,6 +297,15 @@ export default function App() {
     if (data) setExecutions(data);
   };
 
+  const fetchReports = async () => {
+    let url = `/api/reports?period=${reportPeriod}`;
+    if (reportUser) url += `&user_id=${reportUser}`;
+    if (reportStage) url += `&stage_id=${reportStage}`;
+
+    const data = await safeFetch(url);
+    if (data) setReportData(data);
+  };
+
   const handleUpdateDeadline = async (orderId: number, newDeadline: string) => {
     await fetch(`/api/orders/${orderId}`, {
       method: 'PATCH',
@@ -368,12 +318,45 @@ export default function App() {
     }
   };
 
+  const handleAddImages = async (orderId: number, files: FileList) => {
+    if (files.length === 0) return;
+    setIsUploadingArt(true);
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('art_files', files[i]);
+    }
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/images`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) throw new Error('Falha no upload');
+
+      const data = await res.json();
+      // Update local state for the selected order
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder({
+          ...selectedOrder,
+          art_urls: data.art_urls
+        });
+      }
+      fetchData(); // Refresh all orders
+    } catch (err) {
+      alert('Erro ao adicionar imagens. Tente novamente.');
+    } finally {
+      setIsUploadingArt(false);
+    }
+  };
+
   const handleStartStage = async (stageId: number) => {
     if (!selectedOrder) return;
     const res = await fetch('/api/executions/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser.id })
+      body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser!.id })
     });
     if (res.ok) {
       fetchExecutions(selectedOrder.id);
@@ -413,6 +396,42 @@ export default function App() {
     });
     fetchData();
   };
+
+  useEffect(() => {
+    if (currentUser && currentUser.id !== 0) {
+      fetchActiveExecution();
+      const interval = setInterval(fetchActiveExecution, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [currentUser]);
+
+  // New Order Form State
+  const [newOrderForm, setNewOrderForm] = useState({
+    client_name: '',
+    product_type: 'Dry Fit',
+    print_type: 'Silk',
+    quantity: '',
+    deadline: '',
+    observations: ''
+  });
+
+  const applyTemplate = (template: OrderTemplate) => {
+    setNewOrderForm(prev => ({
+      ...prev,
+      product_type: template.product_type,
+      print_type: template.print_type,
+      quantity: template.quantity.toString(),
+      observations: template.observations
+    }));
+
+    // Fallback: Se o template não tiver etapas, carrega todas as ativas
+    if (template.required_stages && template.required_stages.length > 0) {
+      setNewOrderRequiredStages(template.required_stages);
+    } else {
+      setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+    }
+  };
+
 
   const COLORS = ['#18181b', '#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8'];
 
@@ -1696,10 +1715,33 @@ export default function App() {
 
                 {(selectedOrder.art_url || (selectedOrder.art_urls && selectedOrder.art_urls.length > 0)) && (
                   <div className="mb-8">
-                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                      <ImageIcon size={20} />
-                      Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
-                    </h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold flex items-center gap-2">
+                        <ImageIcon size={20} />
+                        Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
+                      </h3>
+                      <label className={cn(
+                        "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-all cursor-pointer",
+                        isUploadingArt && "opacity-50 cursor-not-allowed"
+                      )}>
+                        {isUploadingArt ? (
+                          <RefreshCw size={14} className="animate-spin" />
+                        ) : (
+                          <Plus size={14} />
+                        )}
+                        <span>{isUploadingArt ? 'Enviando...' : 'Adicionar Imagem'}</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          className="hidden"
+                          disabled={isUploadingArt}
+                          onChange={(e) => {
+                            if (e.target.files) handleAddImages(selectedOrder.id, e.target.files);
+                          }}
+                        />
+                      </label>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
                         selectedOrder.art_urls.map((url, i) => (

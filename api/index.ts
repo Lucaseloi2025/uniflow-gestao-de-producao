@@ -149,8 +149,8 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
     const order_number = `PED-${Date.now().toString().slice(-6)}`;
     const art_urls: string[] = [];
 
-    // 1. Upload files if exist
     const files = (req as any).files;
+    console.log(`[API] Criando pedido. Arquivos recebidos: ${files?.length || 0}`);
     if (files && Array.isArray(files)) {
         for (const file of files) {
             const fileExt = file.originalname.split('.').pop();
@@ -208,7 +208,67 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
         .single();
 
     if (checkError(error, res, "Erro ao criar pedido")) return;
+    console.log(`[API] Pedido criado: ${order_number}. Imagens: ${art_urls.length}`);
     return res.json({ id: data.id, order_number, art_url: art_urls[0] || null, art_urls });
+});
+
+app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, res) => {
+    const { id } = req.params;
+    const files = (req as any).files;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    }
+
+    // 1. Get current order images
+    const { data: order, error: fetchError } = await supabase
+        .from("orders")
+        .select("art_urls, art_url")
+        .eq("id", Number(id))
+        .single();
+
+    if (fetchError || !order) {
+        return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    const current_urls = order.art_urls || [];
+    const new_urls: string[] = [];
+
+    // 2. Upload new files
+    for (const file of files) {
+        const fileExt = file.originalname.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `pedidos/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('artes')
+            .upload(filePath, file.buffer, {
+                contentType: file.mimetype,
+            });
+
+        if (uploadError) {
+            console.error("Erro no upload da arte para o Supabase:", uploadError);
+            continue;
+        }
+
+        const { data: publicUrlData } = supabase.storage.from('artes').getPublicUrl(filePath);
+        new_urls.push(publicUrlData.publicUrl);
+    }
+
+    const updated_urls = [...current_urls, ...new_urls];
+
+    // 3. Update order
+    const { error: updateError } = await supabase
+        .from("orders")
+        .update({
+            art_urls: updated_urls,
+            art_url: order.art_url || updated_urls[0] // Set primary if missing
+        })
+        .eq("id", Number(id));
+
+    if (checkError(updateError, res, "Erro ao atualizar imagens do pedido")) return;
+
+    return res.json({ success: true, art_urls: updated_urls });
 });
 
 app.patch("/api/orders/:id/status", async (req, res) => {
