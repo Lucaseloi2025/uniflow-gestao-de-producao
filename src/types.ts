@@ -26,6 +26,7 @@ export interface Order {
   art_url?: string;
   total_time_seconds: number;
   estimated_time_seconds: number;
+  required_stages?: number[];
   stages_status: StageStatus[];
 }
 
@@ -36,6 +37,7 @@ export interface OrderTemplate {
   print_type: 'Silk' | 'DTF' | 'Sublimação';
   quantity: number;
   observations: string;
+  required_stages: number[];
 }
 
 export interface Stage {
@@ -48,6 +50,7 @@ export interface Stage {
 export interface StageExecution {
   id: number;
   order_id: number;
+  order_number?: string;
   stage_id: number;
   stage_name?: string;
   user_id: number;

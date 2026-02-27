@@ -89,6 +89,51 @@ const Badge = ({ children, variant = 'default', className }: { children: React.R
   );
 };
 
+const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecution, onNavigate: () => void }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const start = new Date(execution.start_time).getTime();
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [execution.start_time]);
+
+  return (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="bg-zinc-900 text-white overflow-hidden shadow-lg mb-2 rounded-xl"
+    >
+      <div
+        className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-zinc-800 transition-colors"
+        onClick={onNavigate}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 animate-pulse">
+            <Play size={16} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tarefa em Andamento</p>
+            <p className="text-sm font-bold">
+              {execution.stage_name} <span className="text-zinc-500 mx-2">•</span> <span className="font-mono">{execution.order_number}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tempo Decorrido</span>
+            <span className="text-xl font-mono font-bold tabular-nums">{formatSeconds(elapsed)}</span>
+          </div>
+          <ChevronRight size={20} className="text-zinc-600" />
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'settings'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -117,6 +162,10 @@ export default function App() {
   const [selectedStageStatus, setSelectedStageStatus] = useState<'Pending' | 'Finished'>('Pending');
   const [productTypeFilter, setProductTypeFilter] = useState<string>('');
   const [printTypeFilter, setPrintTypeFilter] = useState<string>('');
+  const [newOrderRequiredStages, setNewOrderRequiredStages] = useState<number[]>([]);
+  const [isTemplateEditorOpen, setIsTemplateEditorOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<OrderTemplate | null>(null);
+  const [templateFormStages, setTemplateFormStages] = useState<number[]>([]);
 
   // Auth States
   const [session, setSession] = useState<Session | null>(null);
@@ -126,6 +175,7 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [now, setNow] = useState(new Date());
+  const [activeExecution, setActiveExecution] = useState<StageExecution | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -199,6 +249,20 @@ export default function App() {
     }
   };
 
+  const fetchActiveExecution = async () => {
+    if (!currentUser || currentUser.id === 0) return;
+    const data = await safeFetch(`/api/executions/active/${currentUser.id}`);
+    setActiveExecution(data);
+  };
+
+  useEffect(() => {
+    if (currentUser && currentUser.id !== 0) {
+      fetchActiveExecution();
+      const interval = setInterval(fetchActiveExecution, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [currentUser]);
+
   // New Order Form State
   const [newOrderForm, setNewOrderForm] = useState({
     client_name: '',
@@ -217,6 +281,13 @@ export default function App() {
       quantity: template.quantity.toString(),
       observations: template.observations
     }));
+
+    // Fallback: Se o template não tiver etapas, carrega todas as ativas
+    if (template.required_stages && template.required_stages.length > 0) {
+      setNewOrderRequiredStages(template.required_stages);
+    } else {
+      setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+    }
   };
 
   useEffect(() => {
@@ -306,6 +377,7 @@ export default function App() {
     if (res.ok) {
       fetchExecutions(selectedOrder.id);
       fetchData();
+      fetchActiveExecution();
     } else {
       const err = await res.json();
       alert(err.error);
@@ -315,11 +387,13 @@ export default function App() {
   const handlePauseStage = async (executionId: number) => {
     await fetch(`/api/executions/${executionId}/pause`, { method: 'POST' });
     fetchExecutions(selectedOrder!.id);
+    fetchActiveExecution();
   };
 
   const handleResumeStage = async (executionId: number) => {
     await fetch(`/api/executions/${executionId}/resume`, { method: 'POST' });
     fetchExecutions(selectedOrder!.id);
+    fetchActiveExecution();
   };
 
   const handleFinishStage = async (executionId: number) => {
@@ -327,6 +401,7 @@ export default function App() {
     await fetch(`/api/executions/${executionId}/finish`, { method: 'POST' });
     fetchExecutions(selectedOrder!.id);
     fetchData();
+    fetchActiveExecution();
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
@@ -488,6 +563,24 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+        <AnimatePresence>
+          {activeExecution && (
+            <RunningTaskBanner
+              execution={activeExecution}
+              onNavigate={async () => {
+                const orderData = await safeFetch(`/api/orders?search=${activeExecution.order_number}`);
+                if (orderData && orderData.length > 0) {
+                  const order = orderData.find((o: Order) => o.id === activeExecution.order_id);
+                  if (order) {
+                    setSelectedOrder(order);
+                    fetchExecutions(order.id);
+                    setActiveTab('kanban');
+                  }
+                }
+              }}
+            />
+          )}
+        </AnimatePresence>
         <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
           <div className="flex items-center justify-between">
             <div>
@@ -669,7 +762,10 @@ export default function App() {
               </div>
             )}
             <button
-              onClick={() => setShowNewOrderModal(true)}
+              onClick={() => {
+                setShowNewOrderModal(true);
+                setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+              }}
               className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
             >
               <Plus size={18} />
@@ -1449,6 +1545,70 @@ export default function App() {
                 ))}
               </div>
             </Card>
+
+            <Card className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <ClipboardList size={20} />
+                  Gerenciar Templates de Pedido
+                </h3>
+                <button
+                  onClick={() => {
+                    setEditingTemplate(null);
+                    setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                    setIsTemplateEditorOpen(true);
+                  }}
+                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                >
+                  <Plus size={16} /> Novo Template
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {templates.map((template) => (
+                  <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => {
+                            setEditingTemplate(template);
+                            setTemplateFormStages(template.required_stages || []);
+                            setIsTemplateEditorOpen(true);
+                          }}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Excluir template "${template.name}"?`)) {
+                              await fetch(`/api/order-templates/${template.id}`, { method: 'DELETE' });
+                              fetchData();
+                            }
+                          }}
+                          className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <Badge variant="default">{template.product_type}</Badge>
+                      <Badge variant="info">{template.print_type}</Badge>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Etapas Inclusas:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {stages.filter(s => template.required_stages?.includes(s.id)).map(s => (
+                        <span key={s.id} className="px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded text-[9px] font-bold">
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </div>
         )}
       </main>
@@ -1561,7 +1721,9 @@ export default function App() {
                     Etapas da Produção
                   </h3>
                   <div className="space-y-3">
-                    {stages.map(stage => {
+                    {selectedOrder.stages_status.map(orderStage => {
+                      const stage = stages.find(s => s.id === orderStage.id);
+                      if (!stage) return null;
                       const execution = executions.find(e => e.stage_id === stage.id);
                       return (
                         <div key={stage.id} className="p-4 border border-zinc-200 rounded-xl flex items-center justify-between">
@@ -1674,11 +1836,29 @@ export default function App() {
                       key={template.id}
                       type="button"
                       onClick={() => applyTemplate(template)}
-                      className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-xs font-medium transition-colors border border-zinc-200"
+                      className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
                     >
                       {template.name}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+                    }}
+                    className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
+                  >
+                    Marcar Todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewOrderRequiredStages([]);
+                    }}
+                    className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
+                  >
+                    Limpar Todas
+                  </button>
                 </div>
               </div>
 
@@ -1686,6 +1866,14 @@ export default function App() {
                 e.preventDefault();
                 const form = e.currentTarget;
                 const formData = new FormData(form);
+
+                // Validação: Não permitir pedido sem nenhuma etapa
+                if (newOrderRequiredStages.length === 0) {
+                  alert("Por favor, selecione pelo menos uma etapa para o pedido.");
+                  return;
+                }
+
+                formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
 
                 const res = await fetch('/api/orders', {
                   method: 'POST',
@@ -1707,6 +1895,7 @@ export default function App() {
                   deadline: '',
                   observations: ''
                 });
+                setNewOrderRequiredStages([]);
                 fetchData();
               }}>
                 <div className="space-y-1">
@@ -1795,6 +1984,44 @@ export default function App() {
                     className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
                   ></textarea>
                 </div>
+
+                {/* Step Selection */}
+                <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase leading-none">Etapas Deste Pedido ({newOrderRequiredStages.length} selecionadas)</label>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {stages.filter(s => s.active).map(stage => (
+                      <label key={stage.id} className={cn(
+                        "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                        newOrderRequiredStages.includes(stage.id)
+                          ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                          : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                      )}>
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={newOrderRequiredStages.includes(stage.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewOrderRequiredStages([...newOrderRequiredStages, stage.id]);
+                            } else {
+                              setNewOrderRequiredStages(newOrderRequiredStages.filter(id => id !== stage.id));
+                            }
+                          }}
+                        />
+                        <div className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                          newOrderRequiredStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                        )}>
+                          {newOrderRequiredStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                        </div>
+                        <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
                   Criar Pedido
                 </button>
@@ -1914,6 +2141,148 @@ export default function App() {
                 )}
                 <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
                   {selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Template Editor Modal */}
+      <AnimatePresence>
+        {isTemplateEditorOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h3>
+                <button onClick={() => setIsTemplateEditorOpen(false)}><X size={20} /></button>
+              </div>
+
+              <form className="space-y-6" onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const formData = new FormData(form);
+                const data = {
+                  name: formData.get('name'),
+                  product_type: formData.get('product_type'),
+                  print_type: formData.get('print_type'),
+                  quantity: formData.get('quantity'),
+                  observations: formData.get('observations'),
+                  required_stages: templateFormStages
+                };
+
+                const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
+                const method = editingTemplate ? 'PATCH' : 'POST';
+
+                await fetch(url, {
+                  method,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data)
+                });
+
+                setIsTemplateEditorOpen(false);
+                fetchData();
+              }}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Template</label>
+                    <input
+                      name="name"
+                      type="text"
+                      defaultValue={editingTemplate?.name}
+                      placeholder="Ex: Silk 2 Cores Frente"
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
+                    <input
+                      name="quantity"
+                      type="number"
+                      defaultValue={editingTemplate?.quantity}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
+                    <select
+                      name="product_type"
+                      defaultValue={editingTemplate?.product_type || 'Dry Fit'}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                    >
+                      <option>Dry Fit</option>
+                      <option>Algodão</option>
+                      <option>Poliamida</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
+                    <select
+                      name="print_type"
+                      defaultValue={editingTemplate?.print_type || 'Silk'}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                    >
+                      <option>Silk</option>
+                      <option>DTF</option>
+                      <option>Sublimação</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                    {stages.filter(s => s.active).map(stage => (
+                      <label key={stage.id} className={cn(
+                        "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                        templateFormStages.includes(stage.id)
+                          ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                          : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                      )}>
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={templateFormStages.includes(stage.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setTemplateFormStages([...templateFormStages, stage.id]);
+                            } else {
+                              setTemplateFormStages(templateFormStages.filter(id => id !== stage.id));
+                            }
+                          }}
+                        />
+                        <div className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                          templateFormStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                        )}>
+                          {templateFormStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                        </div>
+                        <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
+                  <textarea
+                    name="observations"
+                    defaultValue={editingTemplate?.observations}
+                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                  ></textarea>
+                </div>
+
+                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
+                  {editingTemplate ? 'Salvar Alterações' : 'Criar Template'}
                 </button>
               </form>
             </motion.div>

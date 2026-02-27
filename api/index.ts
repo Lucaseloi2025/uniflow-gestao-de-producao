@@ -88,6 +88,50 @@ app.get("/api/order-templates", async (_req, res) => {
     return res.json(data);
 });
 
+app.post("/api/order-templates", async (req, res) => {
+    const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
+    const { data, error } = await supabase
+        .from("order_templates")
+        .insert({
+            name,
+            product_type,
+            print_type,
+            quantity: Number(quantity) || 0,
+            observations,
+            required_stages: required_stages || []
+        })
+        .select()
+        .single();
+    if (checkError(error, res)) return;
+    return res.json(data);
+});
+
+app.patch("/api/order-templates/:id", async (req, res) => {
+    const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
+    const { error } = await supabase
+        .from("order_templates")
+        .update({
+            name,
+            product_type,
+            print_type,
+            quantity: quantity !== undefined ? Number(quantity) : undefined,
+            observations,
+            required_stages
+        })
+        .eq("id", Number(req.params.id));
+    if (checkError(error, res)) return;
+    return res.json({ success: true });
+});
+
+app.delete("/api/order-templates/:id", async (req, res) => {
+    const { error } = await supabase
+        .from("order_templates")
+        .delete()
+        .eq("id", Number(req.params.id));
+    if (checkError(error, res)) return;
+    return res.json({ success: true });
+});
+
 // ── Orders ────────────────────────────────────────────────────────────────
 app.get("/api/orders", async (req, res) => {
     const { search, stage_id, stage_status } = req.query;
@@ -101,13 +145,13 @@ app.get("/api/orders", async (req, res) => {
 });
 
 app.post("/api/orders", upload.single("art_file"), async (req, res) => {
-    const { client_name, product_type, print_type, quantity, deadline, observations } = req.body;
+    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages } = req.body;
     const order_number = `PED-${Date.now().toString().slice(-6)}`;
     let art_url = null;
 
     // 1. Upload file if exists (using Buffer and Supabase Storage instead of local filesystem)
-    if (req.file) {
-        const file = req.file;
+    if ((req as any).file) {
+        const file = (req as any).file;
         const fileExt = file.originalname.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `pedidos/${fileName}`;
@@ -159,6 +203,7 @@ app.post("/api/orders", upload.single("art_file"), async (req, res) => {
             observations,
             estimated_time_seconds: estimated_time,
             art_url,
+            required_stages: required_stages ? (typeof required_stages === 'string' ? JSON.parse(required_stages) : required_stages) : [],
         })
         .select("id")
         .single();
@@ -239,6 +284,36 @@ app.delete("/api/stages/:id", async (req, res) => {
         .eq("id", Number(req.params.id));
     if (checkError(error, res)) return;
     return res.json({ success: true });
+});
+
+app.get("/api/executions/active/:userId", async (req, res) => {
+    const { data, error } = await supabase
+        .from("stage_executions")
+        .select(`
+            *,
+            stages ( name ),
+            orders ( order_number )
+        `)
+        .eq("user_id", Number(req.params.userId))
+        .eq("status", "Em andamento")
+        .order("start_time", { ascending: false })
+        .limit(1)
+        .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 is 'No rows found'
+        return res.status(500).json({ error: error.message });
+    }
+
+    if (!data) return res.json(null);
+
+    const formatted = {
+        ...data,
+        stage_name: data.stages?.name,
+        order_number: data.orders?.order_number,
+        stages: undefined,
+        orders: undefined,
+    };
+    return res.json(formatted);
 });
 
 // ── Executions ────────────────────────────────────────────────────────────
