@@ -1590,16 +1590,18 @@ export default function App() {
                   <ClipboardList size={20} />
                   Gerenciar Templates de Pedido
                 </h3>
-                <button
-                  onClick={() => {
-                    setEditingTemplate(null);
-                    setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                    setIsTemplateEditorOpen(true);
-                  }}
-                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
-                >
-                  <Plus size={16} /> Novo Template
-                </button>
+                {currentUser?.role === 'Admin' && (
+                  <button
+                    onClick={() => {
+                      setEditingTemplate(null);
+                      setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                      setIsTemplateEditorOpen(true);
+                    }}
+                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                  >
+                    <Plus size={16} /> Novo Template
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1607,29 +1609,34 @@ export default function App() {
                   <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
                     <div className="flex justify-between items-start mb-2">
                       <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            setEditingTemplate(template);
-                            setTemplateFormStages(template.required_stages || []);
-                            setIsTemplateEditorOpen(true);
-                          }}
-                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (confirm(`Excluir template "${template.name}"?`)) {
-                              await fetch(`/api/order-templates/${template.id}`, { method: 'DELETE' });
-                              fetchData();
-                            }
-                          }}
-                          className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {currentUser?.role === 'Admin' && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setEditingTemplate(template);
+                              setTemplateFormStages(template.required_stages || []);
+                              setIsTemplateEditorOpen(true);
+                            }}
+                            className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Excluir template "${template.name}"?`)) {
+                                await fetch(`/api/order-templates/${template.id}`, {
+                                  method: 'DELETE',
+                                  headers: { 'x-user-role': currentUser?.role || '' }
+                                });
+                                fetchData();
+                              }
+                            }}
+                            className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2 mb-3">
                       <Badge variant="default">{template.product_type}</Badge>
@@ -1917,18 +1924,20 @@ export default function App() {
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingTemplate(null);
-                      setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                      setIsTemplateEditorOpen(true);
-                    }}
-                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
-                  >
-                    <Settings size={10} />
-                    Gerenciar
-                  </button>
+                  {currentUser?.role === 'Admin' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTemplate(null);
+                        setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                        setIsTemplateEditorOpen(true);
+                      }}
+                      className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                    >
+                      <Settings size={10} />
+                      Gerenciar
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {templates.map(template => (
@@ -2359,7 +2368,10 @@ export default function App() {
                 try {
                   const res = await fetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-user-role': currentUser?.role || ''
+                    },
                     body: JSON.stringify(data)
                   });
 

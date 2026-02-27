@@ -89,6 +89,9 @@ app.get("/api/order-templates", async (_req, res) => {
 });
 
 app.post("/api/order-templates", async (req, res) => {
+    if (req.headers['x-user-role'] !== 'Admin') {
+        return res.status(403).json({ error: "Apenas administradores podem criar templates." });
+    }
     const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
     const { data, error } = await supabase
         .from("order_templates")
@@ -107,6 +110,9 @@ app.post("/api/order-templates", async (req, res) => {
 });
 
 app.patch("/api/order-templates/:id", async (req, res) => {
+    if (req.headers['x-user-role'] !== 'Admin') {
+        return res.status(403).json({ error: "Apenas administradores podem editar templates." });
+    }
     const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
     const { error } = await supabase
         .from("order_templates")
@@ -124,6 +130,9 @@ app.patch("/api/order-templates/:id", async (req, res) => {
 });
 
 app.delete("/api/order-templates/:id", async (req, res) => {
+    if (req.headers['x-user-role'] !== 'Admin') {
+        return res.status(403).json({ error: "Apenas administradores podem excluir templates." });
+    }
     const { error } = await supabase
         .from("order_templates")
         .delete()
