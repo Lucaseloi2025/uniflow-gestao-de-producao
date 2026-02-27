@@ -154,6 +154,8 @@ export default function App() {
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [newStageName, setNewStageName] = useState('');
   const [isUploadingArt, setIsUploadingArt] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [editingStageName, setEditingStageName] = useState('');
   const [simOperadores, setSimOperadores] = useState<number>(0);
@@ -1962,6 +1964,8 @@ export default function App() {
 
               <form className="space-y-4" onSubmit={async (e) => {
                 e.preventDefault();
+                if (isCreatingOrder) return;
+                setIsCreatingOrder(true);
                 const form = e.currentTarget;
                 const formData = new FormData(form);
 
@@ -1983,28 +1987,35 @@ export default function App() {
                   }
                 }
 
-                const res = await fetch('/api/orders', {
-                  method: 'POST',
-                  body: formData
-                });
+                try {
+                  const res = await fetch('/api/orders', {
+                    method: 'POST',
+                    body: formData
+                  });
 
-                if (!res.ok) {
-                  const errData = await res.json().catch(() => null);
-                  alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
-                  return;
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => null);
+                    alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
+                    setIsCreatingOrder(false);
+                    return;
+                  }
+
+                  setShowNewOrderModal(false);
+                  setNewOrderForm({
+                    client_name: '',
+                    product_type: 'Dry Fit',
+                    print_type: 'Silk',
+                    quantity: '',
+                    deadline: '',
+                    observations: ''
+                  });
+                  setNewOrderRequiredStages([]);
+                  fetchData();
+                } catch (error) {
+                  alert("Erro ao conectar com o servidor.");
+                } finally {
+                  setIsCreatingOrder(false);
                 }
-
-                setShowNewOrderModal(false);
-                setNewOrderForm({
-                  client_name: '',
-                  product_type: 'Dry Fit',
-                  print_type: 'Silk',
-                  quantity: '',
-                  deadline: '',
-                  observations: ''
-                });
-                setNewOrderRequiredStages([]);
-                fetchData();
               }}>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente / Card</label>
@@ -2144,8 +2155,22 @@ export default function App() {
                   </div>
                 </div>
 
-                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                  Criar Pedido
+                <button
+                  type="submit"
+                  disabled={isCreatingOrder}
+                  className={cn(
+                    "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                    isCreatingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                  )}
+                >
+                  {isCreatingOrder ? (
+                    <>
+                      <RefreshCw size={18} className="animate-spin" />
+                      Criando Pedido...
+                    </>
+                  ) : (
+                    "Criar Pedido"
+                  )}
                 </button>
               </form>
             </motion.div>
@@ -2171,6 +2196,8 @@ export default function App() {
               </div>
               <form className="space-y-4" onSubmit={async (e) => {
                 e.preventDefault();
+                if (isSubmitting) return;
+                setIsSubmitting(true);
                 const form = e.currentTarget;
                 const formData = new FormData(form);
                 const data = Object.fromEntries(formData.entries());
@@ -2178,18 +2205,30 @@ export default function App() {
                 const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
                 const method = selectedUserForEdit ? 'PATCH' : 'POST';
 
-                await fetch(url, {
-                  method,
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    ...data,
-                    hourly_cost: Number(data.hourly_cost),
-                    active: data.active === 'on' || !selectedUserForEdit
-                  })
-                });
+                try {
+                  const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      ...data,
+                      hourly_cost: Number(data.hourly_cost),
+                      active: data.active === 'on' || !selectedUserForEdit
+                    })
+                  });
 
-                setShowUserModal(false);
-                fetchUsers();
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => null);
+                    alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                    return;
+                  }
+
+                  setShowUserModal(false);
+                  fetchUsers();
+                } catch (error) {
+                  alert("Erro ao conectar com o servidor.");
+                } finally {
+                  setIsSubmitting(false);
+                }
               }}>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
@@ -2261,8 +2300,22 @@ export default function App() {
                     <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
                   </div>
                 )}
-                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                  {selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'}
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={cn(
+                    "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                    isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                  )}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw size={18} className="animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
+                  )}
                 </button>
               </form>
             </motion.div>
@@ -2287,6 +2340,8 @@ export default function App() {
 
               <form className="space-y-6" onSubmit={async (e) => {
                 e.preventDefault();
+                if (isSubmitting) return;
+                setIsSubmitting(true);
                 const form = e.currentTarget;
                 const formData = new FormData(form);
                 const data = {
@@ -2301,14 +2356,26 @@ export default function App() {
                 const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
                 const method = editingTemplate ? 'PATCH' : 'POST';
 
-                await fetch(url, {
-                  method,
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(data)
-                });
+                try {
+                  const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                  });
 
-                setIsTemplateEditorOpen(false);
-                fetchData();
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => null);
+                    alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                    return;
+                  }
+
+                  setIsTemplateEditorOpen(false);
+                  fetchData();
+                } catch (error) {
+                  alert("Erro ao conectar com o servidor.");
+                } finally {
+                  setIsSubmitting(false);
+                }
               }}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
@@ -2403,8 +2470,22 @@ export default function App() {
                   ></textarea>
                 </div>
 
-                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                  {editingTemplate ? 'Salvar Alterações' : 'Criar Template'}
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={cn(
+                    "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                    isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                  )}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw size={18} className="animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    editingTemplate ? 'Salvar Alterações' : 'Criar Template'
+                  )}
                 </button>
               </form>
             </motion.div>
