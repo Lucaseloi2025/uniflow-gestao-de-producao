@@ -144,35 +144,33 @@ app.get("/api/orders", async (req, res) => {
     return res.json(data);
 });
 
-app.post("/api/orders", upload.single("art_file"), async (req, res) => {
+app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages } = req.body;
     const order_number = `PED-${Date.now().toString().slice(-6)}`;
-    let art_url = null;
+    const art_urls: string[] = [];
 
-    // 1. Upload file if exists (using Buffer and Supabase Storage instead of local filesystem)
-    if ((req as any).file) {
-        const file = (req as any).file;
-        const fileExt = file.originalname.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = `pedidos/${fileName}`;
+    // 1. Upload files if exist
+    const files = (req as any).files;
+    if (files && Array.isArray(files)) {
+        for (const file of files) {
+            const fileExt = file.originalname.split('.').pop();
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const filePath = `pedidos/${fileName}`;
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('artes') // O USUÁRIO PRECISA CRIAR ESSE BUCKET NO SUPABASE
-            .upload(filePath, file.buffer, {
-                contentType: file.mimetype,
-            });
+            const { error: uploadError } = await supabase.storage
+                .from('artes')
+                .upload(filePath, file.buffer, {
+                    contentType: file.mimetype,
+                });
 
-        if (uploadError) {
-            console.error("Erro no upload da arte para o Supabase:", uploadError);
-            return res.status(500).json({
-                error: "Erro ao fazer upload da arte. Veja se o bucket 'artes' foi criado e se tem políticas de inserção públicas ou autenticadas.",
-                details: uploadError.message
-            });
+            if (uploadError) {
+                console.error("Erro no upload da arte para o Supabase:", uploadError);
+                continue; // Skip failed uploads
+            }
+
+            const { data: publicUrlData } = supabase.storage.from('artes').getPublicUrl(filePath);
+            art_urls.push(publicUrlData.publicUrl);
         }
-
-        // Configura Public URL
-        const { data: publicUrlData } = supabase.storage.from('artes').getPublicUrl(filePath);
-        art_url = publicUrlData.publicUrl;
     }
 
     // 2. Estimate time
@@ -202,14 +200,15 @@ app.post("/api/orders", upload.single("art_file"), async (req, res) => {
             deadline,
             observations,
             estimated_time_seconds: estimated_time,
-            art_url,
+            art_url: art_urls[0] || null, // Primary image
+            art_urls: art_urls, // All images
             required_stages: required_stages ? (typeof required_stages === 'string' ? JSON.parse(required_stages) : required_stages) : [],
         })
         .select("id")
         .single();
 
     if (checkError(error, res, "Erro ao criar pedido")) return;
-    return res.json({ id: data.id, order_number, art_url });
+    return res.json({ id: data.id, order_number, art_url: art_urls[0] || null, art_urls });
 });
 
 app.patch("/api/orders/:id/status", async (req, res) => {

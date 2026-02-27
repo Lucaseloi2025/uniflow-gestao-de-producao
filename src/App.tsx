@@ -1621,7 +1621,7 @@ export default function App() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              className="bg-white w-full max-w-2xl h-full shadow-2xl overflow-y-auto"
+              className="bg-white w-full max-w-5xl h-full shadow-2xl overflow-y-auto"
             >
               <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center">
                 <div className="flex items-center gap-4">
@@ -1691,19 +1691,42 @@ export default function App() {
                   </div>
                 </div>
 
-                {selectedOrder.art_url && (
+                {(selectedOrder.art_url || (selectedOrder.art_urls && selectedOrder.art_urls.length > 0)) && (
                   <div className="mb-8">
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                       <ImageIcon size={20} />
-                      Ficha / Mockup
+                      Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
                     </h3>
-                    <div className="w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50">
-                      <img
-                        src={selectedOrder.art_url}
-                        alt="Mockup do Cliente"
-                        className="w-full h-auto max-h-[400px] object-contain"
-                        referrerPolicy="no-referrer"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
+                        selectedOrder.art_urls.map((url, i) => (
+                          <div key={i} className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center">
+                            <img
+                              src={url}
+                              alt={`Estampa ${i + 1}`}
+                              className="max-w-full max-h-full object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs"
+                            >
+                              Ver em Tamanho Cheio
+                            </a>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50">
+                          <img
+                            src={selectedOrder.art_url}
+                            alt="Mockup do Cliente"
+                            className="w-full h-auto max-h-[400px] object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1933,7 +1956,21 @@ export default function App() {
                         <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
                         <p className="text-xs text-zinc-400">PNG, JPG ou GIF</p>
                       </div>
-                      <input name="art_file" type="file" className="hidden" accept="image/*" />
+                      <input
+                        name="art_files"
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => {
+                          const files = e.target.files;
+                          if (files && files.length > 0) {
+                            // Simple visual feedback for multiple files
+                            const label = e.currentTarget.previousElementSibling?.querySelector('p');
+                            if (label) label.textContent = `${files.length} arquivo(s) selecionado(s)`;
+                          }
+                        }}
+                      />
                     </label>
                   </div>
                 </div>

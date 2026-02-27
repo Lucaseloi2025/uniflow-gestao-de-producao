@@ -24,6 +24,7 @@ export interface Order {
   status: 'Entrada' | 'Em Produção' | 'Finalização' | 'Entregue';
   observations: string;
   art_url?: string;
+  art_urls?: string[];
   total_time_seconds: number;
   estimated_time_seconds: number;
   required_stages?: number[];
