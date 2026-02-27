@@ -93,9 +93,9 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    const start = new Date(execution.start_time).getTime();
+    const start = parseISO(execution.start_time).getTime();
     const timer = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - start) / 1000));
+      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
     }, 1000);
     return () => clearInterval(timer);
   }, [execution.start_time]);
