@@ -29,7 +29,8 @@ import {
   DollarSign,
   Menu,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -1621,18 +1622,20 @@ export default function App() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              className="bg-white w-full max-w-5xl h-full shadow-2xl overflow-y-auto"
+              className="bg-white w-full h-full shadow-2xl overflow-y-auto"
             >
-              <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center">
-                <div className="flex items-center gap-4">
+              <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center px-8 lg:px-12">
+                <div className="flex items-center gap-6">
                   <button
                     onClick={() => setSelectedOrder(null)}
-                    className="p-2 hover:bg-zinc-100 rounded-lg transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl transition-all font-bold text-sm active:scale-95"
                   >
-                    <X size={20} />
+                    <ArrowLeft size={18} />
+                    Voltar ao Menu
                   </button>
+                  <div className="h-8 w-[1px] bg-zinc-200 hidden lg:block" />
                   <div>
-                    <h2 className="text-xl font-bold">{selectedOrder.client_name}</h2>
+                    <h2 className="text-2xl font-black tracking-tight text-zinc-900">{selectedOrder.client_name}</h2>
                     <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
                   </div>
                 </div>
@@ -1643,7 +1646,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="p-6 lg:p-8">
+              <div className="p-8 lg:p-12 max-w-7xl mx-auto">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                   <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
                     <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
@@ -1697,7 +1700,7 @@ export default function App() {
                       <ImageIcon size={20} />
                       Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
                         selectedOrder.art_urls.map((url, i) => (
                           <div key={i} className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center">
@@ -1911,6 +1914,16 @@ export default function App() {
                 }
 
                 formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
+
+                // Explicitly append all files from the input
+                const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
+                if (fileInput && fileInput.files) {
+                  // Clear any existing art_files to be sure
+                  formData.delete('art_files');
+                  for (let i = 0; i < fileInput.files.length; i++) {
+                    formData.append('art_files', fileInput.files[i]);
+                  }
+                }
 
                 const res = await fetch('/api/orders', {
                   method: 'POST',
