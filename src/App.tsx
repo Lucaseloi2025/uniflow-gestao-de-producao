@@ -1829,7 +1829,21 @@ export default function App() {
 
               {/* Templates Section */}
               <div className="mb-6">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-2">Templates Rápidos</label>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTemplate(null);
+                      setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                      setIsTemplateEditorOpen(true);
+                    }}
+                    className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                  >
+                    <Settings size={10} />
+                    Gerenciar
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {templates.map(template => (
                     <button
@@ -2151,7 +2165,7 @@ export default function App() {
       {/* Template Editor Modal */}
       <AnimatePresence>
         {isTemplateEditorOpen && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
