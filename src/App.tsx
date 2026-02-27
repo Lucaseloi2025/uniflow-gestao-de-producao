@@ -125,6 +125,14 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -315,6 +323,7 @@ export default function App() {
   };
 
   const handleFinishStage = async (executionId: number) => {
+    if (!window.confirm("Tem certeza que deseja finalizar esta etapa?")) return;
     await fetch(`/api/executions/${executionId}/finish`, { method: 'POST' });
     fetchExecutions(selectedOrder!.id);
     fetchData();
@@ -1573,38 +1582,61 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            {!execution && (
-                              <button
-                                onClick={() => handleStartStage(stage.id)}
-                                className="p-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors"
-                              >
-                                <Play size={16} fill="currentColor" />
-                              </button>
-                            )}
+                          <div className="flex flex-col items-end gap-3">
+                            <div className="flex items-center gap-3">
+                              {!execution && (
+                                <button
+                                  onClick={() => handleStartStage(stage.id)}
+                                  className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
+                                >
+                                  <Play size={18} fill="currentColor" />
+                                  <span className="font-bold text-sm">Iniciar</span>
+                                </button>
+                              )}
+                              {execution?.status === 'Em andamento' && (
+                                <>
+                                  <button
+                                    onClick={() => handlePauseStage(execution.id)}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all active:scale-95"
+                                    title="Pausar"
+                                  >
+                                    <Pause size={18} fill="currentColor" />
+                                    <span className="font-bold text-sm">Pausar</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleFinishStage(execution.id)}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 border-b-4 border-emerald-800"
+                                  >
+                                    <CheckCircle size={18} />
+                                    <span className="font-bold text-sm uppercase tracking-tight">Finalizar</span>
+                                  </button>
+                                </>
+                              )}
+                              {execution?.status === 'Pausado' && (
+                                <button
+                                  onClick={() => handleResumeStage(execution.id)}
+                                  className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-95"
+                                >
+                                  <Play size={18} fill="currentColor" />
+                                  <span className="font-bold text-sm">Retomar</span>
+                                </button>
+                              )}
+                            </div>
+
                             {execution?.status === 'Em andamento' && (
-                              <>
-                                <button
-                                  onClick={() => handlePauseStage(execution.id)}
-                                  className="p-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
-                                >
-                                  <Pause size={16} fill="currentColor" />
-                                </button>
-                                <button
-                                  onClick={() => handleFinishStage(execution.id)}
-                                  className="p-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
-                                >
-                                  <Square size={16} fill="currentColor" />
-                                </button>
-                              </>
-                            )}
-                            {execution?.status === 'Pausado' && (
-                              <button
-                                onClick={() => handleResumeStage(execution.id)}
-                                className="p-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors"
-                              >
-                                <Play size={16} fill="currentColor" />
-                              </button>
+                              <div className="flex items-center gap-2 py-1 px-3 bg-rose-50 border border-rose-100 rounded-full animate-pulse">
+                                <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
+                                <span className="text-[11px] font-mono font-bold text-rose-600">
+                                  {(() => {
+                                    const start = new Date(execution.start_time).getTime();
+                                    const current = now.getTime();
+                                    const diffSeconds = Math.max(0, Math.floor((current - start) / 1000));
+                                    // Note: This front-end only calculation doesn't subtract pauses yet, 
+                                    // but it provides the "running" visual the user asked for.
+                                    return formatSeconds(diffSeconds);
+                                  })()}
+                                </span>
+                              </div>
                             )}
                           </div>
                         </div>
