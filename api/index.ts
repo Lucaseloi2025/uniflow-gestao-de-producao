@@ -635,7 +635,7 @@ app.get("/api/users", async (req, res) => {
 
     if (search) {
         query = query.or(
-            `name.ilike.% ${search} %, email.ilike.% ${search} % `
+            `name.ilike.%${search}%,email.ilike.%${search}%`
         );
     }
 
