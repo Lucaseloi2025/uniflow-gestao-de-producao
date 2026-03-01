@@ -94,16 +94,20 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
+    if (!execution.start_time) return;
+
+    // Use parseISO for more reliable parsing across browsers/timezones
     const start = parseISO(execution.start_time).getTime();
     const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
 
-    const update = () => {
-      const current = Date.now();
-      setElapsed(Math.max(0, Math.floor((current - start - pauseMs) / 1000)));
+    const updateTimer = () => {
+      const now = Date.now();
+      setElapsed(Math.max(0, Math.floor((now - start - pauseMs) / 1000)));
     };
 
-    update();
-    const timer = setInterval(update, 1000);
+    updateTimer(); // Initial call
+
+    const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
   }, [execution.start_time, execution.accumulated_pause_seconds]);
 
@@ -1939,7 +1943,8 @@ export default function App() {
                                 <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
                                 <span className="text-[11px] font-mono font-bold text-rose-600">
                                   {(() => {
-                                    const start = new Date(execution.start_time).getTime();
+                                    if (!execution.start_time) return "00:00:00";
+                                    const start = parseISO(execution.start_time).getTime();
                                     const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
                                     const current = now.getTime();
                                     const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));

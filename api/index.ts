@@ -407,19 +407,34 @@ app.get("/api/orders/:id/executions", async (req, res) => {
     const { data, error } = await supabase
         .from("stage_executions")
         .select(`
-      *,
-      stages ( name ),
-      users ( name )
-    `)
+          *,
+          stages ( name ),
+          users ( name )
+        `)
         .eq("order_id", Number(req.params.id));
     if (checkError(error, res)) return;
-    const formatted = (data || []).map((e: any) => ({
-        ...e,
-        stage_name: e.stages?.name,
-        user_name: e.users?.name,
-        stages: undefined,
-        users: undefined,
-    }));
+
+    // Fetch all pauses for these executions to calculate accumulated time
+    const executionIds = (data || []).map(e => e.id);
+    const { data: pauses } = executionIds.length > 0
+        ? await supabase.from("pauses").select("*").in("execution_id", executionIds)
+        : { data: [] };
+
+    const formatted = (data || []).map((e: any) => {
+        const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
+        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => sum + (p.duration_seconds || 0), 0);
+        const is_paused = itemPauses.some(p => p.end_pause === null);
+
+        return {
+            ...e,
+            stage_name: e.stages?.name,
+            user_name: e.users?.name,
+            accumulated_pause_seconds: accumulatedPauseSeconds,
+            is_paused: is_paused,
+            stages: undefined,
+            users: undefined,
+        };
+    });
     return res.json(formatted);
 });
 
@@ -601,7 +616,7 @@ app.get("/api/users", async (req, res) => {
 
     if (search) {
         query = query.or(
-            `name.ilike.%${search}%,email.ilike.%${search}%`
+            `name.ilike.% ${search} %, email.ilike.% ${search} % `
         );
     }
 
@@ -670,7 +685,7 @@ app.get("/api/clients", async (req, res) => {
     const { search } = req.query;
     let query = supabase.from("clients").select("*").order("name");
     if (search) {
-        query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+        query = query.or(`name.ilike.% ${search} %, email.ilike.% ${search} % `);
     }
     const { data, error } = await query;
     if (checkError(error, res)) return;
