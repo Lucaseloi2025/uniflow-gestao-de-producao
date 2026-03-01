@@ -60,6 +60,8 @@ export interface StageExecution {
   end_time?: string;
   total_time_seconds: number;
   status: 'Em andamento' | 'Pausado' | 'Finalizado';
+  accumulated_pause_seconds?: number;
+  is_paused?: boolean;
 }
 
 export interface DashboardStats {

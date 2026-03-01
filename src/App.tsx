@@ -95,11 +95,17 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
 
   useEffect(() => {
     const start = parseISO(execution.start_time).getTime();
-    const timer = setInterval(() => {
-      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    }, 1000);
+    const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
+
+    const update = () => {
+      const current = Date.now();
+      setElapsed(Math.max(0, Math.floor((current - start - pauseMs) / 1000)));
+    };
+
+    update();
+    const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
-  }, [execution.start_time]);
+  }, [execution.start_time, execution.accumulated_pause_seconds]);
 
   return (
     <motion.div
@@ -236,7 +242,19 @@ export default function App() {
 
   const safeFetch = async (url: string, options?: RequestInit) => {
     try {
-      const res = await fetch(url, options);
+      // Automatically inject role header if user is logged in
+      const roleHeaders: any = {};
+      if (currentUser?.role) {
+        roleHeaders['x-user-role'] = currentUser.role;
+      }
+
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...roleHeaders,
+          ...(options?.headers || {})
+        }
+      });
       if (!res.ok) {
         const errorText = await res.text();
         console.error(`Fetch error ${res.status}: ${errorText}`);
@@ -311,7 +329,10 @@ export default function App() {
   const handleUpdateDeadline = async (orderId: number, newDeadline: string) => {
     await fetch(`/api/orders/${orderId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
       body: JSON.stringify({ deadline: newDeadline })
     });
     fetchData();
@@ -357,7 +378,10 @@ export default function App() {
     if (!selectedOrder) return;
     const res = await fetch('/api/executions/start', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
       body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser!.id })
     });
     if (res.ok) {
@@ -371,20 +395,29 @@ export default function App() {
   };
 
   const handlePauseStage = async (executionId: number) => {
-    await fetch(`/api/executions/${executionId}/pause`, { method: 'POST' });
+    await fetch(`/api/executions/${executionId}/pause`, {
+      method: 'POST',
+      headers: { 'x-user-role': currentUser?.role || '' }
+    });
     fetchExecutions(selectedOrder!.id);
     fetchActiveExecution();
   };
 
   const handleResumeStage = async (executionId: number) => {
-    await fetch(`/api/executions/${executionId}/resume`, { method: 'POST' });
+    await fetch(`/api/executions/${executionId}/resume`, {
+      method: 'POST',
+      headers: { 'x-user-role': currentUser?.role || '' }
+    });
     fetchExecutions(selectedOrder!.id);
     fetchActiveExecution();
   };
 
   const handleFinishStage = async (executionId: number) => {
     if (!window.confirm("Tem certeza que deseja finalizar esta etapa?")) return;
-    await fetch(`/api/executions/${executionId}/finish`, { method: 'POST' });
+    await fetch(`/api/executions/${executionId}/finish`, {
+      method: 'POST',
+      headers: { 'x-user-role': currentUser?.role || '' }
+    });
     fetchExecutions(selectedOrder!.id);
     fetchData();
     fetchActiveExecution();
@@ -393,7 +426,10 @@ export default function App() {
   const updateOrderStatus = async (orderId: number, status: string) => {
     await fetch(`/api/orders/${orderId}/status`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
       body: JSON.stringify({ status })
     });
     fetchData();
@@ -1427,7 +1463,10 @@ export default function App() {
 
                 await fetch('/api/config/producao', {
                   method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-role': currentUser?.role || ''
+                  },
                   body: JSON.stringify(data)
                 });
                 fetchData();
@@ -1500,7 +1539,10 @@ export default function App() {
                     if (!newStageName) return;
                     await fetch('/api/stages', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-role': currentUser?.role || ''
+                      },
                       body: JSON.stringify({ name: newStageName })
                     });
                     setNewStageName('');
@@ -1527,7 +1569,10 @@ export default function App() {
                             if (editingStageName && editingStageName !== stage.name) {
                               await fetch(`/api/stages/${stage.id}`, {
                                 method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'x-user-role': currentUser?.role || ''
+                                },
                                 body: JSON.stringify({ name: editingStageName })
                               });
                               fetchData();
@@ -1569,7 +1614,10 @@ export default function App() {
                         <button
                           onClick={async () => {
                             if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
-                              await fetch(`/api/stages/${stage.id}`, { method: 'DELETE' });
+                              await fetch(`/api/stages/${stage.id}`, {
+                                method: 'DELETE',
+                                headers: { 'x-user-role': currentUser?.role || '' }
+                              });
                               fetchData();
                             }
                           }}
@@ -1884,10 +1932,9 @@ export default function App() {
                                 <span className="text-[11px] font-mono font-bold text-rose-600">
                                   {(() => {
                                     const start = new Date(execution.start_time).getTime();
+                                    const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
                                     const current = now.getTime();
-                                    const diffSeconds = Math.max(0, Math.floor((current - start) / 1000));
-                                    // Note: This front-end only calculation doesn't subtract pauses yet, 
-                                    // but it provides the "running" visual the user asked for.
+                                    const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
                                     return formatSeconds(diffSeconds);
                                   })()}
                                 </span>
@@ -1999,6 +2046,7 @@ export default function App() {
                 try {
                   const res = await fetch('/api/orders', {
                     method: 'POST',
+                    headers: { 'x-user-role': currentUser?.role || '' },
                     body: formData
                   });
 
@@ -2217,7 +2265,10 @@ export default function App() {
                 try {
                   const res = await fetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-user-role': currentUser?.role || ''
+                    },
                     body: JSON.stringify({
                       ...data,
                       hourly_cost: Number(data.hourly_cost),

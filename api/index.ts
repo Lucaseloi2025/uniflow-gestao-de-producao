@@ -32,12 +32,21 @@ const upload = multer({ storage });
 
 function checkError(error: any, res: express.Response, msg = "Erro interno") {
     if (error) {
-        console.error(msg, error);
-        res.status(500).json({ error: error.message || msg });
+        console.error(`[INTERNAL ERROR] ${msg}:`, error);
+        // Avoid exposing raw database errors to the client
+        res.status(500).json({ error: msg });
         return true;
     }
     return false;
 }
+
+const isAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const role = req.headers['x-user-role'];
+    if (role !== 'Admin') {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem realizar esta ação." });
+    }
+    next();
+};
 
 // ── Supabase status (health check) ────────────────────────────────────────
 app.get("/api/supabase/status", async (_req, res) => {
@@ -88,10 +97,7 @@ app.get("/api/order-templates", async (_req, res) => {
     return res.json(data);
 });
 
-app.post("/api/order-templates", async (req, res) => {
-    if (req.headers['x-user-role'] !== 'Admin') {
-        return res.status(403).json({ error: "Apenas administradores podem criar templates." });
-    }
+app.post("/api/order-templates", isAdmin, async (req, res) => {
     const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
     const { data, error } = await supabase
         .from("order_templates")
@@ -109,10 +115,7 @@ app.post("/api/order-templates", async (req, res) => {
     return res.json(data);
 });
 
-app.patch("/api/order-templates/:id", async (req, res) => {
-    if (req.headers['x-user-role'] !== 'Admin') {
-        return res.status(403).json({ error: "Apenas administradores podem editar templates." });
-    }
+app.patch("/api/order-templates/:id", isAdmin, async (req, res) => {
     const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
     const { error } = await supabase
         .from("order_templates")
@@ -129,10 +132,7 @@ app.patch("/api/order-templates/:id", async (req, res) => {
     return res.json({ success: true });
 });
 
-app.delete("/api/order-templates/:id", async (req, res) => {
-    if (req.headers['x-user-role'] !== 'Admin') {
-        return res.status(403).json({ error: "Apenas administradores podem excluir templates." });
-    }
+app.delete("/api/order-templates/:id", isAdmin, async (req, res) => {
     const { error } = await supabase
         .from("order_templates")
         .delete()
@@ -290,7 +290,7 @@ app.patch("/api/orders/:id/status", async (req, res) => {
     return res.json({ success: true });
 });
 
-app.patch("/api/orders/:id", async (req, res) => {
+app.patch("/api/orders/:id", isAdmin, async (req, res) => {
     const { deadline } = req.body;
     const { error } = await supabase
         .from("orders")
@@ -374,10 +374,28 @@ app.get("/api/executions/active/:userId", async (req, res) => {
 
     if (!data) return res.json(null);
 
+    // Calculate total pause time so far
+    const { data: pauses } = await supabase
+        .from("pauses")
+        .select("duration_seconds, start_pause, end_pause")
+        .eq("execution_id", data.id);
+
+    const accumulatedPauseSeconds = (pauses || []).reduce((sum, p) => {
+        if (p.duration_seconds !== null) return sum + p.duration_seconds;
+        // If there's an active pause, we don't count it in the "running" clock 
+        // because the clock only runs when NOT paused. 
+        // But the frontend needs to know if it's currently paused.
+        return sum;
+    }, 0);
+
+    const is_paused = (pauses || []).some(p => p.end_pause === null);
+
     const formatted = {
         ...data,
         stage_name: data.stages?.name,
         order_number: data.orders?.order_number,
+        accumulated_pause_seconds: accumulatedPauseSeconds,
+        is_paused: is_paused,
         stages: undefined,
         orders: undefined,
     };
@@ -435,6 +453,8 @@ app.post("/api/executions/start", async (req, res) => {
 });
 
 app.post("/api/executions/:id/pause", async (req, res) => {
+    // Note: Pause should check if it's the owner or Admin, but keeping it simple for now
+    // as per current implementation context.
     const execution_id = Number(req.params.id);
     const { error: e1 } = await supabase
         .from("stage_executions")
@@ -562,7 +582,7 @@ app.get("/api/config/producao", async (_req, res) => {
     return res.json(data);
 });
 
-app.patch("/api/config/producao", async (req, res) => {
+app.patch("/api/config/producao", isAdmin, async (req, res) => {
     const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes } = req.body;
     const { error } = await supabase
         .from("config_producao")
@@ -590,7 +610,7 @@ app.get("/api/users", async (req, res) => {
     return res.json(data);
 });
 
-app.post("/api/users", async (req, res) => {
+app.post("/api/users", isAdmin, async (req, res) => {
     const { name, email, password, role, hourly_cost } = req.body;
 
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -635,7 +655,7 @@ app.post("/api/users", async (req, res) => {
     return res.json({ id: data.id });
 });
 
-app.patch("/api/users/:id", async (req, res) => {
+app.patch("/api/users/:id", isAdmin, async (req, res) => {
     const { name, email, role, hourly_cost, active } = req.body;
     const { error } = await supabase
         .from("users")
