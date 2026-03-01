@@ -30,7 +30,8 @@ import {
   Menu,
   LogOut,
   RefreshCw,
-  ArrowLeft
+  ArrowLeft,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -157,6 +158,7 @@ export default function App() {
   const [reportPeriod, setReportPeriod] = useState<'day' | 'week' | 'month'>('week');
   const [reportUser, setReportUser] = useState<string>('');
   const [reportStage, setReportStage] = useState<string>('');
+  const [profileReport, setProfileReport] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -453,6 +455,9 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'reports') {
       fetchReports();
+      safeFetch('/api/reports/profile').then(data => {
+        if (data) setProfileReport(data);
+      });
     }
   }, [activeTab, reportPeriod, reportUser, reportStage]);
 
@@ -1414,6 +1419,66 @@ export default function App() {
                 </div>
               </Card>
             </div>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <PieChartIcon size={20} />
+                Tempo Médio por Perfil de Pedido
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-zinc-100">
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Perfil</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Cores</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. Pedidos</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. Média Peças</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Média Real</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Mín/Máx</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {profileReport.length > 0 ? (
+                      profileReport.map((p, i) => (
+                        <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="py-4">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-zinc-900">{p.product_type}</span>
+                              <span className="text-[10px] text-zinc-500 uppercase">{p.print_type}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-center">
+                            {(p.print_type === 'Silk' || p.print_type === 'Sublimação') ? (
+                              <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                                {p.num_colors} {p.num_colors === 1 ? 'Cor' : 'Cores'}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-300">-</span>
+                            )}
+                          </td>
+                          <td className="py-4 text-center text-sm font-mono">{p.count}</td>
+                          <td className="py-4 text-center text-sm font-mono">{p.avg_quantity}</td>
+                          <td className="py-4 text-right">
+                            <span className="text-sm font-black text-zinc-900">{formatSeconds(p.avg_time_seconds)}</span>
+                          </td>
+                          <td className="py-4 text-right">
+                            <span className="text-[10px] font-mono text-zinc-400">
+                              {formatSeconds(p.min_time_seconds)} / {formatSeconds(p.max_time_seconds)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-zinc-400 italic text-sm">
+                          Aguardando mais pedidos finalizados para gerar médias por perfil...
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           </div>
         )}
 

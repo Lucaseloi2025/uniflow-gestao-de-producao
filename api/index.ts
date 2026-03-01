@@ -724,6 +724,55 @@ app.post("/api/clients", async (req, res) => {
     return res.json({ id: data.id });
 });
 
+// ── Production Profile Report ─────────────────────────────────────────────
+app.get("/api/reports/profile", async (_req, res) => {
+    const { data, error } = await supabase
+        .from("orders")
+        .select("product_type, print_type, num_colors, total_time_seconds, quantity")
+        .eq("status", "Entregue")
+        .gt("total_time_seconds", 0);
+
+    if (checkError(error, res)) return;
+
+    // Group by profile key
+    const profileMap: Record<string, {
+        product_type: string;
+        print_type: string;
+        num_colors: number;
+        times: number[];
+        quantities: number[];
+    }> = {};
+
+    for (const order of (data || [])) {
+        const colors = order.num_colors || 1;
+        const key = `${order.product_type}|${order.print_type}|${colors}`;
+        if (!profileMap[key]) {
+            profileMap[key] = {
+                product_type: order.product_type,
+                print_type: order.print_type,
+                num_colors: colors,
+                times: [],
+                quantities: [],
+            };
+        }
+        profileMap[key].times.push(order.total_time_seconds);
+        profileMap[key].quantities.push(order.quantity || 0);
+    }
+
+    const profiles = Object.values(profileMap).map(p => ({
+        product_type: p.product_type,
+        print_type: p.print_type,
+        num_colors: p.num_colors,
+        count: p.times.length,
+        avg_time_seconds: Math.round(p.times.reduce((a, b) => a + b, 0) / p.times.length),
+        min_time_seconds: Math.min(...p.times),
+        max_time_seconds: Math.max(...p.times),
+        avg_quantity: Math.round(p.quantities.reduce((a, b) => a + b, 0) / p.quantities.length),
+    })).sort((a, b) => b.count - a.count);
+
+    return res.json(profiles);
+});
+
 // ── 404 for API routes ────────────────────────────────────────────────────
 app.all("/api/*", (req, res) => {
     res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
