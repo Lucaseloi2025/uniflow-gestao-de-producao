@@ -441,7 +441,8 @@ app.get("/api/orders/:id/executions", async (req, res) => {
 app.post("/api/executions/start", async (req, res) => {
     const { order_id, stage_id, user_id } = req.body;
 
-    const { data: existing } = await supabase
+    // Use supabaseAdmin to bypass RLS for internal logic
+    const { data: existing, error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .select("id")
         .eq("order_id", Number(order_id))
@@ -449,11 +450,15 @@ app.post("/api/executions/start", async (req, res) => {
         .eq("status", "Em andamento")
         .limit(1);
 
-    if (existing && existing.length > 0) {
-        return res.status(400).json({ error: "Esta etapa já está sendo executada." });
+    if (e1) {
+        return checkError(e1, res, "Erro ao verificar execuções existentes");
     }
 
-    const { data, error } = await supabase
+    if (existing && existing.length > 0) {
+        return res.status(400).json({ error: "Esta etapa já está sendo executada para este pedido." });
+    }
+
+    const { data, error } = await supabaseAdmin
         .from("stage_executions")
         .insert({
             order_id: Number(order_id),
@@ -462,128 +467,135 @@ app.post("/api/executions/start", async (req, res) => {
             status: "Em andamento",
         })
         .select("id")
-        .single();
-    if (checkError(error, res)) return;
+        .maybeSingle(); // Use maybeSingle to avoid errors if 0 rows (though insert should return 1 row)
+
+    if (checkError(error, res, "Erro ao iniciar execução")) return;
+
+    if (!data) {
+        return res.status(500).json({ error: "Erro ao recuperar ID da nova execução." });
+    }
+
     return res.json({ id: data.id });
 });
 
 app.post("/api/executions/:id/pause", async (req, res) => {
-    // Note: Pause should check if it's the owner or Admin, but keeping it simple for now
-    // as per current implementation context.
     const execution_id = Number(req.params.id);
-    const { error: e1 } = await supabase
+    const { error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .update({ status: "Pausado" })
         .eq("id", execution_id);
-    if (checkError(e1, res)) return;
+    if (checkError(e1, res, "Erro ao pausar execução")) return;
 
-    const { error: e2 } = await supabase
+    const { error: e2 } = await supabaseAdmin
         .from("pauses")
         .insert({ execution_id });
-    if (checkError(e2, res)) return;
+    if (checkError(e2, res, "Erro ao registrar pausa")) return;
+
     return res.json({ success: true });
 });
 
 app.post("/api/executions/:id/resume", async (req, res) => {
     const execution_id = Number(req.params.id);
-    const now = new Date().toISOString();
-
-    const { data: lastPauseData } = await supabase
-        .from("pauses")
-        .select("id, start_pause")
-        .eq("execution_id", execution_id)
-        .is("end_pause", null)
-        .order("id", { ascending: false })
-        .limit(1)
-        .single();
-
-    if (lastPauseData) {
-        const duration = Math.floor(
-            (new Date().getTime() - new Date(lastPauseData.start_pause).getTime()) / 1000
-        );
-        await supabase
-            .from("pauses")
-            .update({ end_pause: now, duration_seconds: duration })
-            .eq("id", lastPauseData.id);
-    }
-
-    const { error } = await supabase
+    const { error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .update({ status: "Em andamento" })
         .eq("id", execution_id);
-    if (checkError(error, res)) return;
+    if (checkError(e1, res, "Erro ao retomar execução")) return;
+
+    const { error: e2 } = await supabaseAdmin
+        .from("pauses")
+        .update({ end_pause: new Date().toISOString() })
+        .eq("execution_id", execution_id)
+        .is("end_pause", null);
+    if (checkError(e2, res, "Erro ao finalizar pausa")) return;
+
     return res.json({ success: true });
 });
 
 app.post("/api/executions/:id/finish", async (req, res) => {
     const execution_id = Number(req.params.id);
-    const now = new Date().toISOString();
+    const nowISO = new Date().toISOString();
+    const nowMs = new Date().getTime();
 
-    const { data: execution } = await supabase
+    // 1. Get current execution
+    const { data: execution, error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .select("*, stages(name)")
         .eq("id", execution_id)
         .single();
 
-    if (!execution) return res.status(404).json({ error: "Execução não encontrada." });
+    if (checkError(e1, res, "Execução não encontrada") || !execution) return;
 
-    const { data: lastPauseData } = await supabase
+    // 2. Finalize any active pause
+    const { data: lastPauseData } = await supabaseAdmin
         .from("pauses")
         .select("id, start_pause")
         .eq("execution_id", execution_id)
         .is("end_pause", null)
         .order("id", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
     if (lastPauseData) {
-        const duration = Math.floor(
-            (new Date().getTime() - new Date(lastPauseData.start_pause).getTime()) / 1000
-        );
-        await supabase
+        const duration = Math.floor((nowMs - new Date(lastPauseData.start_pause).getTime()) / 1000);
+        await supabaseAdmin
             .from("pauses")
-            .update({ end_pause: now, duration_seconds: duration })
+            .update({ end_pause: nowISO, duration_seconds: duration })
             .eq("id", lastPauseData.id);
     }
 
-    const { data: pausesData } = await supabase
+    // 3. Calculate total pause time
+    const { data: pausesData } = await supabaseAdmin
         .from("pauses")
         .select("duration_seconds")
         .eq("execution_id", execution_id);
+
     const totalPauseSeconds = (pausesData || []).reduce(
         (sum: number, p: any) => sum + (p.duration_seconds || 0), 0
     );
 
-    const totalExecutionSeconds = Math.floor(
-        (new Date().getTime() - new Date(execution.start_time).getTime()) / 1000
-    ) - totalPauseSeconds;
+    // 4. Calculate total execution time
+    const totalExecutionSeconds = Math.max(0, Math.floor(
+        (nowMs - new Date(execution.start_time).getTime()) / 1000
+    ) - totalPauseSeconds);
 
-    await supabase
+    // 5. Update execution status
+    const { error: e2 } = await supabaseAdmin
         .from("stage_executions")
-        .update({ end_time: now, total_time_seconds: totalExecutionSeconds, status: "Finalizado" })
+        .update({
+            end_time: nowISO,
+            total_time_seconds: totalExecutionSeconds,
+            status: "Finalizado"
+        })
         .eq("id", execution_id);
 
-    const { data: allExecs } = await supabase
+    if (checkError(e2, res, "Erro ao finalizar execução")) return;
+
+    // 6. Update order total time
+    const { data: allExecs } = await supabaseAdmin
         .from("stage_executions")
         .select("total_time_seconds")
         .eq("order_id", execution.order_id);
+
     const totalOrderTime = (allExecs || []).reduce(
         (sum: number, e: any) => sum + (e.total_time_seconds || 0), 0
     );
-    await supabase
+
+    await supabaseAdmin
         .from("orders")
         .update({ total_time_seconds: totalOrderTime })
         .eq("id", execution.order_id);
 
+    // 7. Update order status if specific stage finished
     if (execution.stages?.name === "Aguardando ficha de aprovação") {
-        await supabase
+        await supabaseAdmin
             .from("orders")
             .update({ status: "Em Produção" })
             .eq("id", execution.order_id)
             .eq("status", "Entrada");
     }
 
-    return res.json({ success: true });
+    return res.json({ success: true, total_time: totalExecutionSeconds });
 });
 
 // ── Production Config ─────────────────────────────────────────────────────
