@@ -458,6 +458,10 @@ app.post("/api/executions/start", async (req, res) => {
         return res.status(400).json({ error: "Esta etapa já está sendo executada para este pedido." });
     }
 
+    if (Number(user_id) === 0) {
+        return res.status(400).json({ error: "Usuário não identificado. Por favor, saia e entre novamente." });
+    }
+
     const { data, error } = await supabaseAdmin
         .from("stage_executions")
         .insert({
@@ -467,9 +471,12 @@ app.post("/api/executions/start", async (req, res) => {
             status: "Em andamento",
         })
         .select("id")
-        .maybeSingle(); // Use maybeSingle to avoid errors if 0 rows (though insert should return 1 row)
+        .maybeSingle();
 
-    if (checkError(error, res, "Erro ao iniciar execução")) return;
+    if (error) {
+        console.error("[API] Erro ao iniciar execução:", error);
+        return res.status(500).json({ error: `Erro ao iniciar execução: ${error.message}` });
+    }
 
     if (!data) {
         return res.status(500).json({ error: "Erro ao recuperar ID da nova execução." });
