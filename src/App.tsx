@@ -1740,6 +1740,11 @@ export default function App() {
                   <Badge variant={selectedOrder.status === 'Entregue' ? 'success' : 'info'}>
                     {selectedOrder.status}
                   </Badge>
+                  {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1">
+                      🎨 {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -2154,6 +2159,28 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+
+                {/* Number of Colors - shown only for Silk and Sublimação */}
+                {(newOrderForm.print_type === 'Silk' || newOrderForm.print_type === 'Sublimação') && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                      🎨 Número de Cores da Estampa
+                      <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">afeta estimativa de tempo</span>
+                    </label>
+                    <select
+                      name="num_colors"
+                      defaultValue={1}
+                      className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white focus:border-emerald-400 outline-none"
+                    >
+                      <option value={1}>1 Cor</option>
+                      <option value={2}>2 Cores</option>
+                      <option value={3}>3 Cores</option>
+                      <option value={4}>4 Cores</option>
+                      <option value={5}>5+ Cores</option>
+                    </select>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>

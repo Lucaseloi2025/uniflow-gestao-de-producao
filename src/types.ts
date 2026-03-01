@@ -29,6 +29,7 @@ export interface Order {
   estimated_time_seconds: number;
   required_stages?: number[];
   stages_status: StageStatus[];
+  num_colors?: number;
 }
 
 export interface OrderTemplate {

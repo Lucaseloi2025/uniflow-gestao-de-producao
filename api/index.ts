@@ -154,7 +154,7 @@ app.get("/api/orders", async (req, res) => {
 });
 
 app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
-    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages } = req.body;
+    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors } = req.body;
     const order_number = `PED-${Date.now().toString().slice(-6)}`;
     const art_urls: string[] = [];
 
@@ -188,6 +188,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
         .select("total_time_seconds")
         .eq("product_type", product_type)
         .eq("print_type", print_type)
+        .eq("num_colors", Number(num_colors) || 1)
         .eq("status", "Entregue");
 
     const totalSeconds = estimateData?.reduce(
@@ -205,6 +206,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
             client_name: client_name || "Cliente Avulso",
             product_type,
             print_type,
+            num_colors: Number(num_colors) || 1,
             quantity: Number(quantity),
             deadline,
             observations,
