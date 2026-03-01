@@ -186,6 +186,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [now, setNow] = useState(new Date());
   const [activeExecution, setActiveExecution] = useState<StageExecution | null>(null);
+  const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1818,31 +1819,38 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
                         selectedOrder.art_urls.map((url, i) => (
-                          <div key={i} className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center">
+                          <div
+                            key={i}
+                            onClick={() => setSelectedFullImage(url)}
+                            className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
+                          >
                             <img
                               src={url}
                               alt={`Estampa ${i + 1}`}
                               className="max-w-full max-h-full object-contain"
                               referrerPolicy="no-referrer"
                             />
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs"
-                            >
-                              Ver em Tamanho Cheio
-                            </a>
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
+                              <Search size={16} />
+                              Clique para Ampliar
+                            </div>
                           </div>
                         ))
                       ) : (
-                        <div className="w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50">
+                        <div
+                          onClick={() => setSelectedFullImage(selectedOrder.art_url || null)}
+                          className="group relative w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 cursor-pointer hover:border-zinc-400 transition-all"
+                        >
                           <img
                             src={selectedOrder.art_url}
                             alt="Mockup do Cliente"
                             className="w-full h-auto max-h-[400px] object-contain"
                             referrerPolicy="no-referrer"
                           />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
+                            <Search size={16} />
+                            Clique para Ampliar
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2553,6 +2561,46 @@ export default function App() {
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Photo Lightbox */}
+      <AnimatePresence>
+        {selectedFullImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
+            onClick={() => setSelectedFullImage(null)}
+          >
+            <motion.button
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-[110]"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedFullImage(null);
+              }}
+            >
+              <X size={24} />
+            </motion.button>
+
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full h-full flex items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={selectedFullImage}
+                alt="Detalhe da Estampa"
+                className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                referrerPolicy="no-referrer"
+              />
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
