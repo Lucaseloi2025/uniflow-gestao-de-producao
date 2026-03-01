@@ -511,7 +511,7 @@ export default function App() {
             <div className="w-12 h-12 bg-zinc-900 rounded-xl flex items-center justify-center text-white shadow-md">
               <Package size={26} />
             </div>
-            <h1 className="font-bold text-3xl tracking-tight text-zinc-900">UniFlow</h1>
+            <h1 className="font-bold text-3xl tracking-tight text-zinc-900">ComfortPro</h1>
           </div>
 
           <h2 className="text-xl font-bold mb-6 text-center text-zinc-800">Acesso Restrito</h2>
@@ -582,7 +582,7 @@ export default function App() {
             <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center text-white">
               <Package size={18} />
             </div>
-            <h1 className="font-bold text-xl tracking-tight">UniFlow</h1>
+            <h1 className="font-bold text-xl tracking-tight">ComfortPro</h1>
           </div>
           <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden p-1 text-zinc-400">
             <X size={20} />
