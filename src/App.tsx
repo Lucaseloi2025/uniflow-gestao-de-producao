@@ -51,7 +51,7 @@ import {
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate } from './types';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory } from './types';
 
 // Components
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
@@ -168,6 +168,7 @@ export default function App() {
   const [isUploadingArt, setIsUploadingArt] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [editingStageName, setEditingStageName] = useState('');
   const [simOperadores, setSimOperadores] = useState<number>(0);
@@ -182,6 +183,20 @@ export default function App() {
   const [isTemplateEditorOpen, setIsTemplateEditorOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<OrderTemplate | null>(null);
   const [templateFormStages, setTemplateFormStages] = useState<number[]>([]);
+
+  // Edit Order Modal State
+  const [showEditOrderModal, setShowEditOrderModal] = useState(false);
+  const [editOrderForm, setEditOrderForm] = useState<Partial<Order>>({});
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+  const [editOrderHasExecutions, setEditOrderHasExecutions] = useState(false);
+
+  // Cancel Order State
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+
+  // Order History Modal State
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   // Auth States
   const [session, setSession] = useState<Session | null>(null);
@@ -249,10 +264,11 @@ export default function App() {
 
   const safeFetch = async (url: string, options?: RequestInit) => {
     try {
-      // Automatically inject role header if user is logged in
+      // Automatically inject role and user-name headers if user is logged in
       const roleHeaders: any = {};
       if (currentUser?.role) {
         roleHeaders['x-user-role'] = currentUser.role;
+        roleHeaders['x-user-name'] = currentUser.name;
       }
 
       const res = await fetch(url, {
@@ -346,6 +362,135 @@ export default function App() {
     if (selectedOrder && selectedOrder.id === orderId) {
       setSelectedOrder({ ...selectedOrder, deadline: newDeadline });
     }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!window.confirm('⚠️ EXCLUIR PEDIDO\n\nO pedido será ocultado do sistema mas o histórico de execuções será mantido para auditoria.\n\nDeseja continuar?')) return;
+
+    setIsDeletingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        }
+      });
+
+      if (res.ok) {
+        setSelectedOrder(null);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao excluir pedido');
+      }
+    } catch (err) {
+      alert('Erro na conexão com o servidor');
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
+  const handleCancelOrder = async (orderId: number) => {
+    if (!window.confirm('⚠️ CANCELAR PEDIDO\n\nO pedido será marcado como cancelado e removido dos cálculos de capacidade. O histórico será mantido.\n\nDeseja continuar?')) return;
+
+    setIsCancellingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/cancel`, {
+        method: 'PATCH',
+        headers: {
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        }
+      });
+      if (res.ok) {
+        fetchData();
+        if (selectedOrder && selectedOrder.id === orderId) {
+          setSelectedOrder({ ...selectedOrder, status: 'Cancelado' });
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao cancelar pedido');
+      }
+    } catch (err) {
+      alert('Erro na conexão com o servidor');
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
+  const openEditOrderModal = async (order: Order) => {
+    setEditOrderForm({
+      client_name: order.client_name,
+      product_type: order.product_type,
+      print_type: order.print_type,
+      quantity: order.quantity,
+      deadline: order.deadline ? order.deadline.split('T')[0] : '',
+      observations: order.observations,
+      required_stages: order.required_stages || [],
+      num_colors: order.num_colors || 1,
+    });
+    // Check if order has executions
+    const execs = await safeFetch(`/api/orders/${order.id}/executions`);
+    setEditOrderHasExecutions(execs && execs.length > 0);
+    setShowEditOrderModal(true);
+  };
+
+  const handleEditOrderSubmit = async () => {
+    if (!selectedOrder) return;
+
+    // Client-side validation
+    if (!editOrderForm.quantity || Number(editOrderForm.quantity) <= 0) {
+      alert('Quantidade deve ser maior que zero.');
+      return;
+    }
+    if (!editOrderForm.num_colors || Number(editOrderForm.num_colors) < 1) {
+      alert('Número de cores deve ser pelo menos 1.');
+      return;
+    }
+
+    setIsEditingOrder(true);
+    try {
+      const extraHeaders: any = {};
+      if (selectedOrder.status === 'Entregue') {
+        const confirmed = window.confirm('⚠️ PEDIDO JÁ ENTREGUE\n\nEste pedido já foi marcado como entregue. Editar pode afetar indicadores históricos.\n\nDeseja continuar?');
+        if (!confirmed) { setIsEditingOrder(false); return; }
+        extraHeaders['x-confirm-finalized'] = 'true';
+      }
+
+      const res = await fetch(`/api/orders/${selectedOrder.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin',
+          ...extraHeaders
+        },
+        body: JSON.stringify(editOrderForm)
+      });
+
+      if (res.ok) {
+        setShowEditOrderModal(false);
+        fetchData();
+        // Update local selectedOrder state
+        setSelectedOrder({ ...selectedOrder, ...editOrderForm } as Order);
+      } else {
+        const err = await res.json();
+        alert(err.error || err.message || 'Erro ao editar pedido');
+      }
+    } catch (err) {
+      alert('Erro na conexão com o servidor');
+    } finally {
+      setIsEditingOrder(false);
+    }
+  };
+
+  const handleViewHistory = async (orderId: number) => {
+    setIsLoadingHistory(true);
+    setShowHistoryModal(true);
+    const data = await safeFetch(`/api/orders/${orderId}/history`);
+    setOrderHistory(data || []);
+    setIsLoadingHistory(false);
   };
 
   const handleAddImages = async (orderId: number, files: FileList) => {
@@ -1801,8 +1946,57 @@ export default function App() {
                     <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={selectedOrder.status === 'Entregue' ? 'success' : 'info'}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {currentUser.role === 'Admin' && selectedOrder.status !== 'Cancelado' && (
+                    <>
+                      <button
+                        onClick={() => openEditOrderModal(selectedOrder)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-all font-bold text-sm"
+                        title="Editar pedido"
+                      >
+                        <Edit2 size={15} />
+                        <span className="hidden sm:inline">Editar</span>
+                      </button>
+                      <button
+                        onClick={() => handleCancelOrder(selectedOrder.id)}
+                        disabled={isCancellingOrder}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl transition-all font-bold text-sm",
+                          isCancellingOrder && "opacity-50 cursor-not-allowed"
+                        )}
+                        title="Cancelar pedido"
+                      >
+                        {isCancellingOrder ? <RefreshCw size={15} className="animate-spin" /> : <X size={15} />}
+                        <span className="hidden sm:inline">Cancelar</span>
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => handleViewHistory(selectedOrder.id)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all font-bold text-sm"
+                    title="Ver histórico de alterações"
+                  >
+                    <FileText size={15} />
+                    <span className="hidden sm:inline">Histórico</span>
+                  </button>
+                  {currentUser.role === 'Admin' && (
+                    <button
+                      onClick={() => handleDeleteOrder(selectedOrder.id)}
+                      disabled={isDeletingOrder}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all font-bold text-sm",
+                        isDeletingOrder && "opacity-50 cursor-not-allowed"
+                      )}
+                      title="Excluir pedido (soft-delete)"
+                    >
+                      {isDeletingOrder ? <RefreshCw size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                      <span className="hidden sm:inline">Excluir</span>
+                    </button>
+                  )}
+                  <Badge variant={
+                    selectedOrder.status === 'Entregue' ? 'success' :
+                      selectedOrder.status === 'Cancelado' ? 'error' : 'info'
+                  }>
                     {selectedOrder.status}
                   </Badge>
                   {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
@@ -2032,178 +2226,738 @@ export default function App() {
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        )
+        }
+      </AnimatePresence >
 
       {/* New Order Modal (Simplified for MVP) */}
       <AnimatePresence>
-        {showNewOrderModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">Novo Pedido</h3>
-                <button onClick={() => setShowNewOrderModal(false)}><X size={20} /></button>
-              </div>
+        {
+          showNewOrderModal && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold">Novo Pedido</h3>
+                  <button onClick={() => setShowNewOrderModal(false)}><X size={20} /></button>
+                </div>
 
-              {/* Templates Section */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
-                  {currentUser?.role === 'Admin' && (
+                {/* Templates Section */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
+                    {currentUser?.role === 'Admin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTemplate(null);
+                          setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                          setIsTemplateEditorOpen(true);
+                        }}
+                        className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                      >
+                        <Settings size={10} />
+                        Gerenciar
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {templates.map(template => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => applyTemplate(template)}
+                        className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
+                      >
+                        {template.name}
+                      </button>
+                    ))}
                     <button
                       type="button"
                       onClick={() => {
-                        setEditingTemplate(null);
-                        setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                        setIsTemplateEditorOpen(true);
+                        setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
                       }}
-                      className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                      className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
                     >
-                      <Settings size={10} />
-                      Gerenciar
+                      Marcar Todas
                     </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {templates.map(template => (
                     <button
-                      key={template.id}
                       type="button"
-                      onClick={() => applyTemplate(template)}
-                      className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
+                      onClick={() => {
+                        setNewOrderRequiredStages([]);
+                      }}
+                      className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
                     >
-                      {template.name}
+                      Limpar Todas
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-                    }}
-                    className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
-                  >
-                    Marcar Todas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewOrderRequiredStages([]);
-                    }}
-                    className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
-                  >
-                    Limpar Todas
-                  </button>
+                  </div>
                 </div>
-              </div>
 
-              <form className="space-y-4" onSubmit={async (e) => {
-                e.preventDefault();
-                if (isCreatingOrder) return;
-                setIsCreatingOrder(true);
-                const form = e.currentTarget;
-                const formData = new FormData(form);
+                <form className="space-y-4" onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (isCreatingOrder) return;
+                  setIsCreatingOrder(true);
+                  const form = e.currentTarget;
+                  const formData = new FormData(form);
 
-                // Validação: Não permitir pedido sem nenhuma etapa
-                if (newOrderRequiredStages.length === 0) {
-                  alert("Por favor, selecione pelo menos uma etapa para o pedido.");
-                  return;
-                }
-
-                formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
-
-                // Explicitly append all files from the input
-                const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
-                if (fileInput && fileInput.files) {
-                  // Clear any existing art_files to be sure
-                  formData.delete('art_files');
-                  for (let i = 0; i < fileInput.files.length; i++) {
-                    formData.append('art_files', fileInput.files[i]);
-                  }
-                }
-
-                try {
-                  const res = await fetch('/api/orders', {
-                    method: 'POST',
-                    headers: { 'x-user-role': currentUser?.role || '' },
-                    body: formData
-                  });
-
-                  if (!res.ok) {
-                    const errData = await res.json().catch(() => null);
-                    alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
-                    setIsCreatingOrder(false);
+                  // Validação: Não permitir pedido sem nenhuma etapa
+                  if (newOrderRequiredStages.length === 0) {
+                    alert("Por favor, selecione pelo menos uma etapa para o pedido.");
                     return;
                   }
 
-                  setShowNewOrderModal(false);
-                  setNewOrderForm({
-                    client_name: '',
-                    product_type: 'Dry Fit',
-                    print_type: 'Silk',
-                    quantity: '',
-                    deadline: '',
-                    observations: ''
-                  });
-                  setNewOrderRequiredStages([]);
-                  fetchData();
-                } catch (error) {
-                  alert("Erro ao conectar com o servidor.");
-                } finally {
-                  setIsCreatingOrder(false);
-                }
-              }}>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente / Card</label>
-                  <input
-                    name="client_name"
-                    type="text"
-                    value={newOrderForm.client_name}
-                    onChange={(e) => setNewOrderForm({ ...newOrderForm, client_name: e.target.value })}
-                    placeholder="Ex: Camisetas Evento X"
-                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                    required
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Imagem)</label>
-                  <div className="flex items-center justify-center w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <Upload className="w-8 h-8 mb-3 text-zinc-400" />
-                        <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
-                        <p className="text-xs text-zinc-400">PNG, JPG ou GIF</p>
-                      </div>
-                      <input
-                        name="art_files"
-                        type="file"
-                        className="hidden"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          const files = e.target.files;
-                          if (files && files.length > 0) {
-                            // Simple visual feedback for multiple files
-                            const label = e.currentTarget.previousElementSibling?.querySelector('p');
-                            if (label) label.textContent = `${files.length} arquivo(s) selecionado(s)`;
-                          }
-                        }}
-                      />
-                    </label>
+                  formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
+
+                  // Explicitly append all files from the input
+                  const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
+                  if (fileInput && fileInput.files) {
+                    // Clear any existing art_files to be sure
+                    formData.delete('art_files');
+                    for (let i = 0; i < fileInput.files.length; i++) {
+                      formData.append('art_files', fileInput.files[i]);
+                    }
+                  }
+
+                  try {
+                    const res = await fetch('/api/orders', {
+                      method: 'POST',
+                      headers: { 'x-user-role': currentUser?.role || '' },
+                      body: formData
+                    });
+
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => null);
+                      alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
+                      setIsCreatingOrder(false);
+                      return;
+                    }
+
+                    setShowNewOrderModal(false);
+                    setNewOrderForm({
+                      client_name: '',
+                      product_type: 'Dry Fit',
+                      print_type: 'Silk',
+                      quantity: '',
+                      deadline: '',
+                      observations: ''
+                    });
+                    setNewOrderRequiredStages([]);
+                    fetchData();
+                  } catch (error) {
+                    alert("Erro ao conectar com o servidor.");
+                  } finally {
+                    setIsCreatingOrder(false);
+                  }
+                }}>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente / Card</label>
+                    <input
+                      name="client_name"
+                      type="text"
+                      value={newOrderForm.client_name}
+                      onChange={(e) => setNewOrderForm({ ...newOrderForm, client_name: e.target.value })}
+                      placeholder="Ex: Camisetas Evento X"
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Imagem)</label>
+                    <div className="flex items-center justify-center w-full">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <Upload className="w-8 h-8 mb-3 text-zinc-400" />
+                          <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
+                          <p className="text-xs text-zinc-400">PNG, JPG ou GIF</p>
+                        </div>
+                        <input
+                          name="art_files"
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => {
+                            const files = e.target.files;
+                            if (files && files.length > 0) {
+                              // Simple visual feedback for multiple files
+                              const label = e.currentTarget.previousElementSibling?.querySelector('p');
+                              if (label) label.textContent = `${files.length} arquivo(s) selecionado(s)`;
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
+                      <select
+                        name="product_type"
+                        value={newOrderForm.product_type}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, product_type: e.target.value as any })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      >
+                        <option>Dry Fit</option>
+                        <option>Algodão</option>
+                        <option>Poliamida</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
+                      <select
+                        name="print_type"
+                        value={newOrderForm.print_type}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, print_type: e.target.value as any })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      >
+                        <option>Silk</option>
+                        <option>DTF</option>
+                        <option>Sublimação</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Number of Colors - shown only for Silk and Sublimação */}
+                  {(newOrderForm.print_type === 'Silk' || newOrderForm.print_type === 'Sublimação') && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                        🎨 Número de Cores da Estampa
+                        <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">afeta estimativa de tempo</span>
+                      </label>
+                      <select
+                        name="num_colors"
+                        defaultValue={1}
+                        className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white focus:border-emerald-400 outline-none"
+                      >
+                        <option value={1}>1 Cor</option>
+                        <option value={2}>2 Cores</option>
+                        <option value={3}>3 Cores</option>
+                        <option value={4}>4 Cores</option>
+                        <option value={5}>5+ Cores</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
+                      <input
+                        name="quantity"
+                        type="number"
+                        value={newOrderForm.quantity}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, quantity: e.target.value })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo</label>
+                      <input
+                        name="deadline"
+                        type="date"
+                        value={newOrderForm.deadline}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, deadline: e.target.value })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
+                    <textarea
+                      name="observations"
+                      value={newOrderForm.observations}
+                      onChange={(e) => setNewOrderForm({ ...newOrderForm, observations: e.target.value })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                    ></textarea>
+                  </div>
+
+                  {/* Step Selection */}
+                  <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase leading-none">Etapas Deste Pedido ({newOrderRequiredStages.length} selecionadas)</label>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {stages.filter(s => s.active).map(stage => (
+                        <label key={stage.id} className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                          newOrderRequiredStages.includes(stage.id)
+                            ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                            : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={newOrderRequiredStages.includes(stage.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewOrderRequiredStages([...newOrderRequiredStages, stage.id]);
+                              } else {
+                                setNewOrderRequiredStages(newOrderRequiredStages.filter(id => id !== stage.id));
+                              }
+                            }}
+                          />
+                          <div className={cn(
+                            "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                            newOrderRequiredStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                          )}>
+                            {newOrderRequiredStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                          </div>
+                          <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isCreatingOrder}
+                    className={cn(
+                      "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                      isCreatingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                    )}
+                  >
+                    {isCreatingOrder ? (
+                      <>
+                        <RefreshCw size={18} className="animate-spin" />
+                        Criando Pedido...
+                      </>
+                    ) : (
+                      "Criar Pedido"
+                    )}
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )
+        }
+      </AnimatePresence >
+
+      {/* User Modal (Collaborators) */}
+      <AnimatePresence>
+        {
+          showUserModal && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold">
+                    {selectedUserForEdit ? 'Editar Colaborador' : 'Convidar Colaborador'}
+                  </h3>
+                  <button onClick={() => setShowUserModal(false)}><X size={20} /></button>
                 </div>
+                <form className="space-y-4" onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (isSubmitting) return;
+                  setIsSubmitting(true);
+                  const form = e.currentTarget;
+                  const formData = new FormData(form);
+                  const data = Object.fromEntries(formData.entries());
+
+                  const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
+                  const method = selectedUserForEdit ? 'PATCH' : 'POST';
+
+                  try {
+                    const res = await fetch(url, {
+                      method,
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-role': currentUser?.role || ''
+                      },
+                      body: JSON.stringify({
+                        ...data,
+                        hourly_cost: Number(data.hourly_cost),
+                        active: data.active === 'on' || !selectedUserForEdit
+                      })
+                    });
+
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => null);
+                      alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                      return;
+                    }
+
+                    setShowUserModal(false);
+                    fetchUsers();
+                  } catch (error) {
+                    alert("Erro ao conectar com o servidor.");
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
+                    <input
+                      name="name"
+                      type="text"
+                      defaultValue={selectedUserForEdit?.name}
+                      placeholder="Ex: João Silva"
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">E-mail</label>
+                    <input
+                      name="email"
+                      type="email"
+                      defaultValue={selectedUserForEdit?.email}
+                      placeholder="joao@uniflow.com"
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  {!selectedUserForEdit && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
+                      <input
+                        name="password"
+                        type="password"
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
+                      <select
+                        name="role"
+                        defaultValue={selectedUserForEdit?.role || 'Produção'}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      >
+                        <option value="Admin">Admin</option>
+                        <option value="Produção">Produção</option>
+                        <option value="Comercial">Comercial</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
+                      <input
+                        name="hourly_cost"
+                        type="number"
+                        step="0.01"
+                        defaultValue={selectedUserForEdit?.hourly_cost || 0}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                  </div>
+                  {selectedUserForEdit && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        name="active"
+                        type="checkbox"
+                        defaultChecked={selectedUserForEdit.active}
+                        id="user-active"
+                      />
+                      <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={cn(
+                      "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                      isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                    )}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw size={18} className="animate-spin" />
+                        Processando...
+                      </>
+                    ) : (
+                      selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
+                    )}
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )
+        }
+      </AnimatePresence >
+
+      {/* Template Editor Modal */}
+      <AnimatePresence>
+        {
+          isTemplateEditorOpen && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h3>
+                  <button onClick={() => setIsTemplateEditorOpen(false)}><X size={20} /></button>
+                </div>
+
+                <form className="space-y-6" onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (isSubmitting) return;
+                  setIsSubmitting(true);
+                  const form = e.currentTarget;
+                  const formData = new FormData(form);
+                  const data = {
+                    name: formData.get('name'),
+                    product_type: formData.get('product_type'),
+                    print_type: formData.get('print_type'),
+                    quantity: formData.get('quantity'),
+                    observations: formData.get('observations'),
+                    required_stages: templateFormStages
+                  };
+
+                  const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
+                  const method = editingTemplate ? 'PATCH' : 'POST';
+
+                  try {
+                    const res = await fetch(url, {
+                      method,
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-role': currentUser?.role || ''
+                      },
+                      body: JSON.stringify(data)
+                    });
+
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => null);
+                      alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                      return;
+                    }
+
+                    setIsTemplateEditorOpen(false);
+                    fetchData();
+                  } catch (error) {
+                    alert("Erro ao conectar com o servidor.");
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Template</label>
+                      <input
+                        name="name"
+                        type="text"
+                        defaultValue={editingTemplate?.name}
+                        placeholder="Ex: Silk 2 Cores Frente"
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
+                      <input
+                        name="quantity"
+                        type="number"
+                        defaultValue={editingTemplate?.quantity}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
+                      <select
+                        name="product_type"
+                        defaultValue={editingTemplate?.product_type || 'Dry Fit'}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      >
+                        <option>Dry Fit</option>
+                        <option>Algodão</option>
+                        <option>Poliamida</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
+                      <select
+                        name="print_type"
+                        defaultValue={editingTemplate?.print_type || 'Silk'}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      >
+                        <option>Silk</option>
+                        <option>DTF</option>
+                        <option>Sublimação</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                      {stages.filter(s => s.active).map(stage => (
+                        <label key={stage.id} className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                          templateFormStages.includes(stage.id)
+                            ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                            : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={templateFormStages.includes(stage.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setTemplateFormStages([...templateFormStages, stage.id]);
+                              } else {
+                                setTemplateFormStages(templateFormStages.filter(id => id !== stage.id));
+                              }
+                            }}
+                          />
+                          <div className={cn(
+                            "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                            templateFormStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                          )}>
+                            {templateFormStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                          </div>
+                          <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
+                    <textarea
+                      name="observations"
+                      defaultValue={editingTemplate?.observations}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                    ></textarea>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={cn(
+                      "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                      isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                    )}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw size={18} className="animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      editingTemplate ? 'Salvar Alterações' : 'Criar Template'
+                    )}
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )
+        }
+      </AnimatePresence >
+
+      {/* Photo Lightbox */}
+      <AnimatePresence>
+        {
+          selectedFullImage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
+              onClick={() => setSelectedFullImage(null)}
+            >
+              <motion.button
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-[110]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedFullImage(null);
+                }}
+              >
+                <X size={24} />
+              </motion.button>
+
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="relative w-full h-full flex items-center justify-center"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <img
+                  src={selectedFullImage}
+                  alt="Detalhe da Estampa"
+                  className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                  referrerPolicy="no-referrer"
+                />
+              </motion.div>
+            </motion.div>
+          )
+        }
+      </AnimatePresence >
+
+      {/* ── Edit Order Modal ──────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showEditOrderModal && selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowEditOrderModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                <div>
+                  <h2 className="font-bold text-lg">Editar Pedido</h2>
+                  <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                </div>
+                <button onClick={() => setShowEditOrderModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {editOrderHasExecutions && (
+                <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                  <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-amber-700 text-xs font-medium">
+                    Este pedido já possui tempo registrado em execuções. Alterar quantidade ou tipo pode afetar indicadores históricos.
+                  </p>
+                </div>
+              )}
+
+              <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente</label>
+                    <input
+                      type="text"
+                      value={editOrderForm.client_name || ''}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, client_name: e.target.value })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
                     <select
-                      name="product_type"
-                      value={newOrderForm.product_type}
-                      onChange={(e) => setNewOrderForm({ ...newOrderForm, product_type: e.target.value as any })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      value={editOrderForm.product_type || 'Dry Fit'}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, product_type: e.target.value as any })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
                     >
                       <option>Dry Fit</option>
                       <option>Algodão</option>
@@ -2213,493 +2967,204 @@ export default function App() {
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
                     <select
-                      name="print_type"
-                      value={newOrderForm.print_type}
-                      onChange={(e) => setNewOrderForm({ ...newOrderForm, print_type: e.target.value as any })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                      value={editOrderForm.print_type || 'Silk'}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, print_type: e.target.value as any })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
                     >
                       <option>Silk</option>
                       <option>DTF</option>
                       <option>Sublimação</option>
                     </select>
                   </div>
-                </div>
-
-                {/* Number of Colors - shown only for Silk and Sublimação */}
-                {(newOrderForm.print_type === 'Silk' || newOrderForm.print_type === 'Sublimação') && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-                      🎨 Número de Cores da Estampa
-                      <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">afeta estimativa de tempo</span>
-                    </label>
-                    <select
-                      name="num_colors"
-                      defaultValue={1}
-                      className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white focus:border-emerald-400 outline-none"
-                    >
-                      <option value={1}>1 Cor</option>
-                      <option value={2}>2 Cores</option>
-                      <option value={3}>3 Cores</option>
-                      <option value={4}>4 Cores</option>
-                      <option value={5}>5+ Cores</option>
-                    </select>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
                     <input
-                      name="quantity"
                       type="number"
-                      value={newOrderForm.quantity}
-                      onChange={(e) => setNewOrderForm({ ...newOrderForm, quantity: e.target.value })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
+                      min="1"
+                      value={editOrderForm.quantity || ''}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, quantity: Number(e.target.value) })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº de Cores</label>
                     <input
-                      name="deadline"
+                      type="number"
+                      min="1"
+                      value={editOrderForm.num_colors || 1}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, num_colors: Number(e.target.value) })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo de Entrega</label>
+                    <input
                       type="date"
-                      value={newOrderForm.deadline}
-                      onChange={(e) => setNewOrderForm({ ...newOrderForm, deadline: e.target.value })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
+                      value={editOrderForm.deadline?.split('T')[0] || ''}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, deadline: e.target.value })}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
                     />
                   </div>
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Etapas de Produção</label>
+                  <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                    {stages.filter(s => s.active).map(stage => {
+                      const checked = (editOrderForm.required_stages || []).includes(stage.id);
+                      return (
+                        <label key={stage.id} className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none text-[11px] font-bold",
+                          checked ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                        )}>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={checked}
+                            onChange={(e) => {
+                              const prev = editOrderForm.required_stages || [];
+                              setEditOrderForm({
+                                ...editOrderForm,
+                                required_stages: e.target.checked
+                                  ? [...prev, stage.id]
+                                  : prev.filter(id => id !== stage.id)
+                              });
+                            }}
+                          />
+                          <div className={cn("w-4 h-4 rounded border flex items-center justify-center", checked ? "bg-white border-white text-zinc-900" : "border-zinc-300")}>
+                            {checked && <CheckCircle size={10} strokeWidth={4} />}
+                          </div>
+                          {stage.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
                   <textarea
-                    name="observations"
-                    value={newOrderForm.observations}
-                    onChange={(e) => setNewOrderForm({ ...newOrderForm, observations: e.target.value })}
-                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
-                  ></textarea>
-                </div>
-
-                {/* Step Selection */}
-                <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase leading-none">Etapas Deste Pedido ({newOrderRequiredStages.length} selecionadas)</label>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {stages.filter(s => s.active).map(stage => (
-                      <label key={stage.id} className={cn(
-                        "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
-                        newOrderRequiredStages.includes(stage.id)
-                          ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                          : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                      )}>
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={newOrderRequiredStages.includes(stage.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setNewOrderRequiredStages([...newOrderRequiredStages, stage.id]);
-                            } else {
-                              setNewOrderRequiredStages(newOrderRequiredStages.filter(id => id !== stage.id));
-                            }
-                          }}
-                        />
-                        <div className={cn(
-                          "w-4 h-4 rounded border flex items-center justify-center transition-colors",
-                          newOrderRequiredStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
-                        )}>
-                          {newOrderRequiredStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
-                        </div>
-                        <span className="text-[11px] font-bold truncate">{stage.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isCreatingOrder}
-                  className={cn(
-                    "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                    isCreatingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                  )}
-                >
-                  {isCreatingOrder ? (
-                    <>
-                      <RefreshCw size={18} className="animate-spin" />
-                      Criando Pedido...
-                    </>
-                  ) : (
-                    "Criar Pedido"
-                  )}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* User Modal (Collaborators) */}
-      <AnimatePresence>
-        {showUserModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">
-                  {selectedUserForEdit ? 'Editar Colaborador' : 'Convidar Colaborador'}
-                </h3>
-                <button onClick={() => setShowUserModal(false)}><X size={20} /></button>
-              </div>
-              <form className="space-y-4" onSubmit={async (e) => {
-                e.preventDefault();
-                if (isSubmitting) return;
-                setIsSubmitting(true);
-                const form = e.currentTarget;
-                const formData = new FormData(form);
-                const data = Object.fromEntries(formData.entries());
-
-                const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
-                const method = selectedUserForEdit ? 'PATCH' : 'POST';
-
-                try {
-                  const res = await fetch(url, {
-                    method,
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-user-role': currentUser?.role || ''
-                    },
-                    body: JSON.stringify({
-                      ...data,
-                      hourly_cost: Number(data.hourly_cost),
-                      active: data.active === 'on' || !selectedUserForEdit
-                    })
-                  });
-
-                  if (!res.ok) {
-                    const errData = await res.json().catch(() => null);
-                    alert(`Erro: ${errData?.error || 'Falha na operação'}`);
-                    return;
-                  }
-
-                  setShowUserModal(false);
-                  fetchUsers();
-                } catch (error) {
-                  alert("Erro ao conectar com o servidor.");
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
-                  <input
-                    name="name"
-                    type="text"
-                    defaultValue={selectedUserForEdit?.name}
-                    placeholder="Ex: João Silva"
-                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                    required
+                    value={editOrderForm.observations || ''}
+                    onChange={(e) => setEditOrderForm({ ...editOrderForm, observations: e.target.value })}
+                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">E-mail</label>
-                  <input
-                    name="email"
-                    type="email"
-                    defaultValue={selectedUserForEdit?.email}
-                    placeholder="joao@uniflow.com"
-                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                    required
-                  />
-                </div>
-                {!selectedUserForEdit && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
-                    <input
-                      name="password"
-                      type="password"
-                      placeholder="Mínimo 6 caracteres"
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
-                    <select
-                      name="role"
-                      defaultValue={selectedUserForEdit?.role || 'Produção'}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                    >
-                      <option value="Admin">Admin</option>
-                      <option value="Produção">Produção</option>
-                      <option value="Comercial">Comercial</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
-                    <input
-                      name="hourly_cost"
-                      type="number"
-                      step="0.01"
-                      defaultValue={selectedUserForEdit?.hourly_cost || 0}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-                {selectedUserForEdit && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      name="active"
-                      type="checkbox"
-                      defaultChecked={selectedUserForEdit.active}
-                      id="user-active"
-                    />
-                    <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
-                  </div>
-                )}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className={cn(
-                    "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                    isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                  )}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <RefreshCw size={18} className="animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
-                  )}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* Template Editor Modal */}
-      <AnimatePresence>
-        {isTemplateEditorOpen && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h3>
-                <button onClick={() => setIsTemplateEditorOpen(false)}><X size={20} /></button>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowEditOrderModal(false)}
+                    className="flex-1 py-2.5 border border-zinc-200 rounded-xl text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleEditOrderSubmit}
+                    disabled={isEditingOrder}
+                    className={cn(
+                      "flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
+                      isEditingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                    )}
+                  >
+                    {isEditingOrder ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle size={16} /> Salvar Alterações</>}
+                  </button>
+                </div>
               </div>
-
-              <form className="space-y-6" onSubmit={async (e) => {
-                e.preventDefault();
-                if (isSubmitting) return;
-                setIsSubmitting(true);
-                const form = e.currentTarget;
-                const formData = new FormData(form);
-                const data = {
-                  name: formData.get('name'),
-                  product_type: formData.get('product_type'),
-                  print_type: formData.get('print_type'),
-                  quantity: formData.get('quantity'),
-                  observations: formData.get('observations'),
-                  required_stages: templateFormStages
-                };
-
-                const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
-                const method = editingTemplate ? 'PATCH' : 'POST';
-
-                try {
-                  const res = await fetch(url, {
-                    method,
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-user-role': currentUser?.role || ''
-                    },
-                    body: JSON.stringify(data)
-                  });
-
-                  if (!res.ok) {
-                    const errData = await res.json().catch(() => null);
-                    alert(`Erro: ${errData?.error || 'Falha na operação'}`);
-                    return;
-                  }
-
-                  setIsTemplateEditorOpen(false);
-                  fetchData();
-                } catch (error) {
-                  alert("Erro ao conectar com o servidor.");
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Template</label>
-                    <input
-                      name="name"
-                      type="text"
-                      defaultValue={editingTemplate?.name}
-                      placeholder="Ex: Silk 2 Cores Frente"
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
-                    <input
-                      name="quantity"
-                      type="number"
-                      defaultValue={editingTemplate?.quantity}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
-                    <select
-                      name="product_type"
-                      defaultValue={editingTemplate?.product_type || 'Dry Fit'}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                    >
-                      <option>Dry Fit</option>
-                      <option>Algodão</option>
-                      <option>Poliamida</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
-                    <select
-                      name="print_type"
-                      defaultValue={editingTemplate?.print_type || 'Silk'}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                    >
-                      <option>Silk</option>
-                      <option>DTF</option>
-                      <option>Sublimação</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                    {stages.filter(s => s.active).map(stage => (
-                      <label key={stage.id} className={cn(
-                        "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
-                        templateFormStages.includes(stage.id)
-                          ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                          : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                      )}>
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={templateFormStages.includes(stage.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setTemplateFormStages([...templateFormStages, stage.id]);
-                            } else {
-                              setTemplateFormStages(templateFormStages.filter(id => id !== stage.id));
-                            }
-                          }}
-                        />
-                        <div className={cn(
-                          "w-4 h-4 rounded border flex items-center justify-center transition-colors",
-                          templateFormStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
-                        )}>
-                          {templateFormStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
-                        </div>
-                        <span className="text-[11px] font-bold truncate">{stage.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
-                  <textarea
-                    name="observations"
-                    defaultValue={editingTemplate?.observations}
-                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
-                  ></textarea>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className={cn(
-                    "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                    isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                  )}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <RefreshCw size={18} className="animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    editingTemplate ? 'Salvar Alterações' : 'Criar Template'
-                  )}
-                </button>
-              </form>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Photo Lightbox */}
+      {/* ── Order History Modal ───────────────────────────────────────────── */}
       <AnimatePresence>
-        {selectedFullImage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
-            onClick={() => setSelectedFullImage(null)}
-          >
-            <motion.button
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-[110]"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedFullImage(null);
-              }}
-            >
-              <X size={24} />
-            </motion.button>
-
+        {showHistoryModal && selectedOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative w-full h-full flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowHistoryModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
-                src={selectedFullImage}
-                alt="Detalhe da Estampa"
-                className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
-                referrerPolicy="no-referrer"
-              />
+              <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                <div>
+                  <h2 className="font-bold text-lg">Histórico de Alterações</h2>
+                  <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                </div>
+                <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-6">
+                {isLoadingHistory ? (
+                  <div className="flex items-center justify-center py-12 text-zinc-400">
+                    <RefreshCw size={24} className="animate-spin" />
+                  </div>
+                ) : orderHistory.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-400">
+                    <FileText size={32} className="mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">Nenhum registro de alteração encontrado.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {orderHistory.map((entry) => {
+                      const acaoColors: Record<string, string> = {
+                        criou: 'bg-emerald-100 text-emerald-700',
+                        editou: 'bg-sky-100 text-sky-700',
+                        cancelou: 'bg-amber-100 text-amber-700',
+                        excluiu: 'bg-rose-100 text-rose-700',
+                        restaurou: 'bg-violet-100 text-violet-700',
+                      };
+                      const acaoLabels: Record<string, string> = {
+                        criou: 'Criou', editou: 'Editou', cancelou: 'Cancelou',
+                        excluiu: 'Excluiu', restaurou: 'Restaurou'
+                      };
+                      return (
+                        <div key={entry.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", acaoColors[entry.acao] || 'bg-zinc-100 text-zinc-600')}>
+                                {acaoLabels[entry.acao] || entry.acao}
+                              </span>
+                              <span className="text-xs font-semibold text-zinc-700">{entry.usuario}</span>
+                            </div>
+                            <span className="text-[10px] text-zinc-400">
+                              {format(new Date(entry.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
+                            </span>
+                          </div>
+                          {entry.acao === 'editou' && entry.antes && entry.depois && (() => {
+                            const campos = ['client_name', 'product_type', 'print_type', 'quantity', 'deadline', 'observations', 'num_colors'];
+                            const alterados = campos.filter(c => JSON.stringify(entry.antes[c]) !== JSON.stringify(entry.depois[c]));
+                            return alterados.length > 0 ? (
+                              <div className="space-y-1 mt-2">
+                                {alterados.map(campo => (
+                                  <div key={campo} className="text-xs flex items-center gap-2">
+                                    <span className="font-bold text-zinc-500 uppercase text-[9px] w-20 shrink-0">{campo.replace('_', ' ')}</span>
+                                    <span className="text-rose-500 line-through truncate">{String(entry.antes[campo] ?? '-')}</span>
+                                    <ChevronRight size={10} className="text-zinc-300 shrink-0" />
+                                    <span className="text-emerald-600 font-medium truncate">{String(entry.depois[campo] ?? '-')}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
-    </div>
+
+    </div >
   );
 }

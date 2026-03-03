@@ -21,7 +21,7 @@ export interface Order {
   print_type: 'Silk' | 'DTF' | 'Sublimação';
   quantity: number;
   deadline: string;
-  status: 'Entrada' | 'Em Produção' | 'Finalização' | 'Entregue';
+  status: 'Entrada' | 'Em Produção' | 'Finalização' | 'Entregue' | 'Cancelado';
   observations: string;
   art_url?: string;
   art_urls?: string[];
@@ -30,6 +30,18 @@ export interface Order {
   required_stages?: number[];
   stages_status: StageStatus[];
   num_colors?: number;
+  deleted_at?: string | null;
+  cancelled_at?: string | null;
+}
+
+export interface OrderHistory {
+  id: number;
+  order_id: number;
+  usuario: string;
+  acao: 'criou' | 'editou' | 'cancelou' | 'excluiu' | 'restaurou';
+  antes: any;
+  depois: any;
+  created_at: string;
 }
 
 export interface OrderTemplate {

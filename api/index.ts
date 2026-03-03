@@ -223,6 +223,43 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
     return res.json({ id: data.id, order_number, art_url: art_urls[0] || null, art_urls });
 });
 
+// Soft delete — mantém histórico de execuções intacto
+app.delete("/api/orders/:id", isAdmin, async (req, res) => {
+    const { id } = req.params;
+    const usuario = (req.headers["x-user-name"] as string) || "Admin";
+
+    // 1. Fetch current order before soft-deleting
+    const { data: order, error: fetchErr } = await supabaseAdmin
+        .from("orders")
+        .select("*")
+        .eq("id", Number(id))
+        .single();
+
+    if (fetchErr || !order) return res.status(404).json({ error: "Pedido não encontrado" });
+    if (order.deleted_at) return res.status(400).json({ error: "Pedido já foi excluído" });
+
+    // 2. Soft delete — only update deleted_at and deleted_by
+    const now = new Date().toISOString();
+    const { error: updateErr } = await supabaseAdmin
+        .from("orders")
+        .update({ deleted_at: now, deleted_by: usuario })
+        .eq("id", Number(id));
+
+    if (checkError(updateErr, res, "Erro ao excluir pedido")) return;
+
+    // 3. Log to order_history
+    await supabaseAdmin.from("order_history").insert({
+        order_id: Number(id),
+        usuario,
+        acao: "excluiu",
+        antes: order,
+        depois: null,
+    });
+
+    console.log(`[API] Pedido ${id} marcado como excluído (soft delete) por ${usuario}`);
+    return res.json({ success: true });
+});
+
 app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, res) => {
     const { id } = req.params;
     const files = (req as any).files;
@@ -292,14 +329,113 @@ app.patch("/api/orders/:id/status", async (req, res) => {
     return res.json({ success: true });
 });
 
+// Full order edit with validation and audit log
 app.patch("/api/orders/:id", isAdmin, async (req, res) => {
-    const { deadline } = req.body;
-    const { error } = await supabase
+    const orderId = Number(req.params.id);
+    const usuario = (req.headers["x-user-name"] as string) || "Admin";
+    const confirmFinalized = req.headers["x-confirm-finalized"] === "true";
+
+    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors } = req.body;
+
+    // ── Validations ──────────────────────────────────────────────────────────
+    if (quantity !== undefined && Number(quantity) <= 0) {
+        return res.status(400).json({ error: "Quantidade deve ser maior que zero" });
+    }
+    if (num_colors !== undefined && Number(num_colors) < 1) {
+        return res.status(400).json({ error: "Número de cores deve ser pelo menos 1" });
+    }
+
+    // 1. Fetch current order for audit log + finalized check
+    const { data: currentOrder, error: fetchErr } = await supabaseAdmin
         .from("orders")
-        .update({ deadline })
-        .eq("id", Number(req.params.id));
-    if (checkError(error, res)) return;
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido não encontrado" });
+    if (currentOrder.deleted_at) return res.status(400).json({ error: "Não é possível editar um pedido excluído" });
+    if (currentOrder.status === "Entregue" && !confirmFinalized) {
+        return res.status(409).json({ error: "CONFIRM_FINALIZED", message: "Este pedido já foi entregue. Deseja mesmo editá-lo?" });
+    }
+
+    // 2. Build update payload with only provided fields
+    const updates: any = {};
+    if (client_name !== undefined) updates.client_name = client_name;
+    if (product_type !== undefined) updates.product_type = product_type;
+    if (print_type !== undefined) updates.print_type = print_type;
+    if (quantity !== undefined) updates.quantity = Number(quantity);
+    if (deadline !== undefined) updates.deadline = deadline || null;
+    if (observations !== undefined) updates.observations = observations;
+    if (required_stages !== undefined) updates.required_stages = required_stages;
+    if (num_colors !== undefined) updates.num_colors = Number(num_colors);
+
+    if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "Nenhum campo para atualizar" });
+    }
+
+    // 3. Perform update
+    const { error: updateErr } = await supabaseAdmin
+        .from("orders")
+        .update(updates)
+        .eq("id", orderId);
+
+    if (checkError(updateErr, res, "Erro ao atualizar pedido")) return;
+
+    // 4. Log to order_history
+    await supabaseAdmin.from("order_history").insert({
+        order_id: orderId,
+        usuario,
+        acao: "editou",
+        antes: currentOrder,
+        depois: { ...currentOrder, ...updates },
+    });
+
     return res.json({ success: true });
+});
+
+// Cancel order — keeps history, removes from capacity calculations
+app.patch("/api/orders/:id/cancel", isAdmin, async (req, res) => {
+    const orderId = Number(req.params.id);
+    const usuario = (req.headers["x-user-name"] as string) || "Admin";
+
+    const { data: currentOrder, error: fetchErr } = await supabaseAdmin
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido não encontrado" });
+    if (currentOrder.deleted_at) return res.status(400).json({ error: "Pedido excluído não pode ser cancelado" });
+    if (currentOrder.status === "Cancelado") return res.status(400).json({ error: "Pedido já está cancelado" });
+
+    const now = new Date().toISOString();
+    const { error: updateErr } = await supabaseAdmin
+        .from("orders")
+        .update({ status: "Cancelado", cancelled_at: now, cancelled_by: usuario })
+        .eq("id", orderId);
+
+    if (checkError(updateErr, res, "Erro ao cancelar pedido")) return;
+
+    await supabaseAdmin.from("order_history").insert({
+        order_id: orderId,
+        usuario,
+        acao: "cancelou",
+        antes: currentOrder,
+        depois: { ...currentOrder, status: "Cancelado", cancelled_at: now, cancelled_by: usuario },
+    });
+
+    return res.json({ success: true });
+});
+
+// Order history / audit log
+app.get("/api/orders/:id/history", isAdmin, async (req, res) => {
+    const { data, error } = await supabaseAdmin
+        .from("order_history")
+        .select("*")
+        .eq("order_id", Number(req.params.id))
+        .order("created_at", { ascending: false });
+    if (checkError(error, res, "Erro ao buscar histórico")) return;
+    return res.json(data || []);
 });
 
 // ── Stages ────────────────────────────────────────────────────────────────
