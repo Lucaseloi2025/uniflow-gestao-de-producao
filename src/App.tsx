@@ -51,7 +51,7 @@ import {
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory } from './types';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast } from './types';
 
 // Components
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
@@ -198,6 +198,11 @@ export default function App() {
   const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
+  // Delivery Forecast State
+  const [forecastData, setForecastData] = useState<OrderForecast[]>([]);
+  const [isLoadingForecast, setIsLoadingForecast] = useState(false);
+  const [expandedForecast, setExpandedForecast] = useState<number | null>(null);
+
   // Auth States
   const [session, setSession] = useState<Session | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -328,6 +333,10 @@ export default function App() {
     if (stagesData) setStages(stagesData);
     if (statsData) setStats(statsData);
     if (templatesData) setTemplates(templatesData);
+
+    // Always refresh forecast when data changes
+    const forecastResult = await safeFetch('/api/orders/delivery-forecast');
+    if (forecastResult) setForecastData(forecastResult);
   };
 
   const fetchUsers = async () => {
@@ -347,6 +356,13 @@ export default function App() {
 
     const data = await safeFetch(url);
     if (data) setReportData(data);
+  };
+
+  const fetchForecast = async () => {
+    setIsLoadingForecast(true);
+    const data = await safeFetch('/api/orders/delivery-forecast');
+    if (data) setForecastData(data);
+    setIsLoadingForecast(false);
   };
 
   const handleUpdateDeadline = async (orderId: number, newDeadline: string) => {
@@ -1080,6 +1096,141 @@ export default function App() {
                 </div>
               </Card>
             </div>
+
+            {/* ── Delivery Forecast Section ──────────────────────────────── */}
+            {forecastData.length > 0 && (() => {
+              const atRisk = forecastData.filter(f => f.riskLevel !== 'safe');
+              const highRisk = forecastData.filter(f => f.riskLevel === 'danger');
+              const topBottleneck = forecastData.find(f => f.bottleneckStage)?.bottleneckStage;
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-base flex items-center gap-2 text-zinc-900">
+                      <Calendar size={18} className="text-zinc-500" />
+                      Previsão de Entrega
+                    </h3>
+                    <button
+                      onClick={fetchForecast}
+                      disabled={isLoadingForecast}
+                      className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 hover:text-zinc-800 transition-colors"
+                    >
+                      <RefreshCw size={12} className={isLoadingForecast ? 'animate-spin' : ''} />
+                      Atualizar
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+                      <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Em Risco ⚠️</p>
+                      <p className="text-3xl font-black text-amber-700">{atRisk.length}</p>
+                      <p className="text-[10px] text-amber-500 mt-1">pedidos precisam de atenção</p>
+                    </div>
+                    <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl">
+                      <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">Alto Risco 🔴</p>
+                      <p className="text-3xl font-black text-rose-700">{highRisk.length}</p>
+                      <p className="text-[10px] text-rose-500 mt-1">provavelmente vão atrasar</p>
+                    </div>
+                    <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Gargalo Principal</p>
+                      <p className="text-sm font-black text-zinc-700 mt-1 truncate">{topBottleneck || '—'}</p>
+                      <p className="text-[10px] text-zinc-400 mt-1">setor mais crítico</p>
+                    </div>
+                  </div>
+
+                  <Card>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-zinc-50 border-b border-zinc-100">
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Qtd</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Prazo</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Previsto</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Índice</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Risco</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Gargalo</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-50">
+                          {forecastData.map((fc) => {
+                            const rowBg =
+                              fc.riskLevel === 'danger' ? 'bg-rose-50/50 hover:bg-rose-50' :
+                                fc.riskLevel === 'warning' ? 'bg-amber-50/40 hover:bg-amber-50' :
+                                  'hover:bg-zinc-50';
+                            const riskBadge =
+                              fc.riskLevel === 'danger'
+                                ? <span className="inline-flex items-center px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold">🔴 Alto</span>
+                                : fc.riskLevel === 'warning'
+                                  ? <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">🟡 Leve</span>
+                                  : <span className="inline-flex items-center px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">🟢 OK</span>;
+                            const isExpanded = expandedForecast === fc.orderId;
+
+                            return (
+                              <React.Fragment key={fc.orderId}>
+                                <tr
+                                  className={cn("cursor-pointer transition-colors", rowBg)}
+                                  onClick={() => setExpandedForecast(isExpanded ? null : fc.orderId)}
+                                >
+                                  <td className="px-4 py-3 font-mono text-xs font-bold text-zinc-600">
+                                    <div className="flex items-center gap-1.5">
+                                      <ChevronRight size={12} className={cn("transition-transform text-zinc-400", isExpanded && "rotate-90")} />
+                                      {fc.orderNumber}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm font-medium text-zinc-800">{fc.clientName}</td>
+                                  <td className="px-4 py-3 text-center text-sm text-zinc-600">{fc.quantity}</td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn("text-xs font-bold", isPast(endOfDay(parseISO(fc.deadline))) && "text-rose-600")}>
+                                      {format(parseISO(fc.deadline), 'dd/MM')}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "text-xs font-bold",
+                                      fc.riskLevel === 'danger' ? 'text-rose-600' :
+                                        fc.riskLevel === 'warning' ? 'text-amber-600' : 'text-emerald-600'
+                                    )}>
+                                      {format(parseISO(fc.predictedDate), 'dd/MM')}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center font-mono text-xs font-bold text-zinc-500">
+                                    {fc.riskIndex.toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">{riskBadge}</td>
+                                  <td className="px-4 py-3 text-xs text-zinc-500 truncate max-w-[120px]">{fc.bottleneckStage || '—'}</td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr className="bg-zinc-50">
+                                    <td colSpan={8} className="px-6 py-4">
+                                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Simulação por Etapa</p>
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                        {fc.stageForecasts.map((sf) => (
+                                          <div key={sf.stageId} className="p-2.5 bg-white border border-zinc-200 rounded-lg">
+                                            <p className="text-[10px] font-bold text-zinc-700 truncate mb-1">{sf.stageName}</p>
+                                            <p className="text-[9px] text-zinc-400"><span className="font-semibold">Início:</span> {sf.startDate}</p>
+                                            <p className="text-[9px] text-zinc-400"><span className="font-semibold">Fim:</span> {sf.endDate}</p>
+                                            <div className="flex items-center gap-2 mt-1.5">
+                                              <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">Fila: {sf.queueDays.toFixed(1)}d</span>
+                                              <span className="text-[9px] bg-sky-50 text-sky-600 px-1.5 py-0.5 rounded font-medium">Exec: {sf.execDays.toFixed(1)}d</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-8">

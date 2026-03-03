@@ -44,6 +44,30 @@ export interface OrderHistory {
   created_at: string;
 }
 
+export interface StageForecast {
+  stageId: number;
+  stageName: string;
+  startDate: string;
+  endDate: string;
+  queueDays: number;
+  execDays: number;
+}
+
+export interface OrderForecast {
+  orderId: number;
+  orderNumber: string;
+  clientName: string;
+  quantity: number;
+  printType: string;
+  productType: string;
+  deadline: string;
+  predictedDate: string;
+  riskIndex: number;
+  riskLevel: 'safe' | 'warning' | 'danger';
+  bottleneckStage: string | null;
+  stageForecasts: StageForecast[];
+}
+
 export interface OrderTemplate {
   id: number;
   name: string;

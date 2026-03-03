@@ -141,6 +141,196 @@ app.delete("/api/order-templates/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
+// ── Delivery Forecast ─────────────────────────────────────────────────────
+app.get("/api/orders/delivery-forecast", async (_req, res) => {
+    try {
+        // 1. Active orders (not delivered, not cancelled, not deleted)
+        const { data: rawOrders, error: ordersErr } = await supabase
+            .from("orders")
+            .select("id, order_number, client_name, quantity, deadline, status, required_stages, print_type, product_type, created_at")
+            .is("deleted_at", null)
+            .not("status", "in", '("Entregue","Cancelado")')
+            .order("deadline", { ascending: true });
+
+        if (ordersErr) throw ordersErr;
+        if (!rawOrders || rawOrders.length === 0) return res.json([]);
+
+        // 2. All stages sorted
+        const { data: allStages, error: stagesErr } = await supabase
+            .from("stages")
+            .select("id, name, sort_order")
+            .eq("active", 1)
+            .order("sort_order", { ascending: true });
+
+        if (stagesErr) throw stagesErr;
+
+        // 3. Capacity config
+        const { data: configRows } = await supabase
+            .from("config_producao")
+            .select("jornada_horas, operadores_ativos, eficiencia_percentual")
+            .limit(1);
+
+        const config = configRows?.[0] || { jornada_horas: 8, operadores_ativos: 2, eficiencia_percentual: 0.85 };
+        // Minutes available per day per sector (shared pool)
+        const dailyCapacityMinutes = config.jornada_horas * 60 * config.operadores_ativos * config.eficiencia_percentual;
+
+        // 4. Avg seconds per piece per stage (last 30 days, fallback all-time)
+        let recentAvg: any[] | null = null;
+        let allTimeAvg: any[] | null = null;
+        try {
+            const { data: r30 } = await supabase.rpc("get_stage_avg_times", { p_days: 30 });
+            recentAvg = r30;
+        } catch (_) { /* no data yet */ }
+        try {
+            const { data: rAll } = await supabase.rpc("get_stage_avg_times", { p_days: 3650 });
+            allTimeAvg = rAll;
+        } catch (_) { /* no data yet */ }
+
+        // Build lookup: stageId → avgSecPerPiece
+        const avgByStage: Record<number, number> = {};
+
+        // Default fallback per print_type (seconds per piece)
+        const printDefaults: Record<string, number> = {
+            "Silk": 5 * 60,        // 5 min
+            "DTF": 4 * 60,         // 4 min
+            "Sublimação": 3 * 60,  // 3 min
+        };
+        const stageDefaults: Record<string, number> = {
+            "Ficha de aprovação": 1.5 * 60,
+            "Separação / Corte": 2 * 60,
+            "Revelação de Tela": 2 * 60,
+            "Silk": 5 * 60,
+            "DTF": 4 * 60,
+            "Sublimação": 3 * 60,
+            "Costura": 2.5 * 60,
+            "Conferência": 1 * 60,
+            "Embalagem": 0.5 * 60,
+        };
+
+        for (const stage of (allStages || [])) {
+            // Try recent avg first
+            const recent = (recentAvg as any[])?.find((r: any) => r.stage_id === stage.id);
+            if (recent?.avg_sec_per_piece > 0) {
+                avgByStage[stage.id] = recent.avg_sec_per_piece;
+                continue;
+            }
+            // Then all-time
+            const atAll = (allTimeAvg as any[])?.find((r: any) => r.stage_id === stage.id);
+            if (atAll?.avg_sec_per_piece > 0) {
+                avgByStage[stage.id] = atAll.avg_sec_per_piece;
+                continue;
+            }
+            // Default by stage name
+            avgByStage[stage.id] = stageDefaults[stage.name] ?? 2 * 60;
+        }
+
+        // 5. Simulate queue — orders already sorted by deadline (most urgent first)
+        // sectorAvailableAt: when can a sector next accept work (in ms)
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const sectorAvailableAt: Record<number, number> = {};
+        for (const stage of (allStages || [])) {
+            sectorAvailableAt[stage.id] = now.getTime();
+        }
+
+        const helper = {
+            addWorkingDays: (startMs: number, days: number): number => {
+                // Simple approximation: 5/7 of days are working days
+                // Use calendar days = workingDays / (5/7) = workingDays * 1.4
+                const calendarMs = days * 1.4 * 24 * 60 * 60 * 1000;
+                return startMs + calendarMs;
+            }
+        };
+
+        const forecasts: any[] = [];
+
+        for (const order of (rawOrders || [])) {
+            // Determine which stages this order needs
+            let orderStageIds: number[] = [];
+            if (order.required_stages && order.required_stages.length > 0) {
+                orderStageIds = order.required_stages;
+            } else {
+                orderStageIds = (allStages || []).map((s: any) => s.id);
+            }
+
+            // Sort by sort_order
+            const orderStages = (allStages || [])
+                .filter((s: any) => orderStageIds.includes(s.id))
+                .sort((a: any, b: any) => a.sort_order - b.sort_order);
+
+            let prevStageEndMs = now.getTime();
+            const stageForecastDetails: any[] = [];
+            let bottleneckStage: string | null = null;
+            let maxQueueDays = -1;
+
+            for (const stage of orderStages) {
+                const avgSecPerPiece = avgByStage[stage.id] ?? 2 * 60;
+                const totalMinutes = (order.quantity * avgSecPerPiece) / 60;
+                const execDays = totalMinutes / dailyCapacityMinutes; // working days
+
+                const sectorAvail = sectorAvailableAt[stage.id] ?? now.getTime();
+                const startMs = Math.max(prevStageEndMs, sectorAvail);
+
+                const queueDays = Math.max(0, (sectorAvail - now.getTime()) / (24 * 60 * 60 * 1000) / 1.4);
+                const endMs = helper.addWorkingDays(startMs, execDays);
+
+                // Update sector availability
+                sectorAvailableAt[stage.id] = endMs;
+                prevStageEndMs = endMs;
+
+                stageForecastDetails.push({
+                    stageId: stage.id,
+                    stageName: stage.name,
+                    startDate: new Date(startMs).toISOString().split("T")[0],
+                    endDate: new Date(endMs).toISOString().split("T")[0],
+                    queueDays: Math.round(queueDays * 10) / 10,
+                    execDays: Math.round(execDays * 10) / 10,
+                });
+
+                const totalDelay = queueDays + execDays;
+                if (totalDelay > maxQueueDays) {
+                    maxQueueDays = totalDelay;
+                    bottleneckStage = stage.name;
+                }
+            }
+
+            const predictedDate = new Date(prevStageEndMs);
+            const deadline = new Date(order.deadline);
+            deadline.setHours(23, 59, 59, 0);
+
+            const deadlineDaysFromNow = Math.max(1, (deadline.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+            const predictedDaysFromNow = Math.max(0, (predictedDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+
+            const riskIndex = predictedDaysFromNow / deadlineDaysFromNow;
+            const riskLevel = riskIndex <= 0.8 ? "safe" : riskIndex <= 1.0 ? "warning" : "danger";
+
+            forecasts.push({
+                orderId: order.id,
+                orderNumber: order.order_number,
+                clientName: order.client_name,
+                quantity: order.quantity,
+                printType: order.print_type,
+                productType: order.product_type,
+                deadline: order.deadline,
+                predictedDate: predictedDate.toISOString().split("T")[0],
+                riskIndex: Math.round(riskIndex * 100) / 100,
+                riskLevel,
+                bottleneckStage,
+                stageForecasts: stageForecastDetails,
+            });
+        }
+
+        // Sort by risk descending (highest risk first)
+        forecasts.sort((a, b) => b.riskIndex - a.riskIndex);
+        return res.json(forecasts);
+
+    } catch (err: any) {
+        console.error("[Forecast] Error:", err);
+        return res.status(500).json({ error: "Erro no cálculo de previsão" });
+    }
+});
+
+
 // ── Orders ────────────────────────────────────────────────────────────────
 app.get("/api/orders", async (req, res) => {
     const { search, stage_id, stage_status } = req.query;
