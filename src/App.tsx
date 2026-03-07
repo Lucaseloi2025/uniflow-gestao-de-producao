@@ -54,7 +54,7 @@ import {
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData } from './types';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity } from './types';
 
 // Components
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
@@ -164,6 +164,9 @@ export default function App() {
   const [reportUser, setReportUser] = useState<string>('');
   const [reportStage, setReportStage] = useState<string>('');
   const [profileReport, setProfileReport] = useState<any[]>([]);
+  const [operationalReportData, setOperationalReportData] = useState<OperationalReportData | null>(null);
+  const [reportStartDate, setReportStartDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [reportEndDate, setReportEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -355,18 +358,25 @@ export default function App() {
   };
 
   const fetchReports = async () => {
-    let url = `/api/reports?period=${reportPeriod}`;
+    let url = `/api/reports?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}`;
     if (reportUser) url += `&user_id=${reportUser}`;
     if (reportStage) url += `&stage_id=${reportStage}`;
 
     const data = await safeFetch(url);
     if (data) setReportData(data);
 
-    const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}`);
+    const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}`);
     if (deliveryData) setDeliveryReportData(deliveryData);
 
     const delaysData = await safeFetch('/api/reports/delays');
     if (delaysData) setDelaysReportData(delaysData);
+
+    fetchOperationalReport();
+  };
+
+  const fetchOperationalReport = async () => {
+    const data = await safeFetch(`/api/reports/operational?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    if (data) setOperationalReportData(data);
   };
 
   const fetchForecast = async () => {
@@ -627,11 +637,11 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'reports') {
       fetchReports();
-      safeFetch('/api/reports/profile').then(data => {
+      safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}${reportUser ? `&user_id=${reportUser}` : ''}`).then(data => {
         if (data) setProfileReport(data);
       });
     }
-  }, [activeTab, reportPeriod, reportUser, reportStage]);
+  }, [activeTab, reportPeriod, reportUser, reportStage, reportStartDate, reportEndDate]);
 
   useEffect(() => {
     if (currentUser && currentUser.id !== 0) {
@@ -976,44 +986,96 @@ export default function App() {
               </div>
             )}
             {activeTab === 'reports' && (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm overflow-x-auto">
-                <div className="flex items-center gap-1 px-2 border-b sm:border-b-0 sm:border-r border-zinc-100 py-1 sm:py-0">
-                  <span className="text-[8px] font-bold text-zinc-400 uppercase">Período:</span>
-                  <select
-                    value={reportPeriod}
-                    onChange={(e) => setReportPeriod(e.target.value as any)}
-                    className="py-1 bg-transparent text-[10px] font-medium focus:outline-none"
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
+                  <button
+                    onClick={() => {
+                      setReportPeriod('day');
+                      setReportStartDate(format(new Date(), 'yyyy-MM-dd'));
+                      setReportEndDate(format(new Date(), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
                   >
-                    <option value="day">Diário</option>
-                    <option value="week">Semanal</option>
-                    <option value="month">Mensal</option>
-                  </select>
+                    Diário
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportPeriod('day');
+                      setReportStartDate(format(new Date(), 'yyyy-MM-dd'));
+                      setReportEndDate(format(new Date(), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Diário
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportPeriod('week');
+                      setReportStartDate(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                      setReportEndDate(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'week' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Semanal
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportPeriod('month');
+                      setReportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                      setReportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'month' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Mensal
+                  </button>
                 </div>
-                <div className="flex items-center gap-1 px-2 border-b sm:border-b-0 sm:border-r border-zinc-100 py-1 sm:py-0">
-                  <span className="text-[8px] font-bold text-zinc-400 uppercase">Colaborador:</span>
-                  <select
-                    value={reportUser}
-                    onChange={(e) => setReportUser(e.target.value)}
-                    className="py-1 bg-transparent text-[10px] font-medium focus:outline-none"
-                  >
-                    <option value="">Todos</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>{user.name}</option>
-                    ))}
-                  </select>
+
+                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1.5 rounded-lg shadow-sm">
+                  <div className="flex items-center gap-2 px-2">
+                    <Calendar size={14} className="text-zinc-400" />
+                    <input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={(e) => setReportStartDate(e.target.value)}
+                      className="text-[10px] font-medium bg-transparent focus:outline-none"
+                    />
+                    <span className="text-zinc-300">|</span>
+                    <input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={(e) => setReportEndDate(e.target.value)}
+                      className="text-[10px] font-medium bg-transparent focus:outline-none"
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 px-2 py-1 sm:py-0">
-                  <span className="text-[8px] font-bold text-zinc-400 uppercase">Etapa:</span>
-                  <select
-                    value={reportStage}
-                    onChange={(e) => setReportStage(e.target.value)}
-                    className="py-1 bg-transparent text-[10px] font-medium focus:outline-none"
-                  >
-                    <option value="">Todas</option>
-                    {stages.map(stage => (
-                      <option key={stage.id} value={stage.id}>{stage.name}</option>
-                    ))}
-                  </select>
+
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
+                  <div className="flex items-center gap-1 px-2 border-r border-zinc-100 py-1 sm:py-0">
+                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Colab:</span>
+                    <select
+                      value={reportUser}
+                      onChange={(e) => setReportUser(e.target.value)}
+                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
+                    >
+                      <option value="">Todos</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>{user.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 py-1 sm:py-0">
+                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Etapa:</span>
+                    <select
+                      value={reportStage}
+                      onChange={(e) => setReportStage(e.target.value)}
+                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
+                    >
+                      <option value="">Todas</option>
+                      {stages.map(stage => (
+                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
@@ -1603,66 +1665,128 @@ export default function App() {
         {activeTab === 'reports' && reportData && (
           <div className="space-y-8">
 
-            {/* Delivery KPIs */}
-            {deliveryReportData && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                <Card className="p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
-                      <CheckCircle size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 font-medium">Entregues Hoje</p>
-                      <h3 className="text-2xl font-bold">{deliveryReportData.entregues_hoje}</h3>
-                    </div>
+            {/* Delivery & Performance KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {/* Entregues Hoje */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                    <CheckCircle size={24} />
                   </div>
-                </Card>
-                <Card className="p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-                      <Archive size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 font-medium">Entregues (Período)</p>
-                      <h3 className="text-2xl font-bold">{deliveryReportData.entregues_periodo}</h3>
-                    </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Entregues Hoje</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.entregues_hoje || 0}</h3>
                   </div>
-                </Card>
-                <Card className="p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
-                      <TrendingUp size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 font-medium">No Prazo</p>
-                      <h3 className="text-2xl font-bold">{deliveryReportData.taxa_no_prazo_percent.toFixed(1)}%</h3>
-                    </div>
+                </div>
+              </Card>
+
+              {/* Entregues no Período */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                    <Archive size={24} />
                   </div>
-                </Card>
-                <Card className="p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
-                      <Clock size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 font-medium">Lead Time Médio</p>
-                      <h3 className="text-2xl font-bold">{deliveryReportData.lead_time_medio_dias.toFixed(1)} <span className="text-sm font-normal text-zinc-400">dias</span></h3>
-                    </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">No Período</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.entregues_periodo || 0}</h3>
                   </div>
-                </Card>
-                <Card className="p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
-                      <Target size={24} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 font-medium">Cumprimento Meta</p>
-                      <h3 className="text-2xl font-bold">{deliveryReportData.cumprimento_meta_percent.toFixed(1)}%</h3>
-                    </div>
+                </div>
+              </Card>
+
+              {/* Pedidos no Prazo (%) */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                    <TrendingUp size={24} />
                   </div>
-                </Card>
-              </div>
-            )}
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">No Prazo (%)</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.taxa_no_prazo_percent?.toFixed(1) || '0.0'}%</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Lead Time Médio */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                    <Clock size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Lead Time Médio</p>
+                    <h3 className="text-2xl font-bold">
+                      {deliveryReportData?.lead_time_medio_dias?.toFixed(1) || '0.0'}
+                      <span className="text-sm font-normal text-zinc-400 ml-1">dias</span>
+                    </h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Cumprimento de Meta (%) */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
+                    <Target size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Cumprimento Meta</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.cumprimento_meta_percent?.toFixed(1) || '0.0'}%</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Total de Pedidos */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Package size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Total Pedidos</p>
+                    <h3 className="text-2xl font-bold">{reportData.summary.total_orders}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Etapas Finalizadas */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <CheckSquare size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Etapas Finalizadas</p>
+                    <h3 className="text-2xl font-bold">{reportData.summary.total_stages}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Tempo Médio por Etapa */}
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Timer size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio/Etapa</p>
+                    <h3 className="text-2xl font-bold">{formatSeconds(reportData.summary.avg_stage_time)}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Custo Total de Mão de Obra */}
+              <Card className="p-6 border-indigo-100">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                    <DollarSign size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Custo Total M.O.</p>
+                    <h3 className="text-2xl font-bold">R$ {Math.round(reportData.summary.total_labor_cost || 0)}</h3>
+                  </div>
+                </div>
+              </Card>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Delivery Chart */}
@@ -1728,53 +1852,6 @@ export default function App() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
-                    <Package size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 font-medium">Total Pedidos</p>
-                    <h3 className="text-2xl font-bold">{reportData.summary.total_orders}</h3>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
-                    <TrendingUp size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 font-medium">Etapas Finalizadas</p>
-                    <h3 className="text-2xl font-bold">{reportData.summary.total_stages}</h3>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
-                    <Clock size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio/Etapa</p>
-                    <h3 className="text-2xl font-bold">{Math.round(reportData.summary.avg_stage_time / 60)} <span className="text-sm font-normal text-zinc-400">min</span></h3>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-                    <DollarSign size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 font-medium">Custo Total M.O.</p>
-                    <h3 className="text-2xl font-bold">R$ {Math.round(reportData.summary.total_labor_cost || 0)}</h3>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                 <BarChart3 size={20} />
@@ -1795,6 +1872,176 @@ export default function App() {
                 </ResponsiveContainer>
               </div>
             </Card>
+
+            {/* Drill-Down Operacional */}
+            {
+              operationalReportData && (
+                <div className="space-y-8 pb-12">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Produção Detalhada */}
+                    <Card className="p-6">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                        <Clock size={18} className="text-zinc-400" />
+                        Produção Detalhada (Etapas)
+                      </h3>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-zinc-50 border-b border-zinc-100">
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Fim</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Colab</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Etapa</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500 text-right">Tempo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-50">
+                            {operationalReportData.producao_dia.map((step, i) => (
+                              <tr key={i} className="hover:bg-zinc-50 transition-colors">
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{format(parseISO(step.finished_at), 'HH:mm')}</td>
+                                <td className="px-3 py-2 text-xs font-medium">{step.user_name}</td>
+                                <td className="px-3 py-2 text-xs">{step.stage_name} <br /> <span className="text-[9px] text-zinc-400 font-mono">#{step.order_number}</span></td>
+                                <td className="px-3 py-2 text-right font-mono text-[10px] font-bold">{formatSeconds(step.duration_seconds)}</td>
+                              </tr>
+                            ))}
+                            {operationalReportData.producao_dia.length === 0 && (
+                              <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-400 italic text-xs">Sem etapas registradas.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+
+                    {/* Progresso de Pedidos */}
+                    <Card className="p-6">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-zinc-400" />
+                        Progresso de Pedidos Ativos
+                      </h3>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-zinc-50 border-b border-zinc-100">
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Pedido</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Progresso</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Próxima</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500 text-center">Prazo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-50">
+                            {operationalReportData.progresso_pedidos.map((order, i) => (
+                              <tr key={i} className="hover:bg-zinc-50 transition-colors">
+                                <td className="px-3 py-2">
+                                  <p className="text-xs font-bold">{order.order_number}</p>
+                                  <p className="text-[9px] text-zinc-500 truncate max-w-[100px]">{order.client_name}</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-blue-500 transition-all"
+                                        style={{ width: `${(order.etapas_concluidas / order.total_etapas) * 100}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[9px] font-bold text-zinc-600">{order.etapas_concluidas}/{order.total_etapas}</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-[10px] text-zinc-600 font-medium">
+                                  {order.proxima_etapa || <span className="text-emerald-500 font-bold">Concluído</span>}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className={cn(
+                                    "text-[10px] font-bold",
+                                    isPast(endOfDay(parseISO(order.deadline))) ? "text-rose-600" : "text-zinc-500"
+                                  )}>
+                                    {format(parseISO(order.deadline), 'dd/MM')}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Pedidos Concluídos */}
+                    <Card className="p-6 border-emerald-100">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2 text-emerald-700">
+                        <CheckCircle size={18} />
+                        Pedidos Concluídos no Período
+                      </h3>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-emerald-50 border-b border-emerald-100 text-emerald-700">
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Conclusão</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Pedido</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Lead Time</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-emerald-50">
+                            {operationalReportData.pedidos_concluidos.map((order, i) => (
+                              <tr key={i} className="hover:bg-emerald-50 transition-colors">
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{format(parseISO(order.completed_at), 'dd/MM HH:mm')}</td>
+                                <td className="px-3 py-2">
+                                  <p className="text-xs font-bold text-zinc-800">{order.order_number}</p>
+                                  <p className="text-[9px] text-zinc-500">{order.client_name}</p>
+                                </td>
+                                <td className="px-3 py-2 text-[10px] font-mono font-bold text-zinc-600">
+                                  {order.lead_time_horas.toFixed(1)}h
+                                </td>
+                                <td className="px-3 py-2 text-center text-[9px] font-black italic uppercase">
+                                  {order.no_prazo ? (
+                                    <span className="text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">NO PRAZO</span>
+                                  ) : (
+                                    <span className="text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">ATRASADO</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+
+                    {/* Produtividade */}
+                    <Card className="p-6">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                        <Users size={18} className="text-zinc-400" />
+                        Produtividade por Colaborador
+                      </h3>
+                      <div className="space-y-4">
+                        {operationalReportData.produtividade_colaboradores.map((user, i) => (
+                          <div key={user.user_id} className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-end">
+                              <div>
+                                <p className="text-sm font-bold text-zinc-800">{user.user_name}</p>
+                                <p className="text-[10px] text-zinc-500 font-medium">
+                                  <Clock size={10} className="inline mr-1" />
+                                  {formatSeconds(user.tempo_total_segundos)} ativo
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs font-mono font-black text-indigo-600">{user.pecas_produzidas} peças</p>
+                                <p className="text-[9px] text-zinc-400 font-bold uppercase">{user.total_etapas} etapas</p>
+                              </div>
+                            </div>
+                            <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-500 rounded-full"
+                                style={{ width: `${Math.min(100, (user.pecas_produzidas / 50) * 100)}%` }} // Exemplo: meta de 50 peças
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              )
+            }
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Card className="p-8">
@@ -1912,1547 +2159,1553 @@ export default function App() {
                 </table>
               </div>
             </Card>
-          </div>
-        )}
+          </div >
+        )
+        }
 
-        {activeTab === 'settings' && (
-          <div className="max-w-2xl space-y-8 pb-12">
-            <Card className="p-8">
-              <div className="flex justify-between items-start mb-6">
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <Settings size={20} />
-                  Integração Supabase
+        {
+          activeTab === 'settings' && (
+            <div className="max-w-2xl space-y-8 pb-12">
+              <Card className="p-8">
+                <div className="flex justify-between items-start mb-6">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <Settings size={20} />
+                    Integração Supabase
+                  </h3>
+                  <button
+                    onClick={async () => {
+                      const data = await safeFetch('/api/supabase/status');
+                      if (data?.status === 'success') {
+                        alert('✅ Supabase conectado com sucesso!');
+                      } else {
+                        alert(`❌ Erro: ${data?.message || 'Falha na conexão'}`);
+                      }
+                    }}
+                    className="text-[10px] font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700"
+                  >
+                    Testar Conexão
+                  </button>
+                </div>
+                <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Status do SDK:</span>
+                    <Badge variant="info">Ativo</Badge>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    O SDK do Supabase foi inicializado. Para usar o Supabase como banco de dados principal (SQL),
+                    certifique-se de configurar a <strong>DATABASE_URL</strong> com a Connection String do Supabase nos Secrets.
+                  </p>
+                </div>
+              </Card>
+
+              <Card className="p-8">
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <BarChart3 size={20} />
+                  Configuração de Capacidade Produtiva
                 </h3>
-                <button
-                  onClick={async () => {
-                    const data = await safeFetch('/api/supabase/status');
-                    if (data?.status === 'success') {
-                      alert('✅ Supabase conectado com sucesso!');
-                    } else {
-                      alert(`❌ Erro: ${data?.message || 'Falha na conexão'}`);
-                    }
-                  }}
-                  className="text-[10px] font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700"
-                >
-                  Testar Conexão
-                </button>
-              </div>
-              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-500">Status do SDK:</span>
-                  <Badge variant="info">Ativo</Badge>
+                <form className="space-y-6" onSubmit={async (e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  const data = {
+                    jornada_horas: Number(formData.get('jornada_horas')),
+                    operadores_ativos: Number(formData.get('operadores_ativos')),
+                    eficiencia_percentual: Number(formData.get('eficiencia_percentual')) / 100,
+                    dias_uteis_mes: Number(formData.get('dias_uteis_mes'))
+                  };
+
+                  await fetch('/api/config/producao', {
+                    method: 'PATCH',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-user-role': currentUser?.role || ''
+                    },
+                    body: JSON.stringify(data)
+                  });
+                  fetchData();
+                }}>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Jornada de Trabalho (Horas)</label>
+                      <input
+                        name="jornada_horas"
+                        type="number"
+                        step="0.5"
+                        defaultValue={stats?.capacity.config.jornada_horas}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Operadores Ativos</label>
+                      <input
+                        name="operadores_ativos"
+                        type="number"
+                        defaultValue={stats?.capacity.config.operadores_ativos}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Eficiência Operacional (%)</label>
+                      <input
+                        name="eficiencia_percentual"
+                        type="number"
+                        defaultValue={(stats?.capacity.config.eficiencia_percentual || 0.85) * 100}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Úteis no Mês</label>
+                      <input
+                        name="dias_uteis_mes"
+                        type="number"
+                        defaultValue={stats?.capacity.config.dias_uteis_mes}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
+                    Salvar Configurações
+                  </button>
+                </form>
+              </Card>
+
+              <Card className="p-8">
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <Settings size={20} />
+                  Gerenciar Etapas de Produção
+                </h3>
+
+                <div className="flex gap-2 mb-8">
+                  <input
+                    type="text"
+                    value={newStageName}
+                    onChange={(e) => setNewStageName(e.target.value)}
+                    placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
+                    className="flex-1 p-2 border border-zinc-200 rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!newStageName) return;
+                      await fetch('/api/stages', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || ''
+                        },
+                        body: JSON.stringify({ name: newStageName })
+                      });
+                      setNewStageName('');
+                      fetchData();
+                    }}
+                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
+                  >
+                    Adicionar
+                  </button>
                 </div>
-                <p className="text-[11px] text-zinc-500 leading-relaxed">
-                  O SDK do Supabase foi inicializado. Para usar o Supabase como banco de dados principal (SQL),
-                  certifique-se de configurar a <strong>DATABASE_URL</strong> com a Connection String do Supabase nos Secrets.
-                </p>
-              </div>
-            </Card>
 
-            <Card className="p-8">
-              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                <BarChart3 size={20} />
-                Configuração de Capacidade Produtiva
-              </h3>
-              <form className="space-y-6" onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const data = {
-                  jornada_horas: Number(formData.get('jornada_horas')),
-                  operadores_ativos: Number(formData.get('operadores_ativos')),
-                  eficiencia_percentual: Number(formData.get('eficiencia_percentual')) / 100,
-                  dias_uteis_mes: Number(formData.get('dias_uteis_mes'))
-                };
-
-                await fetch('/api/config/producao', {
-                  method: 'PATCH',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-role': currentUser?.role || ''
-                  },
-                  body: JSON.stringify(data)
-                });
-                fetchData();
-              }}>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Jornada de Trabalho (Horas)</label>
-                    <input
-                      name="jornada_horas"
-                      type="number"
-                      step="0.5"
-                      defaultValue={stats?.capacity.config.jornada_horas}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Operadores Ativos</label>
-                    <input
-                      name="operadores_ativos"
-                      type="number"
-                      defaultValue={stats?.capacity.config.operadores_ativos}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Eficiência Operacional (%)</label>
-                    <input
-                      name="eficiencia_percentual"
-                      type="number"
-                      defaultValue={(stats?.capacity.config.eficiencia_percentual || 0.85) * 100}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Úteis no Mês</label>
-                    <input
-                      name="dias_uteis_mes"
-                      type="number"
-                      defaultValue={stats?.capacity.config.dias_uteis_mes}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                  Salvar Configurações
-                </button>
-              </form>
-            </Card>
-
-            <Card className="p-8">
-              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                <Settings size={20} />
-                Gerenciar Etapas de Produção
-              </h3>
-
-              <div className="flex gap-2 mb-8">
-                <input
-                  type="text"
-                  value={newStageName}
-                  onChange={(e) => setNewStageName(e.target.value)}
-                  placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
-                  className="flex-1 p-2 border border-zinc-200 rounded-lg text-sm"
-                />
-                <button
-                  onClick={async () => {
-                    if (!newStageName) return;
-                    await fetch('/api/stages', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-role': currentUser?.role || ''
-                      },
-                      body: JSON.stringify({ name: newStageName })
-                    });
-                    setNewStageName('');
-                    fetchData();
-                  }}
-                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
-                >
-                  Adicionar
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {stages.map((stage) => (
-                  <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
-                    <div className="flex items-center gap-4 flex-1">
-                      <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
-                      {editingStageId === stage.id ? (
-                        <input
-                          type="text"
-                          autoFocus
-                          value={editingStageName}
-                          onChange={(e) => setEditingStageName(e.target.value)}
-                          onBlur={async () => {
-                            if (editingStageName && editingStageName !== stage.name) {
-                              await fetch(`/api/stages/${stage.id}`, {
-                                method: 'PATCH',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  'x-user-role': currentUser?.role || ''
-                                },
-                                body: JSON.stringify({ name: editingStageName })
-                              });
-                              fetchData();
-                            }
-                            setEditingStageId(null);
-                          }}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter') {
+                <div className="space-y-3">
+                  {stages.map((stage) => (
+                    <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
+                      <div className="flex items-center gap-4 flex-1">
+                        <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
+                        {editingStageId === stage.id ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingStageName}
+                            onChange={(e) => setEditingStageName(e.target.value)}
+                            onBlur={async () => {
                               if (editingStageName && editingStageName !== stage.name) {
                                 await fetch(`/api/stages/${stage.id}`, {
                                   method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'x-user-role': currentUser?.role || ''
+                                  },
                                   body: JSON.stringify({ name: editingStageName })
                                 });
                                 fetchData();
                               }
                               setEditingStageId(null);
-                            }
-                            if (e.key === 'Escape') setEditingStageId(null);
-                          }}
-                          className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                        />
-                      ) : (
-                        <span className="text-sm font-medium">{stage.name}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="success">Ativa</Badge>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            setEditingStageId(stage.id);
-                            setEditingStageName(stage.name);
-                          }}
-                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
-                              await fetch(`/api/stages/${stage.id}`, {
-                                method: 'DELETE',
-                                headers: { 'x-user-role': currentUser?.role || '' }
-                              });
-                              fetchData();
-                            }
-                          }}
-                          className="p-1.5 hover:bg-rose-100 rounded text-rose-500 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                            }}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter') {
+                                if (editingStageName && editingStageName !== stage.name) {
+                                  await fetch(`/api/stages/${stage.id}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ name: editingStageName })
+                                  });
+                                  fetchData();
+                                }
+                                setEditingStageId(null);
+                              }
+                              if (e.key === 'Escape') setEditingStageId(null);
+                            }}
+                            className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          />
+                        ) : (
+                          <span className="text-sm font-medium">{stage.name}</span>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card className="p-8">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <ClipboardList size={20} />
-                  Gerenciar Templates de Pedido
-                </h3>
-                {currentUser?.role === 'Admin' && (
-                  <button
-                    onClick={() => {
-                      setEditingTemplate(null);
-                      setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                      setIsTemplateEditorOpen(true);
-                    }}
-                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
-                  >
-                    <Plus size={16} /> Novo Template
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {templates.map((template) => (
-                  <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
-                      {currentUser?.role === 'Admin' && (
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="success">Ativa</Badge>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => {
-                              setEditingTemplate(template);
-                              setTemplateFormStages(template.required_stages || []);
-                              setIsTemplateEditorOpen(true);
+                              setEditingStageId(stage.id);
+                              setEditingStageName(stage.name);
                             }}
-                            className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
+                            className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
                           >
                             <Edit2 size={14} />
                           </button>
                           <button
                             onClick={async () => {
-                              if (confirm(`Excluir template "${template.name}"?`)) {
-                                await fetch(`/api/order-templates/${template.id}`, {
+                              if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
+                                await fetch(`/api/stages/${stage.id}`, {
                                   method: 'DELETE',
                                   headers: { 'x-user-role': currentUser?.role || '' }
                                 });
                                 fetchData();
                               }
                             }}
-                            className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
+                            className="p-1.5 hover:bg-rose-100 rounded text-rose-500 transition-colors"
                           >
                             <Trash2 size={14} />
                           </button>
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      <Badge variant="default">{template.product_type}</Badge>
-                      <Badge variant="info">{template.print_type}</Badge>
-                    </div>
-                    <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Etapas Inclusas:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {stages.filter(s => template.required_stages?.includes(s.id)).map(s => (
-                        <span key={s.id} className="px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded text-[9px] font-bold">
-                          {s.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-        )}
-      </main>
-
-      {/* Order Details Drawer */}
-      <AnimatePresence>
-        {selectedOrder && (
-          <div className="fixed inset-0 z-[60] flex justify-end bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              className="bg-white w-full h-full shadow-2xl overflow-y-auto"
-            >
-              <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center px-8 lg:px-12">
-                <div className="flex items-center gap-6">
-                  <button
-                    onClick={() => setSelectedOrder(null)}
-                    className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl transition-all font-bold text-sm active:scale-95"
-                  >
-                    <ArrowLeft size={18} />
-                    Voltar ao Menu
-                  </button>
-                  <div className="h-8 w-[1px] bg-zinc-200 hidden lg:block" />
-                  <div>
-                    <h2 className="text-2xl font-black tracking-tight text-zinc-900">{selectedOrder.client_name}</h2>
-                    <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
-                  </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {currentUser.role === 'Admin' && selectedOrder.status !== 'Cancelado' && (
-                    <>
-                      <button
-                        onClick={() => openEditOrderModal(selectedOrder)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-all font-bold text-sm"
-                        title="Editar pedido"
-                      >
-                        <Edit2 size={15} />
-                        <span className="hidden sm:inline">Editar</span>
-                      </button>
-                      <button
-                        onClick={() => handleCancelOrder(selectedOrder.id)}
-                        disabled={isCancellingOrder}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl transition-all font-bold text-sm",
-                          isCancellingOrder && "opacity-50 cursor-not-allowed"
-                        )}
-                        title="Cancelar pedido"
-                      >
-                        {isCancellingOrder ? <RefreshCw size={15} className="animate-spin" /> : <X size={15} />}
-                        <span className="hidden sm:inline">Cancelar</span>
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() => handleViewHistory(selectedOrder.id)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all font-bold text-sm"
-                    title="Ver histórico de alterações"
-                  >
-                    <FileText size={15} />
-                    <span className="hidden sm:inline">Histórico</span>
-                  </button>
-                  {currentUser.role === 'Admin' && (
+              </Card>
+
+              <Card className="p-8">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <ClipboardList size={20} />
+                    Gerenciar Templates de Pedido
+                  </h3>
+                  {currentUser?.role === 'Admin' && (
                     <button
-                      onClick={() => handleDeleteOrder(selectedOrder.id)}
-                      disabled={isDeletingOrder}
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all font-bold text-sm",
-                        isDeletingOrder && "opacity-50 cursor-not-allowed"
-                      )}
-                      title="Excluir pedido (soft-delete)"
+                      onClick={() => {
+                        setEditingTemplate(null);
+                        setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                        setIsTemplateEditorOpen(true);
+                      }}
+                      className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
                     >
-                      {isDeletingOrder ? <RefreshCw size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                      <span className="hidden sm:inline">Excluir</span>
+                      <Plus size={16} /> Novo Template
                     </button>
                   )}
-                  <Badge variant={
-                    selectedOrder.status === 'Entregue' ? 'success' :
-                      selectedOrder.status === 'Cancelado' ? 'error' : 'info'
-                  }>
-                    {selectedOrder.status}
-                  </Badge>
-                  {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
-                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1">
-                      🎨 {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-8 lg:p-12 max-w-7xl mx-auto">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-                  <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
-                    <p className="text-lg font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
-                  </div>
-                  <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
-                    <p className="text-lg font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
-                  </div>
-                  <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 col-span-2 md:col-span-1">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
-                    {currentUser.role === 'Admin' ? (
-                      <input
-                        type="date"
-                        defaultValue={selectedOrder.deadline.split('T')[0]}
-                        onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
-                        className="text-lg font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
-                      />
-                    ) : (
-                      <p className="text-lg font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
-                    )}
-                  </div>
                 </div>
 
-                <div className="mb-8">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <CheckCircle size={20} />
-                    Progresso das Etapas
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {selectedOrder.stages_status.map((stage) => (
-                      <div
-                        key={stage.id}
-                        className={cn(
-                          "flex items-center gap-2 p-3 rounded-xl border text-xs font-medium transition-colors",
-                          stage.finished
-                            ? "bg-emerald-50 border-emerald-100 text-emerald-700"
-                            : "bg-zinc-50 border-zinc-100 text-zinc-500"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {templates.map((template) => (
+                    <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
+                        {currentUser?.role === 'Admin' && (
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => {
+                                setEditingTemplate(template);
+                                setTemplateFormStages(template.required_stages || []);
+                                setIsTemplateEditorOpen(true);
+                              }}
+                              className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (confirm(`Excluir template "${template.name}"?`)) {
+                                  await fetch(`/api/order-templates/${template.id}`, {
+                                    method: 'DELETE',
+                                    headers: { 'x-user-role': currentUser?.role || '' }
+                                  });
+                                  fetchData();
+                                }
+                              }}
+                              className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         )}
-                      >
-                        {stage.finished ? <CheckCircle size={14} /> : <Circle size={14} />}
-                        {stage.name}
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {(selectedOrder.art_url || (selectedOrder.art_urls && selectedOrder.art_urls.length > 0)) && (
-                  <div className="mb-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-bold flex items-center gap-2">
-                        <ImageIcon size={20} />
-                        Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
-                      </h3>
-                      <label className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-all cursor-pointer",
-                        isUploadingArt && "opacity-50 cursor-not-allowed"
-                      )}>
-                        {isUploadingArt ? (
-                          <RefreshCw size={14} className="animate-spin" />
-                        ) : (
-                          <Plus size={14} />
-                        )}
-                        <span>{isUploadingArt ? 'Enviando...' : 'Adicionar Imagem'}</span>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          className="hidden"
-                          disabled={isUploadingArt}
-                          onChange={(e) => {
-                            if (e.target.files) handleAddImages(selectedOrder.id, e.target.files);
-                          }}
-                        />
-                      </label>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        <Badge variant="default">{template.product_type}</Badge>
+                        <Badge variant="info">{template.print_type}</Badge>
+                      </div>
+                      <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Etapas Inclusas:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {stages.filter(s => template.required_stages?.includes(s.id)).map(s => (
+                          <span key={s.id} className="px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded text-[9px] font-bold">
+                            {s.name}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
-                        selectedOrder.art_urls.map((url, i) => (
-                          <div
-                            key={i}
-                            onClick={() => setSelectedFullImage(url)}
-                            className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
+                  ))}
+                </div>
+              </Card>
+            </div>
+          )
+        }
+
+        {/* Order Details Drawer */}
+        <AnimatePresence>
+          {
+            selectedOrder && (
+              <div className="fixed inset-0 z-[60] flex justify-end bg-black/40 backdrop-blur-sm">
+                <motion.div
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  className="bg-white w-full h-full shadow-2xl overflow-y-auto"
+                >
+                  <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center px-8 lg:px-12">
+                    <div className="flex items-center gap-6">
+                      <button
+                        onClick={() => setSelectedOrder(null)}
+                        className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl transition-all font-bold text-sm active:scale-95"
+                      >
+                        <ArrowLeft size={18} />
+                        Voltar ao Menu
+                      </button>
+                      <div className="h-8 w-[1px] bg-zinc-200 hidden lg:block" />
+                      <div>
+                        <h2 className="text-2xl font-black tracking-tight text-zinc-900">{selectedOrder.client_name}</h2>
+                        <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {currentUser.role === 'Admin' && selectedOrder.status !== 'Cancelado' && (
+                        <>
+                          <button
+                            onClick={() => openEditOrderModal(selectedOrder)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-all font-bold text-sm"
+                            title="Editar pedido"
                           >
-                            <img
-                              src={url}
-                              alt={`Estampa ${i + 1}`}
-                              className="max-w-full max-h-full object-contain"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
-                              <Search size={16} />
-                              Clique para Ampliar
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div
-                          onClick={() => setSelectedFullImage(selectedOrder.art_url || null)}
-                          className="group relative w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 cursor-pointer hover:border-zinc-400 transition-all"
+                            <Edit2 size={15} />
+                            <span className="hidden sm:inline">Editar</span>
+                          </button>
+                          <button
+                            onClick={() => handleCancelOrder(selectedOrder.id)}
+                            disabled={isCancellingOrder}
+                            className={cn(
+                              "flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl transition-all font-bold text-sm",
+                              isCancellingOrder && "opacity-50 cursor-not-allowed"
+                            )}
+                            title="Cancelar pedido"
+                          >
+                            {isCancellingOrder ? <RefreshCw size={15} className="animate-spin" /> : <X size={15} />}
+                            <span className="hidden sm:inline">Cancelar</span>
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleViewHistory(selectedOrder.id)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all font-bold text-sm"
+                        title="Ver histórico de alterações"
+                      >
+                        <FileText size={15} />
+                        <span className="hidden sm:inline">Histórico</span>
+                      </button>
+                      {currentUser.role === 'Admin' && (
+                        <button
+                          onClick={() => handleDeleteOrder(selectedOrder.id)}
+                          disabled={isDeletingOrder}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all font-bold text-sm",
+                            isDeletingOrder && "opacity-50 cursor-not-allowed"
+                          )}
+                          title="Excluir pedido (soft-delete)"
                         >
-                          <img
-                            src={selectedOrder.art_url}
-                            alt="Mockup do Cliente"
-                            className="w-full h-auto max-h-[400px] object-contain"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
-                            <Search size={16} />
-                            Clique para Ampliar
-                          </div>
-                        </div>
+                          {isDeletingOrder ? <RefreshCw size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                          <span className="hidden sm:inline">Excluir</span>
+                        </button>
+                      )}
+                      <Badge variant={
+                        selectedOrder.status === 'Entregue' ? 'success' :
+                          selectedOrder.status === 'Cancelado' ? 'error' : 'info'
+                      }>
+                        {selectedOrder.status}
+                      </Badge>
+                      {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1">
+                          🎨 {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
+                        </span>
                       )}
                     </div>
                   </div>
-                )}
 
-                {selectedOrder.total_time_seconds > selectedOrder.estimated_time_seconds * 1.2 && (
-                  <div className="mb-8 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700">
-                    <AlertCircle size={20} />
-                    <p className="text-sm font-medium">Atenção: Tempo real ultrapassou 20% da estimativa padrão.</p>
-                  </div>
-                )}
+                  <div className="p-8 lg:p-12 max-w-7xl mx-auto">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
+                        <p className="text-lg font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
+                      </div>
+                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
+                        <p className="text-lg font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
+                      </div>
+                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 col-span-2 md:col-span-1">
+                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
+                        {currentUser.role === 'Admin' ? (
+                          <input
+                            type="date"
+                            defaultValue={selectedOrder.deadline.split('T')[0]}
+                            onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
+                            className="text-lg font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
+                          />
+                        ) : (
+                          <p className="text-lg font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
+                        )}
+                      </div>
+                    </div>
 
-                <div className="mb-8">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <ClipboardList size={20} />
-                    Etapas da Produção
-                  </h3>
-                  <div className="space-y-3">
-                    {selectedOrder.stages_status.map(orderStage => {
-                      const stage = stages.find(s => s.id === orderStage.id);
-                      if (!stage) return null;
-                      const execution = executions.find(e => e.stage_id === stage.id);
-                      return (
-                        <div key={stage.id} className="p-4 border border-zinc-200 rounded-xl flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
-                              execution?.status === 'Finalizado' ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
-                            )}>
-                              {execution?.status === 'Finalizado' ? <CheckCircle2 size={16} /> : stage.sort_order}
-                            </div>
-                            <div>
-                              <p className="font-bold text-sm">{stage.name}</p>
-                              {execution && (
-                                <p className="text-[10px] text-zinc-500">
-                                  {execution.user_name} • {formatSeconds(execution.total_time_seconds)}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col items-end gap-3">
-                            <div className="flex items-center gap-3">
-                              {!execution && (
-                                <button
-                                  onClick={() => handleStartStage(stage.id)}
-                                  className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
-                                >
-                                  <Play size={18} fill="currentColor" />
-                                  <span className="font-bold text-sm">Iniciar</span>
-                                </button>
-                              )}
-                              {execution?.status === 'Em andamento' && (
-                                <>
-                                  <button
-                                    onClick={() => handlePauseStage(execution.id)}
-                                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all active:scale-95"
-                                    title="Pausar"
-                                  >
-                                    <Pause size={18} fill="currentColor" />
-                                    <span className="font-bold text-sm">Pausar</span>
-                                  </button>
-                                  <button
-                                    onClick={() => handleFinishStage(execution.id)}
-                                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 border-b-4 border-emerald-800"
-                                  >
-                                    <CheckCircle size={18} />
-                                    <span className="font-bold text-sm uppercase tracking-tight">Finalizar</span>
-                                  </button>
-                                </>
-                              )}
-                              {execution?.status === 'Pausado' && (
-                                <button
-                                  onClick={() => handleResumeStage(execution.id)}
-                                  className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-95"
-                                >
-                                  <Play size={18} fill="currentColor" />
-                                  <span className="font-bold text-sm">Retomar</span>
-                                </button>
-                              )}
-                            </div>
-
-                            {execution?.status === 'Em andamento' && (
-                              <div className="flex items-center gap-2 py-1 px-3 bg-rose-50 border border-rose-100 rounded-full animate-pulse">
-                                <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
-                                <span className="text-[11px] font-mono font-bold text-rose-600">
-                                  {(() => {
-                                    if (!execution.start_time) return "00:00:00";
-                                    const start = parseISO(execution.start_time).getTime();
-                                    const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
-                                    const current = now.getTime();
-                                    const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
-                                    return formatSeconds(diffSeconds);
-                                  })()}
-                                </span>
-                              </div>
+                    <div className="mb-8">
+                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                        <CheckCircle size={20} />
+                        Progresso das Etapas
+                      </h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {selectedOrder.stages_status.map((stage) => (
+                          <div
+                            key={stage.id}
+                            className={cn(
+                              "flex items-center gap-2 p-3 rounded-xl border text-xs font-medium transition-colors",
+                              stage.finished
+                                ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                                : "bg-zinc-50 border-zinc-100 text-zinc-500"
                             )}
+                          >
+                            {stage.finished ? <CheckCircle size={14} /> : <Circle size={14} />}
+                            {stage.name}
                           </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {(selectedOrder.art_url || (selectedOrder.art_urls && selectedOrder.art_urls.length > 0)) && (
+                      <div className="mb-8">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-bold flex items-center gap-2">
+                            <ImageIcon size={20} />
+                            Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
+                          </h3>
+                          <label className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-all cursor-pointer",
+                            isUploadingArt && "opacity-50 cursor-not-allowed"
+                          )}>
+                            {isUploadingArt ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Plus size={14} />
+                            )}
+                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar Imagem'}</span>
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/*"
+                              className="hidden"
+                              disabled={isUploadingArt}
+                              onChange={(e) => {
+                                if (e.target.files) handleAddImages(selectedOrder.id, e.target.files);
+                              }}
+                            />
+                          </label>
                         </div>
-                      );
-                    })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                          {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
+                            selectedOrder.art_urls.map((url, i) => (
+                              <div
+                                key={i}
+                                onClick={() => setSelectedFullImage(url)}
+                                className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Estampa ${i + 1}`}
+                                  className="max-w-full max-h-full object-contain"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
+                                  <Search size={16} />
+                                  Clique para Ampliar
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div
+                              onClick={() => setSelectedFullImage(selectedOrder.art_url || null)}
+                              className="group relative w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 cursor-pointer hover:border-zinc-400 transition-all"
+                            >
+                              <img
+                                src={selectedOrder.art_url}
+                                alt="Mockup do Cliente"
+                                className="w-full h-auto max-h-[400px] object-contain"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
+                                <Search size={16} />
+                                Clique para Ampliar
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedOrder.total_time_seconds > selectedOrder.estimated_time_seconds * 1.2 && (
+                      <div className="mb-8 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700">
+                        <AlertCircle size={20} />
+                        <p className="text-sm font-medium">Atenção: Tempo real ultrapassou 20% da estimativa padrão.</p>
+                      </div>
+                    )}
+
+                    <div className="mb-8">
+                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                        <ClipboardList size={20} />
+                        Etapas da Produção
+                      </h3>
+                      <div className="space-y-3">
+                        {selectedOrder.stages_status.map(orderStage => {
+                          const stage = stages.find(s => s.id === orderStage.id);
+                          if (!stage) return null;
+                          const execution = executions.find(e => e.stage_id === stage.id);
+                          return (
+                            <div key={stage.id} className="p-4 border border-zinc-200 rounded-xl flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className={cn(
+                                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
+                                  execution?.status === 'Finalizado' ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
+                                )}>
+                                  {execution?.status === 'Finalizado' ? <CheckCircle2 size={16} /> : stage.sort_order}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-sm">{stage.name}</p>
+                                  {execution && (
+                                    <p className="text-[10px] text-zinc-500">
+                                      {execution.user_name} • {formatSeconds(execution.total_time_seconds)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col items-end gap-3">
+                                <div className="flex items-center gap-3">
+                                  {!execution && (
+                                    <button
+                                      onClick={() => handleStartStage(stage.id)}
+                                      className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
+                                    >
+                                      <Play size={18} fill="currentColor" />
+                                      <span className="font-bold text-sm">Iniciar</span>
+                                    </button>
+                                  )}
+                                  {execution?.status === 'Em andamento' && (
+                                    <>
+                                      <button
+                                        onClick={() => handlePauseStage(execution.id)}
+                                        className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all active:scale-95"
+                                        title="Pausar"
+                                      >
+                                        <Pause size={18} fill="currentColor" />
+                                        <span className="font-bold text-sm">Pausar</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleFinishStage(execution.id)}
+                                        className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 border-b-4 border-emerald-800"
+                                      >
+                                        <CheckCircle size={18} />
+                                        <span className="font-bold text-sm uppercase tracking-tight">Finalizar</span>
+                                      </button>
+                                    </>
+                                  )}
+                                  {execution?.status === 'Pausado' && (
+                                    <button
+                                      onClick={() => handleResumeStage(execution.id)}
+                                      className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-95"
+                                    >
+                                      <Play size={18} fill="currentColor" />
+                                      <span className="font-bold text-sm">Retomar</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {execution?.status === 'Em andamento' && (
+                                  <div className="flex items-center gap-2 py-1 px-3 bg-rose-50 border border-rose-100 rounded-full animate-pulse">
+                                    <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
+                                    <span className="text-[11px] font-mono font-bold text-rose-600">
+                                      {(() => {
+                                        if (!execution.start_time) return "00:00:00";
+                                        const start = parseISO(execution.start_time).getTime();
+                                        const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
+                                        const current = now.getTime();
+                                        const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
+                                        return formatSeconds(diffSeconds);
+                                      })()}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
-        )
-        }
-      </AnimatePresence >
+            )
+          }
+        </AnimatePresence >
 
-      {/* New Order Modal (Simplified for MVP) */}
-      <AnimatePresence>
-        {
-          showNewOrderModal && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold">Novo Pedido</h3>
-                  <button onClick={() => setShowNewOrderModal(false)}><X size={20} /></button>
-                </div>
+        {/* New Order Modal (Simplified for MVP) */}
+        <AnimatePresence>
+          {
+            showNewOrderModal && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">Novo Pedido</h3>
+                    <button onClick={() => setShowNewOrderModal(false)}><X size={20} /></button>
+                  </div>
 
-                {/* Templates Section */}
-                <div className="mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
-                    {currentUser?.role === 'Admin' && (
+                  {/* Templates Section */}
+                  <div className="mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
+                      {currentUser?.role === 'Admin' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTemplate(null);
+                            setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                            setIsTemplateEditorOpen(true);
+                          }}
+                          className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                        >
+                          <Settings size={10} />
+                          Gerenciar
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {templates.map(template => (
+                        <button
+                          key={template.id}
+                          type="button"
+                          onClick={() => applyTemplate(template)}
+                          className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
+                        >
+                          {template.name}
+                        </button>
+                      ))}
                       <button
                         type="button"
                         onClick={() => {
-                          setEditingTemplate(null);
-                          setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                          setIsTemplateEditorOpen(true);
+                          setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
                         }}
-                        className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                        className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
                       >
-                        <Settings size={10} />
-                        Gerenciar
+                        Marcar Todas
                       </button>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {templates.map(template => (
                       <button
-                        key={template.id}
                         type="button"
-                        onClick={() => applyTemplate(template)}
-                        className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
+                        onClick={() => {
+                          setNewOrderRequiredStages([]);
+                        }}
+                        className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
                       >
-                        {template.name}
+                        Limpar Todas
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-                      }}
-                      className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
-                    >
-                      Marcar Todas
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewOrderRequiredStages([]);
-                      }}
-                      className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
-                    >
-                      Limpar Todas
-                    </button>
+                    </div>
                   </div>
-                </div>
 
-                <form className="space-y-4" onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (isCreatingOrder) return;
-                  setIsCreatingOrder(true);
-                  const form = e.currentTarget;
-                  const formData = new FormData(form);
+                  <form className="space-y-4" onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (isCreatingOrder) return;
+                    setIsCreatingOrder(true);
+                    const form = e.currentTarget;
+                    const formData = new FormData(form);
 
-                  // Validação: Não permitir pedido sem nenhuma etapa
-                  if (newOrderRequiredStages.length === 0) {
-                    alert("Por favor, selecione pelo menos uma etapa para o pedido.");
-                    return;
-                  }
-
-                  formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
-
-                  // Explicitly append all files from the input
-                  const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
-                  if (fileInput && fileInput.files) {
-                    // Clear any existing art_files to be sure
-                    formData.delete('art_files');
-                    for (let i = 0; i < fileInput.files.length; i++) {
-                      formData.append('art_files', fileInput.files[i]);
-                    }
-                  }
-
-                  try {
-                    const res = await fetch('/api/orders', {
-                      method: 'POST',
-                      headers: { 'x-user-role': currentUser?.role || '' },
-                      body: formData
-                    });
-
-                    if (!res.ok) {
-                      const errData = await res.json().catch(() => null);
-                      alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
-                      setIsCreatingOrder(false);
+                    // Validação: Não permitir pedido sem nenhuma etapa
+                    if (newOrderRequiredStages.length === 0) {
+                      alert("Por favor, selecione pelo menos uma etapa para o pedido.");
                       return;
                     }
 
-                    setShowNewOrderModal(false);
-                    setNewOrderForm({
-                      client_name: '',
-                      product_type: 'Dry Fit',
-                      print_type: 'Silk',
-                      quantity: '',
-                      deadline: '',
-                      observations: ''
-                    });
-                    setNewOrderRequiredStages([]);
-                    fetchData();
-                  } catch (error) {
-                    alert("Erro ao conectar com o servidor.");
-                  } finally {
-                    setIsCreatingOrder(false);
-                  }
-                }}>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente / Card</label>
-                    <input
-                      name="client_name"
-                      type="text"
-                      value={newOrderForm.client_name}
-                      onChange={(e) => setNewOrderForm({ ...newOrderForm, client_name: e.target.value })}
-                      placeholder="Ex: Camisetas Evento X"
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Imagem)</label>
-                    <div className="flex items-center justify-center w-full">
-                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <Upload className="w-8 h-8 mb-3 text-zinc-400" />
-                          <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
-                          <p className="text-xs text-zinc-400">PNG, JPG ou GIF</p>
-                        </div>
-                        <input
-                          name="art_files"
-                          type="file"
-                          className="hidden"
-                          accept="image/*"
-                          multiple
-                          onChange={(e) => {
-                            const files = e.target.files;
-                            if (files && files.length > 0) {
-                              // Simple visual feedback for multiple files
-                              const label = e.currentTarget.previousElementSibling?.querySelector('p');
-                              if (label) label.textContent = `${files.length} arquivo(s) selecionado(s)`;
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
-                      <select
-                        name="product_type"
-                        value={newOrderForm.product_type}
-                        onChange={(e) => setNewOrderForm({ ...newOrderForm, product_type: e.target.value as any })}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                      >
-                        <option>Dry Fit</option>
-                        <option>Algodão</option>
-                        <option>Poliamida</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
-                      <select
-                        name="print_type"
-                        value={newOrderForm.print_type}
-                        onChange={(e) => setNewOrderForm({ ...newOrderForm, print_type: e.target.value as any })}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                      >
-                        <option>Silk</option>
-                        <option>DTF</option>
-                        <option>Sublimação</option>
-                      </select>
-                    </div>
-                  </div>
+                    formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
 
-                  {/* Number of Colors - shown only for Silk and Sublimação */}
-                  {(newOrderForm.print_type === 'Silk' || newOrderForm.print_type === 'Sublimação') && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-                        🎨 Número de Cores da Estampa
-                        <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">afeta estimativa de tempo</span>
-                      </label>
-                      <select
-                        name="num_colors"
-                        defaultValue={1}
-                        className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white focus:border-emerald-400 outline-none"
-                      >
-                        <option value={1}>1 Cor</option>
-                        <option value={2}>2 Cores</option>
-                        <option value={3}>3 Cores</option>
-                        <option value={4}>4 Cores</option>
-                        <option value={5}>5+ Cores</option>
-                      </select>
-                    </div>
-                  )}
+                    // Explicitly append all files from the input
+                    const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
+                    if (fileInput && fileInput.files) {
+                      // Clear any existing art_files to be sure
+                      formData.delete('art_files');
+                      for (let i = 0; i < fileInput.files.length; i++) {
+                        formData.append('art_files', fileInput.files[i]);
+                      }
+                    }
 
-                  <div className="grid grid-cols-2 gap-4">
+                    try {
+                      const res = await fetch('/api/orders', {
+                        method: 'POST',
+                        headers: { 'x-user-role': currentUser?.role || '' },
+                        body: formData
+                      });
+
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => null);
+                        alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
+                        setIsCreatingOrder(false);
+                        return;
+                      }
+
+                      setShowNewOrderModal(false);
+                      setNewOrderForm({
+                        client_name: '',
+                        product_type: 'Dry Fit',
+                        print_type: 'Silk',
+                        quantity: '',
+                        deadline: '',
+                        observations: ''
+                      });
+                      setNewOrderRequiredStages([]);
+                      fetchData();
+                    } catch (error) {
+                      alert("Erro ao conectar com o servidor.");
+                    } finally {
+                      setIsCreatingOrder(false);
+                    }
+                  }}>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente / Card</label>
                       <input
-                        name="quantity"
-                        type="number"
-                        value={newOrderForm.quantity}
-                        onChange={(e) => setNewOrderForm({ ...newOrderForm, quantity: e.target.value })}
+                        name="client_name"
+                        type="text"
+                        value={newOrderForm.client_name}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, client_name: e.target.value })}
+                        placeholder="Ex: Camisetas Evento X"
                         className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                         required
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo</label>
-                      <input
-                        name="deadline"
-                        type="date"
-                        value={newOrderForm.deadline}
-                        onChange={(e) => setNewOrderForm({ ...newOrderForm, deadline: e.target.value })}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
-                    <textarea
-                      name="observations"
-                      value={newOrderForm.observations}
-                      onChange={(e) => setNewOrderForm({ ...newOrderForm, observations: e.target.value })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
-                    ></textarea>
-                  </div>
-
-                  {/* Step Selection */}
-                  <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <div className="flex justify-between items-center mb-3">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase leading-none">Etapas Deste Pedido ({newOrderRequiredStages.length} selecionadas)</label>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {stages.filter(s => s.active).map(stage => (
-                        <label key={stage.id} className={cn(
-                          "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
-                          newOrderRequiredStages.includes(stage.id)
-                            ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                            : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                        )}>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Imagem)</label>
+                      <div className="flex items-center justify-center w-full">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Upload className="w-8 h-8 mb-3 text-zinc-400" />
+                            <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
+                            <p className="text-xs text-zinc-400">PNG, JPG ou GIF</p>
+                          </div>
                           <input
-                            type="checkbox"
+                            name="art_files"
+                            type="file"
                             className="hidden"
-                            checked={newOrderRequiredStages.includes(stage.id)}
+                            accept="image/*"
+                            multiple
                             onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewOrderRequiredStages([...newOrderRequiredStages, stage.id]);
-                              } else {
-                                setNewOrderRequiredStages(newOrderRequiredStages.filter(id => id !== stage.id));
+                              const files = e.target.files;
+                              if (files && files.length > 0) {
+                                // Simple visual feedback for multiple files
+                                const label = e.currentTarget.previousElementSibling?.querySelector('p');
+                                if (label) label.textContent = `${files.length} arquivo(s) selecionado(s)`;
                               }
                             }}
                           />
-                          <div className={cn(
-                            "w-4 h-4 rounded border flex items-center justify-center transition-colors",
-                            newOrderRequiredStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
-                          )}>
-                            {newOrderRequiredStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
-                          </div>
-                          <span className="text-[11px] font-bold truncate">{stage.name}</span>
                         </label>
-                      ))}
+                      </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
+                        <select
+                          name="product_type"
+                          value={newOrderForm.product_type}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, product_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Dry Fit</option>
+                          <option>Algodão</option>
+                          <option>Poliamida</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
+                        <select
+                          name="print_type"
+                          value={newOrderForm.print_type}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, print_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Silk</option>
+                          <option>DTF</option>
+                          <option>Sublimação</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Number of Colors - shown only for Silk and Sublimação */}
+                    {(newOrderForm.print_type === 'Silk' || newOrderForm.print_type === 'Sublimação') && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                          🎨 Número de Cores da Estampa
+                          <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">afeta estimativa de tempo</span>
+                        </label>
+                        <select
+                          name="num_colors"
+                          defaultValue={1}
+                          className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white focus:border-emerald-400 outline-none"
+                        >
+                          <option value={1}>1 Cor</option>
+                          <option value={2}>2 Cores</option>
+                          <option value={3}>3 Cores</option>
+                          <option value={4}>4 Cores</option>
+                          <option value={5}>5+ Cores</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
+                        <input
+                          name="quantity"
+                          type="number"
+                          value={newOrderForm.quantity}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, quantity: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo</label>
+                        <input
+                          name="deadline"
+                          type="date"
+                          value={newOrderForm.deadline}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, deadline: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
+                      <textarea
+                        name="observations"
+                        value={newOrderForm.observations}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, observations: e.target.value })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                      ></textarea>
+                    </div>
+
+                    {/* Step Selection */}
+                    <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase leading-none">Etapas Deste Pedido ({newOrderRequiredStages.length} selecionadas)</label>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {stages.filter(s => s.active).map(stage => (
+                          <label key={stage.id} className={cn(
+                            "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                            newOrderRequiredStages.includes(stage.id)
+                              ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                              : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                          )}>
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={newOrderRequiredStages.includes(stage.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewOrderRequiredStages([...newOrderRequiredStages, stage.id]);
+                                } else {
+                                  setNewOrderRequiredStages(newOrderRequiredStages.filter(id => id !== stage.id));
+                                }
+                              }}
+                            />
+                            <div className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                              newOrderRequiredStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                            )}>
+                              {newOrderRequiredStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                            </div>
+                            <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isCreatingOrder}
+                      className={cn(
+                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                        isCreatingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                      )}
+                    >
+                      {isCreatingOrder ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Criando Pedido...
+                        </>
+                      ) : (
+                        "Criar Pedido"
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* User Modal (Collaborators) */}
+        <AnimatePresence>
+          {
+            showUserModal && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">
+                      {selectedUserForEdit ? 'Editar Colaborador' : 'Convidar Colaborador'}
+                    </h3>
+                    <button onClick={() => setShowUserModal(false)}><X size={20} /></button>
                   </div>
+                  <form className="space-y-4" onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (isSubmitting) return;
+                    setIsSubmitting(true);
+                    const form = e.currentTarget;
+                    const formData = new FormData(form);
+                    const data = Object.fromEntries(formData.entries());
 
-                  <button
-                    type="submit"
-                    disabled={isCreatingOrder}
-                    className={cn(
-                      "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                      isCreatingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                    )}
-                  >
-                    {isCreatingOrder ? (
-                      <>
-                        <RefreshCw size={18} className="animate-spin" />
-                        Criando Pedido...
-                      </>
-                    ) : (
-                      "Criar Pedido"
-                    )}
-                  </button>
-                </form>
-              </motion.div>
-            </div>
-          )
-        }
-      </AnimatePresence >
+                    const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
+                    const method = selectedUserForEdit ? 'PATCH' : 'POST';
 
-      {/* User Modal (Collaborators) */}
-      <AnimatePresence>
-        {
-          showUserModal && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold">
-                    {selectedUserForEdit ? 'Editar Colaborador' : 'Convidar Colaborador'}
-                  </h3>
-                  <button onClick={() => setShowUserModal(false)}><X size={20} /></button>
-                </div>
-                <form className="space-y-4" onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (isSubmitting) return;
-                  setIsSubmitting(true);
-                  const form = e.currentTarget;
-                  const formData = new FormData(form);
-                  const data = Object.fromEntries(formData.entries());
+                    try {
+                      const res = await fetch(url, {
+                        method,
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || ''
+                        },
+                        body: JSON.stringify({
+                          ...data,
+                          hourly_cost: Number(data.hourly_cost),
+                          active: data.active === 'on' || !selectedUserForEdit
+                        })
+                      });
 
-                  const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
-                  const method = selectedUserForEdit ? 'PATCH' : 'POST';
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => null);
+                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                        return;
+                      }
 
-                  try {
-                    const res = await fetch(url, {
-                      method,
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-role': currentUser?.role || ''
-                      },
-                      body: JSON.stringify({
-                        ...data,
-                        hourly_cost: Number(data.hourly_cost),
-                        active: data.active === 'on' || !selectedUserForEdit
-                      })
-                    });
-
-                    if (!res.ok) {
-                      const errData = await res.json().catch(() => null);
-                      alert(`Erro: ${errData?.error || 'Falha na operação'}`);
-                      return;
+                      setShowUserModal(false);
+                      fetchUsers();
+                    } catch (error) {
+                      alert("Erro ao conectar com o servidor.");
+                    } finally {
+                      setIsSubmitting(false);
                     }
-
-                    setShowUserModal(false);
-                    fetchUsers();
-                  } catch (error) {
-                    alert("Erro ao conectar com o servidor.");
-                  } finally {
-                    setIsSubmitting(false);
-                  }
-                }}>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
-                    <input
-                      name="name"
-                      type="text"
-                      defaultValue={selectedUserForEdit?.name}
-                      placeholder="Ex: João Silva"
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">E-mail</label>
-                    <input
-                      name="email"
-                      type="email"
-                      defaultValue={selectedUserForEdit?.email}
-                      placeholder="joao@uniflow.com"
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                      required
-                    />
-                  </div>
-                  {!selectedUserForEdit && (
+                  }}>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
-                      <input
-                        name="password"
-                        type="password"
-                        placeholder="Mínimo 6 caracteres"
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
-                      <select
-                        name="role"
-                        defaultValue={selectedUserForEdit?.role || 'Produção'}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                      >
-                        <option value="Admin">Admin</option>
-                        <option value="Produção">Produção</option>
-                        <option value="Comercial">Comercial</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
-                      <input
-                        name="hourly_cost"
-                        type="number"
-                        step="0.01"
-                        defaultValue={selectedUserForEdit?.hourly_cost || 0}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                  </div>
-                  {selectedUserForEdit && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        name="active"
-                        type="checkbox"
-                        defaultChecked={selectedUserForEdit.active}
-                        id="user-active"
-                      />
-                      <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={cn(
-                      "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                      isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                    )}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <RefreshCw size={18} className="animate-spin" />
-                        Processando...
-                      </>
-                    ) : (
-                      selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
-                    )}
-                  </button>
-                </form>
-              </motion.div>
-            </div>
-          )
-        }
-      </AnimatePresence >
-
-      {/* Template Editor Modal */}
-      <AnimatePresence>
-        {
-          isTemplateEditorOpen && (
-            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-xl font-bold">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h3>
-                  <button onClick={() => setIsTemplateEditorOpen(false)}><X size={20} /></button>
-                </div>
-
-                <form className="space-y-6" onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (isSubmitting) return;
-                  setIsSubmitting(true);
-                  const form = e.currentTarget;
-                  const formData = new FormData(form);
-                  const data = {
-                    name: formData.get('name'),
-                    product_type: formData.get('product_type'),
-                    print_type: formData.get('print_type'),
-                    quantity: formData.get('quantity'),
-                    observations: formData.get('observations'),
-                    required_stages: templateFormStages
-                  };
-
-                  const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
-                  const method = editingTemplate ? 'PATCH' : 'POST';
-
-                  try {
-                    const res = await fetch(url, {
-                      method,
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-role': currentUser?.role || ''
-                      },
-                      body: JSON.stringify(data)
-                    });
-
-                    if (!res.ok) {
-                      const errData = await res.json().catch(() => null);
-                      alert(`Erro: ${errData?.error || 'Falha na operação'}`);
-                      return;
-                    }
-
-                    setIsTemplateEditorOpen(false);
-                    fetchData();
-                  } catch (error) {
-                    alert("Erro ao conectar com o servidor.");
-                  } finally {
-                    setIsSubmitting(false);
-                  }
-                }}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Template</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
                       <input
                         name="name"
                         type="text"
-                        defaultValue={editingTemplate?.name}
-                        placeholder="Ex: Silk 2 Cores Frente"
+                        defaultValue={selectedUserForEdit?.name}
+                        placeholder="Ex: João Silva"
                         className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                         required
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">E-mail</label>
                       <input
-                        name="quantity"
-                        type="number"
-                        defaultValue={editingTemplate?.quantity}
+                        name="email"
+                        type="email"
+                        defaultValue={selectedUserForEdit?.email}
+                        placeholder="joao@uniflow.com"
                         className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
                       />
                     </div>
+                    {!selectedUserForEdit && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
+                        <input
+                          name="password"
+                          type="password"
+                          placeholder="Mínimo 6 caracteres"
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
+                        <select
+                          name="role"
+                          defaultValue={selectedUserForEdit?.role || 'Produção'}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option value="Admin">Admin</option>
+                          <option value="Produção">Produção</option>
+                          <option value="Comercial">Comercial</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
+                        <input
+                          name="hourly_cost"
+                          type="number"
+                          step="0.01"
+                          defaultValue={selectedUserForEdit?.hourly_cost || 0}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                    </div>
+                    {selectedUserForEdit && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          name="active"
+                          type="checkbox"
+                          defaultChecked={selectedUserForEdit.active}
+                          id="user-active"
+                        />
+                        <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={cn(
+                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                        isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* Template Editor Modal */}
+        <AnimatePresence>
+          {
+            isTemplateEditorOpen && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h3>
+                    <button onClick={() => setIsTemplateEditorOpen(false)}><X size={20} /></button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
-                      <select
-                        name="product_type"
-                        defaultValue={editingTemplate?.product_type || 'Dry Fit'}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                      >
-                        <option>Dry Fit</option>
-                        <option>Algodão</option>
-                        <option>Poliamida</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
-                      <select
-                        name="print_type"
-                        defaultValue={editingTemplate?.print_type || 'Silk'}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                      >
-                        <option>Silk</option>
-                        <option>DTF</option>
-                        <option>Sublimação</option>
-                      </select>
-                    </div>
-                  </div>
+                  <form className="space-y-6" onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (isSubmitting) return;
+                    setIsSubmitting(true);
+                    const form = e.currentTarget;
+                    const formData = new FormData(form);
+                    const data = {
+                      name: formData.get('name'),
+                      product_type: formData.get('product_type'),
+                      print_type: formData.get('print_type'),
+                      quantity: formData.get('quantity'),
+                      observations: formData.get('observations'),
+                      required_stages: templateFormStages
+                    };
 
-                  <div>
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                      {stages.filter(s => s.active).map(stage => (
-                        <label key={stage.id} className={cn(
-                          "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
-                          templateFormStages.includes(stage.id)
-                            ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
-                            : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                        )}>
-                          <input
-                            type="checkbox"
-                            className="hidden"
-                            checked={templateFormStages.includes(stage.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setTemplateFormStages([...templateFormStages, stage.id]);
-                              } else {
-                                setTemplateFormStages(templateFormStages.filter(id => id !== stage.id));
-                              }
-                            }}
-                          />
-                          <div className={cn(
-                            "w-4 h-4 rounded border flex items-center justify-center transition-colors",
-                            templateFormStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                    const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
+                    const method = editingTemplate ? 'PATCH' : 'POST';
+
+                    try {
+                      const res = await fetch(url, {
+                        method,
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || ''
+                        },
+                        body: JSON.stringify(data)
+                      });
+
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => null);
+                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                        return;
+                      }
+
+                      setIsTemplateEditorOpen(false);
+                      fetchData();
+                    } catch (error) {
+                      alert("Erro ao conectar com o servidor.");
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Template</label>
+                        <input
+                          name="name"
+                          type="text"
+                          defaultValue={editingTemplate?.name}
+                          placeholder="Ex: Silk 2 Cores Frente"
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
+                        <input
+                          name="quantity"
+                          type="number"
+                          defaultValue={editingTemplate?.quantity}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
+                        <select
+                          name="product_type"
+                          defaultValue={editingTemplate?.product_type || 'Dry Fit'}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Dry Fit</option>
+                          <option>Algodão</option>
+                          <option>Poliamida</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
+                        <select
+                          name="print_type"
+                          defaultValue={editingTemplate?.print_type || 'Silk'}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Silk</option>
+                          <option>DTF</option>
+                          <option>Sublimação</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                        {stages.filter(s => s.active).map(stage => (
+                          <label key={stage.id} className={cn(
+                            "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                            templateFormStages.includes(stage.id)
+                              ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                              : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
                           )}>
-                            {templateFormStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
-                          </div>
-                          <span className="text-[11px] font-bold truncate">{stage.name}</span>
-                        </label>
-                      ))}
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={templateFormStages.includes(stage.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setTemplateFormStages([...templateFormStages, stage.id]);
+                                } else {
+                                  setTemplateFormStages(templateFormStages.filter(id => id !== stage.id));
+                                }
+                              }}
+                            />
+                            <div className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                              templateFormStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                            )}>
+                              {templateFormStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                            </div>
+                            <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
+                      <textarea
+                        name="observations"
+                        defaultValue={editingTemplate?.observations}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                      ></textarea>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={cn(
+                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                        isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Salvando...
+                        </>
+                      ) : (
+                        editingTemplate ? 'Salvar Alterações' : 'Criar Template'
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* Photo Lightbox */}
+        <AnimatePresence>
+          {
+            selectedFullImage && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
+                onClick={() => setSelectedFullImage(null)}
+              >
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-[110]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedFullImage(null);
+                  }}
+                >
+                  <X size={24} />
+                </motion.button>
+
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="relative w-full h-full flex items-center justify-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <img
+                    src={selectedFullImage}
+                    alt="Detalhe da Estampa"
+                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                    referrerPolicy="no-referrer"
+                  />
+                </motion.div>
+              </motion.div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* ── Edit Order Modal ──────────────────────────────────────────────── */}
+        <AnimatePresence>
+          {
+            showEditOrderModal && selectedOrder && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setShowEditOrderModal(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                    <div>
+                      <h2 className="font-bold text-lg">Editar Pedido</h2>
+                      <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                    </div>
+                    <button onClick={() => setShowEditOrderModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  {editOrderHasExecutions && (
+                    <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                      <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                      <p className="text-amber-700 text-xs font-medium">
+                        Este pedido já possui tempo registrado em execuções. Alterar quantidade ou tipo pode afetar indicadores históricos.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente</label>
+                        <input
+                          type="text"
+                          value={editOrderForm.client_name || ''}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, client_name: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
+                        <select
+                          value={editOrderForm.product_type || 'Dry Fit'}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, product_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        >
+                          <option>Dry Fit</option>
+                          <option>Algodão</option>
+                          <option>Poliamida</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
+                        <select
+                          value={editOrderForm.print_type || 'Silk'}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, print_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        >
+                          <option>Silk</option>
+                          <option>DTF</option>
+                          <option>Sublimação</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editOrderForm.quantity || ''}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, quantity: Number(e.target.value) })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº de Cores</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editOrderForm.num_colors || 1}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, num_colors: Number(e.target.value) })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo de Entrega</label>
+                        <input
+                          type="date"
+                          value={editOrderForm.deadline?.split('T')[0] || ''}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, deadline: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Etapas de Produção</label>
+                      <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                        {stages.filter(s => s.active).map(stage => {
+                          const checked = (editOrderForm.required_stages || []).includes(stage.id);
+                          return (
+                            <label key={stage.id} className={cn(
+                              "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none text-[11px] font-bold",
+                              checked ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                            )}>
+                              <input
+                                type="checkbox"
+                                className="hidden"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const prev = editOrderForm.required_stages || [];
+                                  setEditOrderForm({
+                                    ...editOrderForm,
+                                    required_stages: e.target.checked
+                                      ? [...prev, stage.id]
+                                      : prev.filter(id => id !== stage.id)
+                                  });
+                                }}
+                              />
+                              <div className={cn("w-4 h-4 rounded border flex items-center justify-center", checked ? "bg-white border-white text-zinc-900" : "border-zinc-300")}>
+                                {checked && <CheckCircle size={10} strokeWidth={4} />}
+                              </div>
+                              {stage.name}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
+                      <textarea
+                        value={editOrderForm.observations || ''}
+                        onChange={(e) => setEditOrderForm({ ...editOrderForm, observations: e.target.value })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                      />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => setShowEditOrderModal(false)}
+                        className="flex-1 py-2.5 border border-zinc-200 rounded-xl text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleEditOrderSubmit}
+                        disabled={isEditingOrder}
+                        className={cn(
+                          "flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
+                          isEditingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                        )}
+                      >
+                        {isEditingOrder ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle size={16} /> Salvar Alterações</>}
+                      </button>
                     </div>
                   </div>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
-                    <textarea
-                      name="observations"
-                      defaultValue={editingTemplate?.observations}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
-                    ></textarea>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={cn(
-                      "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                      isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                    )}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <RefreshCw size={18} className="animate-spin" />
-                        Salvando...
-                      </>
-                    ) : (
-                      editingTemplate ? 'Salvar Alterações' : 'Criar Template'
-                    )}
-                  </button>
-                </form>
-              </motion.div>
-            </div>
-          )
-        }
-      </AnimatePresence >
-
-      {/* Photo Lightbox */}
-      <AnimatePresence>
-        {
-          selectedFullImage && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
-              onClick={() => setSelectedFullImage(null)}
-            >
-              <motion.button
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-[110]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedFullImage(null);
-                }}
-              >
-                <X size={24} />
-              </motion.button>
-
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="relative w-full h-full flex items-center justify-center"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <img
-                  src={selectedFullImage}
-                  alt="Detalhe da Estampa"
-                  className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
-                  referrerPolicy="no-referrer"
+        {/* ── Order History Modal ───────────────────────────────────────────── */}
+        <AnimatePresence>
+          {
+            showHistoryModal && selectedOrder && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setShowHistoryModal(false)}
                 />
-              </motion.div>
-            </motion.div>
-          )
-        }
-      </AnimatePresence >
-
-      {/* ── Edit Order Modal ──────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showEditOrderModal && selectedOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => setShowEditOrderModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-                <div>
-                  <h2 className="font-bold text-lg">Editar Pedido</h2>
-                  <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
-                </div>
-                <button onClick={() => setShowEditOrderModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-
-              {editOrderHasExecutions && (
-                <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
-                  <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
-                  <p className="text-amber-700 text-xs font-medium">
-                    Este pedido já possui tempo registrado em execuções. Alterar quantidade ou tipo pode afetar indicadores históricos.
-                  </p>
-                </div>
-              )}
-
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente</label>
-                    <input
-                      type="text"
-                      value={editOrderForm.client_name || ''}
-                      onChange={(e) => setEditOrderForm({ ...editOrderForm, client_name: e.target.value })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                    />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                    <div>
+                      <h2 className="font-bold text-lg">Histórico de Alterações</h2>
+                      <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                    </div>
+                    <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
+                      <X size={20} />
+                    </button>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
-                    <select
-                      value={editOrderForm.product_type || 'Dry Fit'}
-                      onChange={(e) => setEditOrderForm({ ...editOrderForm, product_type: e.target.value as any })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                    >
-                      <option>Dry Fit</option>
-                      <option>Algodão</option>
-                      <option>Poliamida</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
-                    <select
-                      value={editOrderForm.print_type || 'Silk'}
-                      onChange={(e) => setEditOrderForm({ ...editOrderForm, print_type: e.target.value as any })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                    >
-                      <option>Silk</option>
-                      <option>DTF</option>
-                      <option>Sublimação</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={editOrderForm.quantity || ''}
-                      onChange={(e) => setEditOrderForm({ ...editOrderForm, quantity: Number(e.target.value) })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº de Cores</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={editOrderForm.num_colors || 1}
-                      onChange={(e) => setEditOrderForm({ ...editOrderForm, num_colors: Number(e.target.value) })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo de Entrega</label>
-                    <input
-                      type="date"
-                      value={editOrderForm.deadline?.split('T')[0] || ''}
-                      onChange={(e) => setEditOrderForm({ ...editOrderForm, deadline: e.target.value })}
-                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Etapas de Produção</label>
-                  <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                    {stages.filter(s => s.active).map(stage => {
-                      const checked = (editOrderForm.required_stages || []).includes(stage.id);
-                      return (
-                        <label key={stage.id} className={cn(
-                          "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none text-[11px] font-bold",
-                          checked ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                        )}>
-                          <input
-                            type="checkbox"
-                            className="hidden"
-                            checked={checked}
-                            onChange={(e) => {
-                              const prev = editOrderForm.required_stages || [];
-                              setEditOrderForm({
-                                ...editOrderForm,
-                                required_stages: e.target.checked
-                                  ? [...prev, stage.id]
-                                  : prev.filter(id => id !== stage.id)
-                              });
-                            }}
-                          />
-                          <div className={cn("w-4 h-4 rounded border flex items-center justify-center", checked ? "bg-white border-white text-zinc-900" : "border-zinc-300")}>
-                            {checked && <CheckCircle size={10} strokeWidth={4} />}
-                          </div>
-                          {stage.name}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
-                  <textarea
-                    value={editOrderForm.observations || ''}
-                    onChange={(e) => setEditOrderForm({ ...editOrderForm, observations: e.target.value })}
-                    className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => setShowEditOrderModal(false)}
-                    className="flex-1 py-2.5 border border-zinc-200 rounded-xl text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleEditOrderSubmit}
-                    disabled={isEditingOrder}
-                    className={cn(
-                      "flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
-                      isEditingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                    )}
-                  >
-                    {isEditingOrder ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle size={16} /> Salvar Alterações</>}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Order History Modal ───────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showHistoryModal && selectedOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => setShowHistoryModal(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-                <div>
-                  <h2 className="font-bold text-lg">Histórico de Alterações</h2>
-                  <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
-                </div>
-                <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="overflow-y-auto flex-1 p-6">
-                {isLoadingHistory ? (
-                  <div className="flex items-center justify-center py-12 text-zinc-400">
-                    <RefreshCw size={24} className="animate-spin" />
-                  </div>
-                ) : orderHistory.length === 0 ? (
-                  <div className="text-center py-12 text-zinc-400">
-                    <FileText size={32} className="mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">Nenhum registro de alteração encontrado.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {orderHistory.map((entry) => {
-                      const acaoColors: Record<string, string> = {
-                        criou: 'bg-emerald-100 text-emerald-700',
-                        editou: 'bg-sky-100 text-sky-700',
-                        cancelou: 'bg-amber-100 text-amber-700',
-                        excluiu: 'bg-rose-100 text-rose-700',
-                        restaurou: 'bg-violet-100 text-violet-700',
-                      };
-                      const acaoLabels: Record<string, string> = {
-                        criou: 'Criou', editou: 'Editou', cancelou: 'Cancelou',
-                        excluiu: 'Excluiu', restaurou: 'Restaurou'
-                      };
-                      return (
-                        <div key={entry.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", acaoColors[entry.acao] || 'bg-zinc-100 text-zinc-600')}>
-                                {acaoLabels[entry.acao] || entry.acao}
-                              </span>
-                              <span className="text-xs font-semibold text-zinc-700">{entry.usuario}</span>
-                            </div>
-                            <span className="text-[10px] text-zinc-400">
-                              {format(new Date(entry.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
-                            </span>
-                          </div>
-                          {entry.acao === 'editou' && entry.antes && entry.depois && (() => {
-                            const campos = ['client_name', 'product_type', 'print_type', 'quantity', 'deadline', 'observations', 'num_colors'];
-                            const alterados = campos.filter(c => JSON.stringify(entry.antes[c]) !== JSON.stringify(entry.depois[c]));
-                            return alterados.length > 0 ? (
-                              <div className="space-y-1 mt-2">
-                                {alterados.map(campo => (
-                                  <div key={campo} className="text-xs flex items-center gap-2">
-                                    <span className="font-bold text-zinc-500 uppercase text-[9px] w-20 shrink-0">{campo.replace('_', ' ')}</span>
-                                    <span className="text-rose-500 line-through truncate">{String(entry.antes[campo] ?? '-')}</span>
-                                    <ChevronRight size={10} className="text-zinc-300 shrink-0" />
-                                    <span className="text-emerald-600 font-medium truncate">{String(entry.depois[campo] ?? '-')}</span>
-                                  </div>
-                                ))}
+                  <div className="overflow-y-auto flex-1 p-6">
+                    {isLoadingHistory ? (
+                      <div className="flex items-center justify-center py-12 text-zinc-400">
+                        <RefreshCw size={24} className="animate-spin" />
+                      </div>
+                    ) : orderHistory.length === 0 ? (
+                      <div className="text-center py-12 text-zinc-400">
+                        <FileText size={32} className="mx-auto mb-3 opacity-50" />
+                        <p className="text-sm">Nenhum registro de alteração encontrado.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {orderHistory.map((entry) => {
+                          const acaoColors: Record<string, string> = {
+                            criou: 'bg-emerald-100 text-emerald-700',
+                            editou: 'bg-sky-100 text-sky-700',
+                            cancelou: 'bg-amber-100 text-amber-700',
+                            excluiu: 'bg-rose-100 text-rose-700',
+                            restaurou: 'bg-violet-100 text-violet-700',
+                          };
+                          const acaoLabels: Record<string, string> = {
+                            criou: 'Criou', editou: 'Editou', cancelou: 'Cancelou',
+                            excluiu: 'Excluiu', restaurou: 'Restaurou'
+                          };
+                          return (
+                            <div key={entry.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", acaoColors[entry.acao] || 'bg-zinc-100 text-zinc-600')}>
+                                    {acaoLabels[entry.acao] || entry.acao}
+                                  </span>
+                                  <span className="text-xs font-semibold text-zinc-700">{entry.usuario}</span>
+                                </div>
+                                <span className="text-[10px] text-zinc-400">
+                                  {format(new Date(entry.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
+                                </span>
                               </div>
-                            ) : null;
-                          })()}
-                        </div>
-                      );
-                    })}
+                              {entry.acao === 'editou' && entry.antes && entry.depois && (() => {
+                                const campos = ['client_name', 'product_type', 'print_type', 'quantity', 'deadline', 'observations', 'num_colors'];
+                                const alterados = campos.filter(c => JSON.stringify(entry.antes[c]) !== JSON.stringify(entry.depois[c]));
+                                return alterados.length > 0 ? (
+                                  <div className="space-y-1 mt-2">
+                                    {alterados.map(campo => (
+                                      <div key={campo} className="text-xs flex items-center gap-2">
+                                        <span className="font-bold text-zinc-500 uppercase text-[9px] w-20 shrink-0">{campo.replace('_', ' ')}</span>
+                                        <span className="text-rose-500 line-through truncate">{String(entry.antes[campo] ?? '-')}</span>
+                                        <ChevronRight size={10} className="text-zinc-300 shrink-0" />
+                                        <span className="text-emerald-600 font-medium truncate">{String(entry.depois[campo] ?? '-')}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
+            )}
+        </AnimatePresence>
+      </main >
     </div >
   );
 }

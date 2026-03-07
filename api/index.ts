@@ -78,12 +78,15 @@ app.get("/api/dashboard/stats", async (req, res) => {
 
 // ── Reports ───────────────────────────────────────────────────────────────
 app.get("/api/reports", async (req, res) => {
-    const { period, user_id, stage_id } = req.query;
+    const { period, user_id, stage_id, startDate, endDate } = req.query;
     const { data, error } = await supabase.rpc("get_reports", {
         p_period: period || "day",
         p_user_id: user_id ? Number(user_id) : null,
         p_stage_id: stage_id ? Number(stage_id) : null,
+        p_start_date: startDate || null,
+        p_end_date: endDate || null
     });
+
     if (checkError(error, res, "Erro nos relatórios")) return;
     return res.json(data);
 });
@@ -1083,10 +1086,13 @@ app.get("/api/reports/delays", async (_req, res) => {
 });
 
 app.get("/api/reports/delivery", async (req, res) => {
-    const { period } = req.query;
+    const { period, startDate: queryStartDate, endDate: queryEndDate } = req.query;
     const now = new Date();
     let startDate = new Date();
-    if (period === 'day') {
+
+    if (queryStartDate) {
+        startDate = new Date(queryStartDate as string);
+    } else if (period === 'day') {
         startDate.setHours(0, 0, 0, 0);
     } else if (period === 'week') {
         const day = startDate.getDay();
@@ -1100,12 +1106,18 @@ app.get("/api/reports/delivery", async (req, res) => {
         startDate.setFullYear(2000);
     }
 
+    let endDate = now;
+    if (queryEndDate) {
+        endDate = new Date(queryEndDate as string);
+    }
+
     const { data: orders, error } = await supabase
         .from("orders")
         .select("id, created_at, quantity, deadline, delivered_at")
         .eq("status", "Entregue")
         .is("deleted_at", null)
-        .gte("delivered_at", startDate.toISOString());
+        .gte("delivered_at", startDate.toISOString())
+        .lte("delivered_at", endDate.toISOString());
 
     if (checkError(error, res, "Erro ao buscar entregas")) return;
 
@@ -1172,7 +1184,7 @@ app.get("/api/reports/delivery", async (req, res) => {
     const cumprimento_meta_percent = chartData.length > 0 ? (met_goal_days / chartData.length) * 100 : 0;
 
     return res.json({
-        entregues_hoje,
+        entregues_hoje: safeData.filter(o => new Date(o.delivered_at).toLocaleDateString('pt-BR') === now.toLocaleDateString('pt-BR')).length,
         entregues_periodo,
         taxa_no_prazo_percent,
         lead_time_medio_dias,
@@ -1180,6 +1192,23 @@ app.get("/api/reports/delivery", async (req, res) => {
         grafico: chartData,
         atrasados: []
     });
+});
+
+// ── Operational Report (Drill-Down) ───────────────────────────────────────
+app.get("/api/reports/operational", async (req, res) => {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+        return res.status(400).json({ error: "Parâmetros startDate e endDate são obrigatórios" });
+    }
+
+    const { data, error } = await supabase.rpc("get_operational_report", {
+        p_start_date: startDate,
+        p_end_date: endDate
+    });
+
+    if (checkError(error, res, "Erro ao buscar relatório operacional")) return;
+    return res.json(data);
 });
 
 // ── Production Profile Report ─────────────────────────────────────────────

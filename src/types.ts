@@ -145,3 +145,39 @@ export interface DashboardStats {
     percentualOcupacao: number;
   };
 }
+
+export interface OperationalStep {
+  hora: string;
+  pedido: string;
+  cliente: string;
+  etapa: string;
+  colaborador: string;
+  pecas: number;
+}
+
+export interface OrderProgress {
+  pedido: string;
+  cliente: string;
+  etapa_atual: string;
+  etapas_dia: string;
+}
+
+export interface FinishedOrder {
+  pedido: string;
+  cliente: string;
+  pecas: number;
+  lead_time: string;
+}
+
+export interface CollaboratorProductivity {
+  colaborador: string;
+  etapas: number;
+  pecas: number;
+}
+
+export interface OperationalReportData {
+  executions: OperationalStep[];
+  progress: OrderProgress[];
+  finished: FinishedOrder[];
+  productivity: CollaboratorProductivity[];
+}
