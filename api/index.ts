@@ -1065,6 +1065,7 @@ app.get("/api/reports/delays", async (_req, res) => {
         .neq("status", "Entregue")
         .neq("status", "Cancelado")
         .lt("deadline", today)
+        .is("deleted_at", null)
         .order("deadline", { ascending: true });
 
     if (checkError(error, res, "Erro ao buscar atrasos")) return;
@@ -1103,6 +1104,7 @@ app.get("/api/reports/delivery", async (req, res) => {
         .from("orders")
         .select("id, created_at, quantity, deadline, delivered_at")
         .eq("status", "Entregue")
+        .is("deleted_at", null)
         .gte("delivered_at", startDate.toISOString());
 
     if (checkError(error, res, "Erro ao buscar entregas")) return;
@@ -1186,6 +1188,7 @@ app.get("/api/reports/profile", async (_req, res) => {
         .from("orders")
         .select("product_type, print_type, num_colors, total_time_seconds, quantity")
         .eq("status", "Entregue")
+        .is("deleted_at", null)
         .gt("total_time_seconds", 0);
 
     if (checkError(error, res)) return;
