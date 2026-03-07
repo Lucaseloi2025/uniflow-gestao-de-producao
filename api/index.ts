@@ -511,9 +511,15 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
 
 app.patch("/api/orders/:id/status", async (req, res) => {
     const { status } = req.body;
+    const updates: any = { status };
+    if (status === 'Entregue') {
+        updates.delivered_at = new Date().toISOString();
+    } else {
+        updates.delivered_at = null;
+    }
     const { error } = await supabase
         .from("orders")
-        .update({ status })
+        .update(updates)
         .eq("id", Number(req.params.id));
     if (checkError(error, res)) return;
     return res.json({ success: true });
@@ -945,10 +951,10 @@ app.get("/api/config/producao", async (_req, res) => {
 });
 
 app.patch("/api/config/producao", isAdmin, async (req, res) => {
-    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes } = req.body;
+    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas } = req.body;
     const { error } = await supabase
         .from("config_producao")
-        .update({ jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes })
+        .update({ jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas })
         .eq("id", 1);
     if (checkError(error, res)) return;
     return res.json({ success: true });
@@ -1048,6 +1054,130 @@ app.post("/api/clients", async (req, res) => {
         .single();
     if (checkError(error, res)) return;
     return res.json({ id: data.id });
+});
+
+// ── Delivery & Delays Reports ─────────────────────────────────────────────
+app.get("/api/reports/delays", async (_req, res) => {
+    const today = new Date().toISOString().split("T")[0];
+    const { data, error } = await supabase
+        .from("orders")
+        .select("id, order_number, client_name, product_type, print_type, quantity, deadline")
+        .neq("status", "Entregue")
+        .neq("status", "Cancelado")
+        .lt("deadline", today)
+        .order("deadline", { ascending: true });
+
+    if (checkError(error, res, "Erro ao buscar atrasos")) return;
+
+    const atrasados = (data || []).map(o => {
+        const diffTime = Math.abs(new Date().getTime() - new Date(o.deadline).getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return {
+            ...o,
+            dias_atraso: diffDays
+        };
+    });
+
+    return res.json(atrasados);
+});
+
+app.get("/api/reports/delivery", async (req, res) => {
+    const { period } = req.query;
+    const now = new Date();
+    let startDate = new Date();
+    if (period === 'day') {
+        startDate.setHours(0, 0, 0, 0);
+    } else if (period === 'week') {
+        const day = startDate.getDay();
+        const diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
+        startDate.setDate(diff);
+        startDate.setHours(0, 0, 0, 0);
+    } else if (period === 'month') {
+        startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
+    } else {
+        startDate.setFullYear(2000);
+    }
+
+    const { data: orders, error } = await supabase
+        .from("orders")
+        .select("id, created_at, quantity, deadline, delivered_at")
+        .eq("status", "Entregue")
+        .gte("delivered_at", startDate.toISOString());
+
+    if (checkError(error, res, "Erro ao buscar entregas")) return;
+
+    const data = orders || [];
+
+    // Fallback if missing delivered_at somehow
+    const safeData = data.filter(o => o.delivered_at);
+
+    const entregues_hoje = safeData.filter(o => {
+        return new Date(o.delivered_at).toLocaleDateString('pt-BR') === now.toLocaleDateString('pt-BR');
+    }).length;
+
+    const entregues_periodo = safeData.length;
+
+    let parts_delivered = 0;
+    let on_time_count = 0;
+    let total_lead_seconds = 0;
+
+    safeData.forEach(o => {
+        parts_delivered += Number(o.quantity) || 0;
+        const deliveredAt = new Date(o.delivered_at).getTime();
+        const deadline = new Date(o.deadline).getTime();
+        if (deliveredAt <= deadline + 24 * 60 * 60 * 1000) {
+            on_time_count++;
+        }
+        const createdAt = new Date(o.created_at).getTime();
+        total_lead_seconds += Math.max(0, (deliveredAt - createdAt) / 1000);
+    });
+
+    const taxa_no_prazo_percent = safeData.length > 0 ? (on_time_count / safeData.length) * 100 : 0;
+    const lead_time_medio_dias = safeData.length > 0 ? (total_lead_seconds / safeData.length) / (24 * 3600) : 0;
+
+    const chartMap: Record<string, { pedidos: number, pecas: number }> = {};
+    safeData.forEach(o => {
+        const localDate = new Date(o.delivered_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        if (!chartMap[localDate]) chartMap[localDate] = { pedidos: 0, pecas: 0 };
+        chartMap[localDate].pedidos++;
+        chartMap[localDate].pecas += Number(o.quantity) || 0;
+    });
+
+    const { data: config } = await supabase.from("config_producao").select("meta_diaria_pedidos, meta_diaria_pecas").eq("id", 1).single();
+    const meta_pedidos = config?.meta_diaria_pedidos || 0;
+    const meta_pecas = config?.meta_diaria_pecas || 0;
+
+    const chartData = Object.keys(chartMap).map(dateStr => ({
+        data: dateStr,
+        pedidos: chartMap[dateStr].pedidos,
+        pecas: chartMap[dateStr].pecas,
+        meta_pedidos,
+        meta_pecas
+    }));
+
+    chartData.sort((a, b) => {
+        const [d1, m1, y1] = a.data.split('/');
+        const [d2, m2, y2] = b.data.split('/');
+        return new Date(`${y1}-${m1}-${d1}`).getTime() - new Date(`${y2}-${m2}-${d2}`).getTime();
+    });
+
+    let met_goal_days = 0;
+    chartData.forEach(d => {
+        if (d.pedidos >= meta_pedidos) met_goal_days++;
+    });
+
+    const cumprimento_meta_percent = chartData.length > 0 ? (met_goal_days / chartData.length) * 100 : 0;
+
+    return res.json({
+        entregues_hoje,
+        entregues_periodo,
+        taxa_no_prazo_percent,
+        lead_time_medio_dias,
+        cumprimento_meta_percent,
+        grafico: chartData,
+        atrasados: []
+    });
 });
 
 // ── Production Profile Report ─────────────────────────────────────────────

@@ -101,6 +101,29 @@ export interface StageExecution {
   is_paused?: boolean;
 }
 
+export interface DeliveryReportData {
+  entregues_hoje: number;
+  entregues_periodo: number;
+  taxa_no_prazo_percent: number;
+  lead_time_medio_dias: number;
+  cumprimento_meta_percent: number;
+  grafico: {
+    data: string;
+    pedidos: number;
+    pecas: number;
+    meta_pedidos: number;
+    meta_pecas: number;
+  }[];
+  atrasados: {
+    id: number;
+    order_number: string;
+    client_name: string;
+    product_type: string;
+    deadline: string;
+    dias_atraso: number;
+  }[];
+}
+
 export interface DashboardStats {
   activeOrders: number;
   avgTimeByPrint: { print_type: string; avg_time: number }[];
@@ -112,6 +135,8 @@ export interface DashboardStats {
       operadores_ativos: number;
       eficiencia_percentual: number;
       dias_uteis_mes: number;
+      meta_diaria_pedidos: number;
+      meta_diaria_pecas: number;
     };
     avgTimePerPieceSeconds: number;
     capacidadeDiariaPecas: number;

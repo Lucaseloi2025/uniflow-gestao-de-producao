@@ -31,7 +31,9 @@ import {
   LogOut,
   RefreshCw,
   ArrowLeft,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Target,
+  Archive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -46,12 +48,13 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  ReferenceLine
 } from 'recharts';
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast } from './types';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData } from './types';
 
 // Components
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
@@ -155,6 +158,8 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [reportData, setReportData] = useState<any>(null);
+  const [deliveryReportData, setDeliveryReportData] = useState<DeliveryReportData | null>(null);
+  const [delaysReportData, setDelaysReportData] = useState<DeliveryReportData['atrasados'] | null>(null);
   const [reportPeriod, setReportPeriod] = useState<'day' | 'week' | 'month'>('week');
   const [reportUser, setReportUser] = useState<string>('');
   const [reportStage, setReportStage] = useState<string>('');
@@ -356,6 +361,12 @@ export default function App() {
 
     const data = await safeFetch(url);
     if (data) setReportData(data);
+
+    const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}`);
+    if (deliveryData) setDeliveryReportData(deliveryData);
+
+    const delaysData = await safeFetch('/api/reports/delays');
+    if (delaysData) setDelaysReportData(delaysData);
   };
 
   const fetchForecast = async () => {
@@ -1591,6 +1602,132 @@ export default function App() {
 
         {activeTab === 'reports' && reportData && (
           <div className="space-y-8">
+
+            {/* Delivery KPIs */}
+            {deliveryReportData && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <Card className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                      <CheckCircle size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-medium">Entregues Hoje</p>
+                      <h3 className="text-2xl font-bold">{deliveryReportData.entregues_hoje}</h3>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                      <Archive size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-medium">Entregues (Período)</p>
+                      <h3 className="text-2xl font-bold">{deliveryReportData.entregues_periodo}</h3>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                      <TrendingUp size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-medium">No Prazo</p>
+                      <h3 className="text-2xl font-bold">{deliveryReportData.taxa_no_prazo_percent.toFixed(1)}%</h3>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                      <Clock size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-medium">Lead Time Médio</p>
+                      <h3 className="text-2xl font-bold">{deliveryReportData.lead_time_medio_dias.toFixed(1)} <span className="text-sm font-normal text-zinc-400">dias</span></h3>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
+                      <Target size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-medium">Cumprimento Meta</p>
+                      <h3 className="text-2xl font-bold">{deliveryReportData.cumprimento_meta_percent.toFixed(1)}%</h3>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Delivery Chart */}
+              {deliveryReportData && deliveryReportData.grafico.length > 0 && (
+                <Card className="p-8">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                    <BarChart3 size={20} />
+                    Pedidos Entregues por Dia
+                  </h3>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={deliveryReportData.grafico}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                        <XAxis dataKey="data" fontSize={10} axisLine={false} tickLine={false} />
+                        <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Bar dataKey="pedidos" name="Pedidos Entregues" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        {deliveryReportData.grafico[0]?.meta_pedidos > 0 && (
+                          <ReferenceLine y={deliveryReportData.grafico[0].meta_pedidos} stroke="#f59e0b" strokeDasharray="3 3" label={{ position: 'top', value: 'Meta Pedidos', fill: '#f59e0b', fontSize: 10 }} />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              )}
+
+              {/* Delay Report */}
+              {delaysReportData && delaysReportData.length > 0 && (
+                <Card className="p-8 border-rose-200">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-rose-600">
+                    <AlertCircle size={20} />
+                    Relatório de Atrasos
+                  </h3>
+                  <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-zinc-200 bg-zinc-50">
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500 text-center">Atraso</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {delaysReportData.map(order => (
+                          <tr key={order.id} className="hover:bg-rose-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-xs font-bold">{order.order_number}</td>
+                            <td className="px-4 py-3 text-sm font-medium">{order.client_name}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {order.product_type} <span className="text-[10px] text-zinc-500 ml-1">({order.print_type})</span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <Badge variant="danger">{order.dias_atraso} dias</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="p-6">
                 <div className="flex items-center gap-4">
