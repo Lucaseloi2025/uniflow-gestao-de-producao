@@ -650,7 +650,7 @@ export default function App() {
   }, [activeTab, userSearchTerm]);
 
   useEffect(() => {
-    if (activeTab === 'reports') {
+    if (activeTab === 'reports' || activeTab === 'costs') {
       fetchReports();
       safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}${reportUser ? `&user_id=${reportUser}` : ''}`).then(data => {
         if (data) setProfileReport(data);
