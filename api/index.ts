@@ -846,6 +846,58 @@ app.post("/api/executions/start", async (req, res) => {
         return res.status(500).json({ error: "Erro ao recuperar ID da nova execução." });
     }
 
+    // --- AUTOMAÇÃO CORTE VS SEPARAÇÃO ESTOQUE ---
+    try {
+        // Obter nome da etapa sendo iniciada
+        const { data: stageData } = await supabaseAdmin
+            .from("stages")
+            .select("name")
+            .eq("id", Number(stage_id))
+            .single();
+
+        if (stageData && (stageData.name === "Corte" || stageData.name === "Separação estoque")) {
+            // Se for "Corte", a etapa oponente a remover é "Separação estoque". E vice-versa.
+            const oppositeStageName = stageData.name === "Corte" ? "Separação estoque" : "Corte";
+
+            // Encontrar o ID da etapa oponente
+            const { data: oppositeStageData } = await supabaseAdmin
+                .from("stages")
+                .select("id")
+                .eq("name", oppositeStageName)
+                .single();
+
+            if (oppositeStageData) {
+                const oppositeStageId = oppositeStageData.id;
+
+                // Obter required_stages do pedido atual
+                const { data: orderData } = await supabaseAdmin
+                    .from("orders")
+                    .select("required_stages")
+                    .eq("id", Number(order_id))
+                    .single();
+
+                if (orderData && Array.isArray(orderData.required_stages)) {
+                    // Remover a etapa oposta se ela existir no array (considerando strings e números)
+                    const updatedStages = orderData.required_stages.filter(
+                        (id) => String(id) !== String(oppositeStageId)
+                    );
+
+                    if (updatedStages.length !== orderData.required_stages.length) {
+                        // Atualizar pedido apenas se houve remoção
+                        await supabaseAdmin
+                            .from("orders")
+                            .update({ required_stages: updatedStages })
+                            .eq("id", Number(order_id));
+                        console.log(`[API] Automação: Estágio oponente '${oppositeStageName}' (${oppositeStageId}) removido do pedido ${order_id}.`);
+                    }
+                }
+            }
+        }
+    } catch (autoErr) {
+        console.error("[API] Erro na automação de exclusividade Corte/Separação:", autoErr);
+        // Não retornar erro para o front, deixar a execução seguir normalmente se a automação falhar
+    }
+
     return res.json({ id: data.id });
 });
 
