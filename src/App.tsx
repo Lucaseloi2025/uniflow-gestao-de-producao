@@ -2420,10 +2420,11 @@ export default function App() {
                   jornada_horas: Number(formData.get('jornada_horas')),
                   operadores_ativos: Number(formData.get('operadores_ativos')),
                   eficiencia_percentual: Number(formData.get('eficiencia_percentual')) / 100,
-                  dias_uteis_mes: Number(formData.get('dias_uteis_mes'))
+                  dias_uteis_mes: Number(formData.get('dias_uteis_mes')),
+                  meta_custo_por_peca: Number(formData.get('meta_custo_por_peca'))
                 };
 
-                await fetch('/api/config/producao', {
+                await fetch('/api/config', {
                   method: 'PATCH',
                   headers: {
                     'Content-Type': 'application/json',
@@ -2440,7 +2441,7 @@ export default function App() {
                       name="jornada_horas"
                       type="number"
                       step="0.5"
-                      defaultValue={stats?.capacity.config.jornada_horas}
+                      defaultValue={stats?.capacity?.config?.jornada_horas || 8}
                       className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                       required
                     />
@@ -2450,7 +2451,7 @@ export default function App() {
                     <input
                       name="operadores_ativos"
                       type="number"
-                      defaultValue={stats?.capacity.config.operadores_ativos}
+                      defaultValue={stats?.capacity?.config?.operadores_ativos || 2}
                       className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                       required
                     />
@@ -2460,7 +2461,7 @@ export default function App() {
                     <input
                       name="eficiencia_percentual"
                       type="number"
-                      defaultValue={(stats?.capacity.config.eficiencia_percentual || 0.85) * 100}
+                      defaultValue={(stats?.capacity?.config?.eficiencia_percentual || 0.85) * 100}
                       className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                       required
                     />
@@ -2470,7 +2471,18 @@ export default function App() {
                     <input
                       name="dias_uteis_mes"
                       type="number"
-                      defaultValue={stats?.capacity.config.dias_uteis_mes}
+                      defaultValue={stats?.capacity?.config?.dias_uteis_mes || 22}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Meta Custo/Peça (R$)</label>
+                    <input
+                      name="meta_custo_por_peca"
+                      type="number"
+                      step="0.01"
+                      defaultValue={metaCustoPeca || 0}
                       className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                       required
                     />
