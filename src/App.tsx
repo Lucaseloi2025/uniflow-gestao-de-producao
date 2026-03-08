@@ -1540,7 +1540,7 @@ export default function App() {
                         {currentUser?.role === 'Admin' && (
                           <>
                             <span>•</span>
-                            <span>$ R$ {user.hourly_cost.toFixed(2)}/h</span>
+                            <span>R$ {user.hourly_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h</span>
                           </>
                         )}
                       </div>
@@ -3396,6 +3396,7 @@ export default function App() {
                             type="number"
                             step="0.01"
                             defaultValue={selectedUserForEdit?.hourly_cost || 0}
+                            placeholder="0,00"
                             className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
                             required
                           />
