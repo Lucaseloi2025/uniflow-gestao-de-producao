@@ -228,6 +228,12 @@ export default function App() {
   const [activeExecution, setActiveExecution] = useState<StageExecution | null>(null);
   const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
 
+  const getOrderRisk = (orderId: number) => {
+    const forecast = forecastData.find(f => f.orderId === orderId);
+    if (!forecast) return 'safe';
+    return forecast.riskLevel;
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
@@ -1199,29 +1205,38 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-50">
-                        {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').map(order => (
-                          <tr key={order.id} className="hover:bg-zinc-50 transition-colors">
-                            <td className="px-4 py-3 font-mono text-xs font-bold text-emerald-600">{order.order_number}</td>
-                            <td className="px-4 py-3 text-sm font-medium text-zinc-800">{order.client_name}</td>
-                            <td className="px-4 py-3 text-sm text-zinc-600">{order.product_type}</td>
-                            <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{order.quantity}</td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={cn("text-xs font-bold", new Date(order.deadline) < new Date() ? "text-rose-600" : "text-zinc-600")}>
-                                {format(parseISO(order.deadline), 'dd/MM/yyyy')}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={cn(
-                                "inline-flex px-2 py-1 rounded-full text-[10px] font-bold",
-                                order.status === 'Em Produção' ? 'bg-sky-100 text-sky-700' :
-                                  order.status === 'Finalização' ? 'bg-amber-100 text-amber-700' :
-                                    'bg-zinc-100 text-zinc-700'
-                              )}>
-                                {order.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').map(order => {
+                          const risk = getOrderRisk(order.id);
+                          const riskColors = {
+                            danger: "text-rose-600",
+                            warning: "text-amber-600",
+                            safe: "text-emerald-600"
+                          };
+
+                          return (
+                            <tr key={order.id} className="hover:bg-zinc-50 transition-colors">
+                              <td className={cn("px-4 py-3 font-mono text-xs font-bold", riskColors[risk])}>{order.order_number}</td>
+                              <td className="px-4 py-3 text-sm font-medium text-zinc-800">{order.client_name}</td>
+                              <td className="px-4 py-3 text-sm text-zinc-600">{order.product_type}</td>
+                              <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{order.quantity}</td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={cn("text-xs font-bold", riskColors[risk])}>
+                                  {format(parseISO(order.deadline), 'dd/MM/yyyy')}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={cn(
+                                  "inline-flex px-2 py-1 rounded-full text-[10px] font-bold",
+                                  order.status === 'Em Produção' ? 'bg-sky-100 text-sky-700' :
+                                    order.status === 'Finalização' ? 'bg-amber-100 text-amber-700' :
+                                      'bg-zinc-100 text-zinc-700'
+                                )}>
+                                  {order.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
                         {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').length === 0 && (
                           <tr>
                             <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produção.</td>
