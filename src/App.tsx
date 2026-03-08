@@ -1756,7 +1756,7 @@ export default function App() {
                           <tbody className="divide-y divide-zinc-50">
                             {operationalReportData.producao_dia.map((step, i) => (
                               <tr key={i} className="hover:bg-zinc-50 transition-colors">
-                                <td className="px-3 py-2 text-[10px] text-zinc-500">{format(parseISO(step.finished_at), 'HH:mm')}</td>
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{step.hora}</td>
                                 <td className="px-3 py-2 text-xs font-medium">{step.user_name}</td>
                                 <td className="px-3 py-2 text-xs">{step.stage_name} <br /> <span className="text-[9px] text-zinc-400 font-mono">#{step.order_number}</span></td>
                                 <td className="px-3 py-2 text-right font-mono text-[10px] font-bold">{formatSeconds(step.duration_seconds)}</td>
@@ -1883,14 +1883,14 @@ export default function App() {
                                 </p>
                               </div>
                               <div className="text-right">
-                                <p className="text-xs font-mono font-black text-indigo-600">{user.pecas_produzidas} peças</p>
-                                <p className="text-[9px] text-zinc-400 font-bold uppercase">{user.total_etapas} etapas</p>
+                                <p className="text-xs font-mono font-black text-indigo-600">{user.pecas} peças</p>
+                                <p className="text-[9px] text-zinc-400 font-bold uppercase">{user.etapas} etapas</p>
                               </div>
                             </div>
                             <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-indigo-500 rounded-full"
-                                style={{ width: `${Math.min(100, (user.pecas_produzidas / 50) * 100)}%` }} // Exemplo: meta de 50 peças
+                                style={{ width: `${Math.min(100, (user.pecas / 50) * 100)}%` }} // Exemplo: meta de 50 peças
                               />
                             </div>
                           </div>

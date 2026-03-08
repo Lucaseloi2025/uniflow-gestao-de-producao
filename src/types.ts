@@ -154,36 +154,45 @@ export interface DashboardStats {
 
 export interface OperationalStep {
   hora: string;
-  pedido: string;
-  cliente: string;
-  etapa: string;
-  colaborador: string;
+  order_number: string;
+  client_name: string;
+  stage_name: string;
+  user_name: string;
+  duration_seconds: number;
+  finished_at: string;
   pecas: number;
 }
 
 export interface OrderProgress {
-  pedido: string;
-  cliente: string;
-  etapa_atual: string;
-  etapas_dia: string;
+  order_number: string;
+  client_name: string;
+  status: string;
+  deadline: string;
+  etapas_concluidas: number;
+  total_etapas: number;
+  proxima_etapa: string | null;
 }
 
 export interface FinishedOrder {
-  pedido: string;
-  cliente: string;
+  order_number: string;
+  client_name: string;
   pecas: number;
-  lead_time: string;
+  completed_at: string;
+  lead_time_horas: number;
+  no_prazo: boolean;
 }
 
 export interface CollaboratorProductivity {
-  colaborador: string;
+  user_id: number;
+  user_name: string;
   etapas: number;
   pecas: number;
+  tempo_total_segundos: number;
 }
 
 export interface OperationalReportData {
-  executions: OperationalStep[];
-  progress: OrderProgress[];
-  finished: FinishedOrder[];
-  productivity: CollaboratorProductivity[];
+  producao_dia: OperationalStep[];
+  progresso_pedidos: OrderProgress[];
+  pedidos_concluidos: FinishedOrder[];
+  produtividade_colaboradores: CollaboratorProductivity[];
 }
