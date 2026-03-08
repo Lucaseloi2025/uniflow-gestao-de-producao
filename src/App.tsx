@@ -43,7 +43,9 @@ import {
   TrendingDown,
   Activity,
   Download,
-  DownloadCloud
+  DownloadCloud,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -607,6 +609,51 @@ export default function App() {
     } else {
       const err = await res.json();
       alert(err.error);
+    }
+  };
+
+  const moveStage = async (currentIndex: number, direction: 1 | -1) => {
+    const newIndex = currentIndex + direction;
+    if (newIndex < 0 || newIndex >= stages.length) return;
+
+    const newStages = [...stages];
+    const stageA = newStages[currentIndex];
+    const stageB = newStages[newIndex];
+
+    // Swap in local state
+    newStages[currentIndex] = stageB;
+    newStages[newIndex] = stageA;
+
+    // Swap sort_order values
+    const tempSortOrder = stageA.sort_order;
+    stageA.sort_order = stageB.sort_order;
+    stageB.sort_order = tempSortOrder;
+
+    setStages(newStages);
+
+    try {
+      await Promise.all([
+        fetch(`/api/stages/${stageA.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ sort_order: stageA.sort_order })
+        }),
+        fetch(`/api/stages/${stageB.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ sort_order: stageB.sort_order })
+        })
+      ]);
+      fetchData(); // Refresh to ensure backend sync
+    } catch (err) {
+      alert("Erro ao reordenar etapas.");
+      fetchData(); // Rollback local state
     }
   };
 
@@ -2535,7 +2582,7 @@ export default function App() {
               </div>
 
               <div className="space-y-3">
-                {stages.map((stage) => (
+                {stages.map((stage, index) => (
                   <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
                     <div className="flex items-center gap-4 flex-1">
                       <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
@@ -2582,6 +2629,23 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <Badge variant="success">Ativa</Badge>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => moveStage(index, -1)}
+                          disabled={index === 0}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 disabled:opacity-30 transition-colors"
+                          title="Mover para cima"
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveStage(index, 1)}
+                          disabled={index === stages.length - 1}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 disabled:opacity-30 transition-colors"
+                          title="Mover para baixo"
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <div className="w-px h-4 bg-zinc-200 mx-1"></div>
                         <button
                           onClick={() => {
                             setEditingStageId(stage.id);
