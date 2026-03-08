@@ -125,25 +125,31 @@ export interface DeliveryReportData {
 }
 
 export interface DashboardStats {
-  activeOrders: number;
-  avgTimeByPrint: { print_type: string; avg_time: number }[];
-  collaboratorRanking: { name: string; total_seconds: number }[];
-  bottlenecks: { name: string; avg_time: number }[];
-  capacity: {
-    config: {
-      jornada_horas: number;
-      operadores_ativos: number;
-      eficiencia_percentual: number;
-      dias_uteis_mes: number;
-      meta_diaria_pedidos: number;
-      meta_diaria_pecas: number;
-    };
-    avgTimePerPieceSeconds: number;
-    capacidadeDiariaPecas: number;
-    capacidadeMensalPecas: number;
-    totalPecasVendidasMes: number;
-    percentualOcupacao: number;
+  metrics: {
+    activeOrders: number;
+    activePieces: number;
+    overdueOrders: number;
+    todayFinalizedPieces: number;
+    avgLeadTimeSeconds: number;
   };
+  bottlenecks: {
+    stage_name: string;
+    count: number;
+  }[];
+  atRiskOrders: {
+    id: number;
+    order_number: string;
+    client_name: string;
+    deadline: string;
+    status: string;
+    urgency: "Atrasado" | "Risco";
+  }[];
+  productivity: {
+    collaborator: string;
+    orders_count: number;
+    pieces_count: number;
+    avg_time_per_piece: number;
+  }[];
 }
 
 export interface OperationalStep {

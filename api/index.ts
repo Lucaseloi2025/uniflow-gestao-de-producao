@@ -66,13 +66,39 @@ app.get("/api/supabase/status", async (_req, res) => {
 // ── Dashboard Stats ───────────────────────────────────────────────────────
 app.get("/api/dashboard/stats", async (req, res) => {
     const { startDate, endDate, product_type, print_type } = req.query;
-    const { data, error } = await supabase.rpc("get_dashboard_stats", {
+    const { data, error } = await supabase.rpc("get_dashboard_stats_v2", {
         p_start_date: startDate || null,
         p_end_date: endDate || null,
         p_product_type: product_type || null,
         p_print_type: print_type || null,
     });
     if (checkError(error, res, "Erro no dashboard")) return;
+    return res.json(data);
+});
+
+// ── Production Config & Goals ─────────────────────────────────────────────
+app.get("/api/config", async (_req, res) => {
+    const { data, error } = await supabase.from("config_producao").select("*").single();
+    if (checkError(error, res)) return;
+    return res.json(data);
+});
+
+app.patch("/api/config", isAdmin, async (req, res) => {
+    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas } = req.body;
+    const { data, error } = await supabase
+        .from("config_producao")
+        .update({
+            jornada_horas,
+            operadores_ativos,
+            eficiencia_percentual,
+            dias_uteis_mes,
+            meta_diaria_pedidos,
+            meta_diaria_pecas
+        })
+        .eq("id", 1)
+        .select()
+        .single();
+    if (checkError(error, res)) return;
     return res.json(data);
 });
 
@@ -1060,16 +1086,24 @@ app.post("/api/clients", async (req, res) => {
 });
 
 // ── Delivery & Delays Reports ─────────────────────────────────────────────
-app.get("/api/reports/delays", async (_req, res) => {
+app.get("/api/reports/delays", async (req, res) => {
+    const { startDate, endDate } = req.query;
     const today = new Date().toISOString().split("T")[0];
-    const { data, error } = await supabase
+
+    let query = supabase
         .from("orders")
         .select("id, order_number, client_name, product_type, print_type, quantity, deadline")
         .neq("status", "Entregue")
         .neq("status", "Cancelado")
-        .lt("deadline", today)
-        .is("deleted_at", null)
-        .order("deadline", { ascending: true });
+        .is("deleted_at", null);
+
+    if (startDate && endDate) {
+        query = query.gte("deadline", startDate).lte("deadline", endDate);
+    } else {
+        query = query.lt("deadline", today);
+    }
+
+    const { data, error } = await query.order("deadline", { ascending: true });
 
     if (checkError(error, res, "Erro ao buscar atrasos")) return;
 
@@ -1109,6 +1143,10 @@ app.get("/api/reports/delivery", async (req, res) => {
     let endDate = now;
     if (queryEndDate) {
         endDate = new Date(queryEndDate as string);
+        // Ensure end date includes the full day (23:59:59)
+        endDate.setHours(23, 59, 59, 999);
+    } else {
+        endDate.setHours(23, 59, 59, 999);
     }
 
     const { data: orders, error } = await supabase
@@ -1212,13 +1250,24 @@ app.get("/api/reports/operational", async (req, res) => {
 });
 
 // ── Production Profile Report ─────────────────────────────────────────────
-app.get("/api/reports/profile", async (_req, res) => {
-    const { data, error } = await supabase
+app.get("/api/reports/profile", async (req, res) => {
+    const { startDate, endDate } = req.query;
+
+    let query = supabase
         .from("orders")
         .select("product_type, print_type, num_colors, total_time_seconds, quantity")
         .eq("status", "Entregue")
         .is("deleted_at", null)
         .gt("total_time_seconds", 0);
+
+    if (startDate && endDate) {
+        // Ensure endDate includes the full day
+        const endDay = new Date(endDate as string);
+        endDay.setHours(23, 59, 59, 999);
+        query = query.gte("delivered_at", startDate).lte("delivered_at", endDay.toISOString());
+    }
+
+    const { data, error } = await query;
 
     if (checkError(error, res)) return;
 

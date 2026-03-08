@@ -35,7 +35,11 @@ import {
   Target,
   Archive,
   CheckSquare,
-  Timer
+  Timer,
+  Layers,
+  List,
+  Filter,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -167,8 +171,8 @@ export default function App() {
   const [reportStage, setReportStage] = useState<string>('');
   const [profileReport, setProfileReport] = useState<any[]>([]);
   const [operationalReportData, setOperationalReportData] = useState<OperationalReportData | null>(null);
-  const [reportStartDate, setReportStartDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [reportEndDate, setReportEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+  const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -370,8 +374,11 @@ export default function App() {
     const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}`);
     if (deliveryData) setDeliveryReportData(deliveryData);
 
-    const delaysData = await safeFetch('/api/reports/delays');
+    const delaysData = await safeFetch(`/api/reports/delays?startDate=${reportStartDate}&endDate=${reportEndDate}`);
     if (delaysData) setDelaysReportData(delaysData);
+
+    const profileData = await safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    if (profileData) setProfileReport(profileData || []);
 
     fetchOperationalReport();
   };
@@ -1081,44 +1088,33 @@ export default function App() {
                 </div>
               </div>
             )}
-            <button
-              onClick={() => {
-                setShowNewOrderModal(true);
-                setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-              }}
-              className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
-            >
-              <Plus size={18} />
-              Novo Pedido
-            </button>
+            {activeTab === 'dashboard' ? (
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
+              >
+                <Target size={18} />
+                Definir Metas
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setShowNewOrderModal(true);
+                  setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+                }}
+                className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
+              >
+                <Plus size={18} />
+                Novo Pedido
+              </button>
+            )}
           </div>
         </header>
 
         {activeTab === 'dashboard' && stats && (
           <div className="space-y-8">
-            {/* Capacity Alerts */}
-            {stats.capacity.percentualOcupacao > 0.85 && (
-              <div className={cn(
-                "p-4 rounded-xl border flex items-center gap-3",
-                stats.capacity.percentualOcupacao > 0.95
-                  ? "bg-rose-50 border-rose-100 text-rose-700"
-                  : "bg-amber-50 border-amber-100 text-amber-700"
-              )}>
-                <AlertCircle size={20} />
-                <div className="flex-1">
-                  <p className="font-bold text-sm">
-                    {stats.capacity.percentualOcupacao > 0.95
-                      ? "Capacidade máxima atingida!"
-                      : "Produção próxima do limite!"}
-                  </p>
-                  <p className="text-xs opacity-80">
-                    Ocupação atual: {(stats.capacity.percentualOcupacao * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Top KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               <Card className="p-6">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
@@ -1126,19 +1122,7 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-xs text-zinc-500 font-medium">Pedidos Ativos</p>
-                    <h3 className="text-2xl font-bold">{stats.activeOrders}</h3>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
-                    <BarChart3 size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 font-medium">Capacidade Diária</p>
-                    <h3 className="text-2xl font-bold">{stats.capacity.capacidadeDiariaPecas} <span className="text-sm font-normal text-zinc-400">un</span></h3>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.activeOrders || 0}</h3>
                   </div>
                 </div>
               </Card>
@@ -1146,324 +1130,197 @@ export default function App() {
               <Card className="p-6">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-                    <Calendar size={24} />
+                    <Layers size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Capacidade Mensal</p>
-                    <h3 className="text-2xl font-bold">{stats.capacity.capacidadeMensalPecas} <span className="text-sm font-normal text-zinc-400">un</span></h3>
+                    <p className="text-xs text-zinc-500 font-medium">Peças em Produção</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.activePieces || 0} <span className="text-sm font-normal text-zinc-400">un</span></h3>
                   </div>
                 </div>
               </Card>
 
               <Card className="p-6">
                 <div className="flex items-center gap-4 mb-4">
-                  <div className={cn(
-                    "p-3 rounded-xl",
-                    stats.capacity.percentualOcupacao > 0.95 ? "bg-rose-50 text-rose-600" :
-                      stats.capacity.percentualOcupacao > 0.85 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
-                  )}>
+                  <div className={cn("p-3 rounded-xl", (stats.metrics?.overdueOrders || 0) > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}>
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Pedidos Atrasados</p>
+                    <h3 className={cn("text-2xl font-bold", (stats.metrics?.overdueOrders || 0) > 0 ? "text-rose-600" : "text-emerald-600")}>{stats.metrics?.overdueOrders || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Produção Hoje</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.todayFinalizedPieces || 0} <span className="text-sm font-normal text-zinc-400">peças</span></h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
                     <Clock size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Ocupação Atual</p>
-                    <h3 className="text-2xl font-bold">{(stats.capacity.percentualOcupacao * 100).toFixed(1)}%</h3>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio</p>
+                    <h3 className="text-2xl font-bold">{((stats.metrics?.avgLeadTimeSeconds || 0) / 86400).toFixed(1)} <span className="text-sm font-normal text-zinc-400">dias</span></h3>
                   </div>
                 </div>
               </Card>
             </div>
 
-            {/* ── Delivery Forecast Section ──────────────────────────────── */}
-            {forecastData.length > 0 && (() => {
-              const atRisk = forecastData.filter(f => f.riskLevel !== 'safe');
-              const highRisk = forecastData.filter(f => f.riskLevel === 'danger');
-              const topBottleneck = forecastData.find(f => f.bottleneckStage)?.bottleneckStage;
-
-              return (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base flex items-center gap-2 text-zinc-900">
-                      <Calendar size={18} className="text-zinc-500" />
-                      Previsão de Entrega
-                    </h3>
-                    <button
-                      onClick={fetchForecast}
-                      disabled={isLoadingForecast}
-                      className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 hover:text-zinc-800 transition-colors"
-                    >
-                      <RefreshCw size={12} className={isLoadingForecast ? 'animate-spin' : ''} />
-                      Atualizar
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
-                      <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Em Risco ⚠️</p>
-                      <p className="text-3xl font-black text-amber-700">{atRisk.length}</p>
-                      <p className="text-[10px] text-amber-500 mt-1">pedidos precisam de atenção</p>
-                    </div>
-                    <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl">
-                      <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">Alto Risco 🔴</p>
-                      <p className="text-3xl font-black text-rose-700">{highRisk.length}</p>
-                      <p className="text-[10px] text-rose-500 mt-1">provavelmente vão atrasar</p>
-                    </div>
-                    <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Gargalo Principal</p>
-                      <p className="text-sm font-black text-zinc-700 mt-1 truncate">{topBottleneck || '—'}</p>
-                      <p className="text-[10px] text-zinc-400 mt-1">setor mais crítico</p>
-                    </div>
-                  </div>
-
-                  <Card>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left">
-                        <thead>
-                          <tr className="bg-zinc-50 border-b border-zinc-100">
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Qtd</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Prazo</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Previsto</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Índice</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Risco</th>
-                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Gargalo</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-50">
-                          {forecastData.map((fc) => {
-                            const rowBg =
-                              fc.riskLevel === 'danger' ? 'bg-rose-50/50 hover:bg-rose-50' :
-                                fc.riskLevel === 'warning' ? 'bg-amber-50/40 hover:bg-amber-50' :
-                                  'hover:bg-zinc-50';
-                            const riskBadge =
-                              fc.riskLevel === 'danger'
-                                ? <span className="inline-flex items-center px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold">🔴 Alto</span>
-                                : fc.riskLevel === 'warning'
-                                  ? <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">🟡 Leve</span>
-                                  : <span className="inline-flex items-center px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">🟢 OK</span>;
-                            const isExpanded = expandedForecast === fc.orderId;
-
-                            return (
-                              <React.Fragment key={fc.orderId}>
-                                <tr
-                                  className={cn("cursor-pointer transition-colors", rowBg)}
-                                  onClick={() => setExpandedForecast(isExpanded ? null : fc.orderId)}
-                                >
-                                  <td className="px-4 py-3 font-mono text-xs font-bold text-zinc-600">
-                                    <div className="flex items-center gap-1.5">
-                                      <ChevronRight size={12} className={cn("transition-transform text-zinc-400", isExpanded && "rotate-90")} />
-                                      {fc.orderNumber}
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-3 text-sm font-medium text-zinc-800">{fc.clientName}</td>
-                                  <td className="px-4 py-3 text-center text-sm text-zinc-600">{fc.quantity}</td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn("text-xs font-bold", isPast(endOfDay(parseISO(fc.deadline))) && "text-rose-600")}>
-                                      {format(parseISO(fc.deadline), 'dd/MM')}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "text-xs font-bold",
-                                      fc.riskLevel === 'danger' ? 'text-rose-600' :
-                                        fc.riskLevel === 'warning' ? 'text-amber-600' : 'text-emerald-600'
-                                    )}>
-                                      {format(parseISO(fc.predictedDate), 'dd/MM')}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-center font-mono text-xs font-bold text-zinc-500">
-                                    {fc.riskIndex.toFixed(2)}
-                                  </td>
-                                  <td className="px-4 py-3 text-center">{riskBadge}</td>
-                                  <td className="px-4 py-3 text-xs text-zinc-500 truncate max-w-[120px]">{fc.bottleneckStage || '—'}</td>
-                                </tr>
-                                {isExpanded && (
-                                  <tr className="bg-zinc-50">
-                                    <td colSpan={8} className="px-6 py-4">
-                                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Simulação por Etapa</p>
-                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                        {fc.stageForecasts.map((sf) => (
-                                          <div key={sf.stageId} className="p-2.5 bg-white border border-zinc-200 rounded-lg">
-                                            <p className="text-[10px] font-bold text-zinc-700 truncate mb-1">{sf.stageName}</p>
-                                            <p className="text-[9px] text-zinc-400"><span className="font-semibold">Início:</span> {sf.startDate}</p>
-                                            <p className="text-[9px] text-zinc-400"><span className="font-semibold">Fim:</span> {sf.endDate}</p>
-                                            <div className="flex items-center gap-2 mt-1.5">
-                                              <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">Fila: {sf.queueDays.toFixed(1)}d</span>
-                                              <span className="text-[9px] bg-sky-50 text-sky-600 px-1.5 py-0.5 rounded font-medium">Exec: {sf.execDays.toFixed(1)}d</span>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
-                </div>
-              );
-            })()}
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Central Orders Table */}
               <div className="lg:col-span-2 space-y-8">
-                {/* Capacity by Sector */}
                 <Card className="p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold flex items-center gap-2">
-                      <BarChart3 size={18} className="text-zinc-400" />
-                      Análise de Capacidade por Setor
+                      <List size={18} className="text-zinc-400" />
+                      Pedidos em Produção
                     </h3>
-                    <div className="flex items-center gap-4 text-[10px] font-bold uppercase text-zinc-400">
-                      <span>Tempo Médio</span>
-                      <span>Capacidade Diária</span>
-                    </div>
                   </div>
-                  <div className="space-y-4">
-                    {(stats.capacity as any).stageCapacities?.map((stage: any, i: number) => {
-                      const isBottleneck = (stats.capacity as any).bottleneckStage?.name === stage.name;
-                      return (
-                        <div key={i} className={cn(
-                          "flex items-center justify-between p-3 rounded-lg border transition-colors",
-                          isBottleneck ? "bg-rose-50 border-rose-100" : "bg-zinc-50 border-zinc-100"
-                        )}>
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold",
-                              isBottleneck ? "bg-rose-500 text-white" : "bg-zinc-200 text-zinc-600"
-                            )}>
-                              {i + 1}
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold flex items-center gap-2">
-                                {stage.name}
-                                {isBottleneck && <Badge variant="error" className="text-[8px] px-1 py-0">Gargalo</Badge>}
-                              </p>
-                              <p className="text-[10px] text-zinc-500">Eficiência: {(stats.capacity.config.eficiencia_percentual * 100).toFixed(0)}%</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-8">
-                            <div className="text-right">
-                              <p className="text-sm font-mono font-bold">{(stage.avg_time_piece / 60).toFixed(1)} min</p>
-                              <p className="text-[10px] text-zinc-400 uppercase">Por peça</p>
-                            </div>
-                            <div className="text-right min-w-[100px]">
-                              <p className={cn("text-sm font-bold", isBottleneck ? "text-rose-600" : "text-emerald-600")}>
-                                {stage.capacidadeDiaria} <span className="text-[10px] font-normal text-zinc-400">un/dia</span>
-                              </p>
-                              <p className="text-[10px] text-zinc-400 uppercase">Total setor</p>
-                            </div>
-                          </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-100">
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Produto</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Qtd</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Prazo</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-50">
+                        {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').map(order => (
+                          <tr key={order.id} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-xs font-bold text-emerald-600">{order.order_number}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-zinc-800">{order.client_name}</td>
+                            <td className="px-4 py-3 text-sm text-zinc-600">{order.product_type}</td>
+                            <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{order.quantity}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={cn("text-xs font-bold", new Date(order.deadline) < new Date() ? "text-rose-600" : "text-zinc-600")}>
+                                {format(parseISO(order.deadline), 'dd/MM/yyyy')}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={cn(
+                                "inline-flex px-2 py-1 rounded-full text-[10px] font-bold",
+                                order.status === 'Em Produção' ? 'bg-sky-100 text-sky-700' :
+                                  order.status === 'Finalização' ? 'bg-amber-100 text-amber-700' :
+                                    'bg-zinc-100 text-zinc-700'
+                              )}>
+                                {order.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produção.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Productivity Table */}
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-bold flex items-center gap-2">
+                      <Users size={18} className="text-zinc-400" />
+                      Produtividade por Colaborador
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-100">
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Colaborador</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Pedidos Finais</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Peças Feitas</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Tempo Médio/Peça</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-50">
+                        {(stats.productivity || []).map(prod => (
+                          <tr key={prod.collaborator} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-4 py-3 text-sm font-medium text-zinc-800">{prod.collaborator}</td>
+                            <td className="px-4 py-3 text-center text-sm text-zinc-600">{prod.orders_count}</td>
+                            <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{prod.pieces_count}</td>
+                            <td className="px-4 py-3 text-center font-mono text-xs text-zinc-600">{(prod.avg_time_per_piece / 60).toFixed(1)} min</td>
+                          </tr>
+                        ))}
+                        {(!stats.productivity || stats.productivity.length === 0) && (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">Sem dados de produtividade no período.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Sidebar panels */}
+              <div className="space-y-8">
+                {/* At Risk Orders */}
+                <Card className="p-6 border-rose-100">
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-rose-700">
+                    <AlertTriangle size={18} />
+                    Pedidos em Risco ou Atrasados
+                  </h3>
+                  <div className="space-y-3">
+                    {(stats.atRiskOrders || []).map(risk => (
+                      <div key={risk.id} className="p-3 bg-rose-50 rounded-lg border border-rose-100 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-mono font-bold text-rose-700">{risk.order_number}</p>
+                          <p className="text-sm font-medium text-zinc-800 truncate max-w-[120px]">{risk.client_name}</p>
+                          <p className="text-[10px] text-zinc-500">{format(parseISO(risk.deadline), 'dd/MM/yyyy')}</p>
                         </div>
-                      );
-                    })}
-                    {(!(stats.capacity as any).stageCapacities || (stats.capacity as any).stageCapacities.length === 0) && (
-                      <div className="text-center py-8 text-zinc-400">
-                        <p className="text-sm italic">Sem dados históricos suficientes para análise por setor.</p>
+                        <Badge variant="error" className="py-1">{risk.urgency === 'Atrasado' ? 'ATR' : 'RSC'}</Badge>
+                      </div>
+                    ))}
+                    {(!stats.atRiskOrders || stats.atRiskOrders.length === 0) && (
+                      <div className="text-center py-4 text-emerald-600 bg-emerald-50 rounded-lg border border-emerald-100 text-sm">
+                        Nenhum pedido em risco! 🎉
                       </div>
                     )}
                   </div>
                 </Card>
 
-                <Card className="p-6">
-                  <h3 className="font-bold mb-6 flex items-center gap-2">
-                    <Clock size={18} className="text-zinc-400" />
-                    Tempo Médio por Peça — Por Tipo de Estampa
+                {/* Bottlenecks */}
+                <Card className="p-6 border-amber-100">
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-amber-700">
+                    <Filter size={18} />
+                    Gargalos da Produção
                   </h3>
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.avgTimeByPrint} layout="vertical">
-                        <XAxis type="number" hide />
-                        <YAxis dataKey="print_type" type="category" width={100} fontSize={12} />
-                        <Tooltip
-                          formatter={(value: number) => [`${(value / 60).toFixed(1)} min`, 'Tempo Médio']}
-                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                        />
-                        <Bar dataKey="avg_time" fill="#10b981" radius={[0, 4, 4, 0]} barSize={40} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-              </div>
-
-              <div className="space-y-8">
-                <Card className="p-6">
-                  <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
-                    <Settings size={16} />
-                    Simulador de Cenários
-                  </h4>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Número de Operadores</label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="range"
-                          min="1"
-                          max="20"
-                          value={simOperadores}
-                          onChange={(e) => setSimOperadores(parseInt(e.target.value))}
-                          className="flex-1 accent-emerald-500"
-                        />
-                        <span className="text-xl font-bold w-8">{simOperadores}</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2">Capacidade Simulada</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                          <p className="text-[10px] text-zinc-500">Diária</p>
-                          <p className="text-lg font-bold text-zinc-900">
-                            {Math.floor((stats.capacity.config.jornada_horas * 60 * simOperadores * stats.capacity.config.eficiencia_percentual) / (stats.capacity.avgTimePerPieceSeconds / 60))} un
-                          </p>
+                  <p className="text-xs text-zinc-500 mb-4">Setores com mais pedidos aguardando ou em andamento no momento.</p>
+                  <div className="space-y-3">
+                    {(stats.bottlenecks || []).map((bottleneck, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </div>
+                          <p className="text-sm font-medium text-zinc-800">{bottleneck.stage_name}</p>
                         </div>
-                        <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                          <p className="text-[10px] text-zinc-500">Mensal</p>
-                          <p className="text-lg font-bold text-zinc-900">
-                            {Math.floor((stats.capacity.config.jornada_horas * 60 * simOperadores * stats.capacity.config.eficiencia_percentual) / (stats.capacity.avgTimePerPieceSeconds / 60)) * stats.capacity.config.dias_uteis_mes} un
-                          </p>
-                        </div>
+                        <p className="text-sm font-bold text-zinc-700">{bottleneck.count} <span className="text-[10px] font-normal text-zinc-400">pedidos</span></p>
                       </div>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-6 bg-zinc-900 text-white">
-                  <h3 className="font-bold mb-6 flex items-center gap-2">
-                    <AlertCircle size={18} className="text-zinc-400" />
-                    Insights Estratégicos
-                  </h3>
-                  <div className="space-y-6">
-                    <div className={cn(
-                      "p-4 rounded-xl border",
-                      stats.capacity.percentualOcupacao > 0.9 ? "bg-rose-500/10 border-rose-500/20 text-rose-200" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-200"
-                    )}>
-                      <p className="font-bold text-sm mb-1">
-                        {stats.capacity.percentualOcupacao > 0.9 ? "Atenção: Sobrecarga!" : "Capacidade Disponível"}
-                      </p>
-                      <p className="text-xs opacity-80">
-                        {stats.capacity.percentualOcupacao > 0.9
-                          ? "Sua produção está operando no limite. Considere contratar ou aumentar a eficiência."
-                          : "Há espaço para crescimento. Invista em vendas para ocupar a capacidade ociosa."}
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-400">Tempo produtivo/dia:</span>
-                        <span className="font-mono font-bold">{(stats.capacity.config.jornada_horas * 60 * stats.capacity.config.operadores_ativos * stats.capacity.config.eficiencia_percentual).toFixed(0)} min</span>
+                    ))}
+                    {(!stats.bottlenecks || stats.bottlenecks.length === 0) && (
+                      <div className="text-center py-4 text-zinc-500 text-sm">
+                        Fluxo normalizado.
                       </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-400">Peças/hora:</span>
-                        <span className="font-mono font-bold">{(stats.capacity.capacidadeDiariaPecas / stats.capacity.config.jornada_horas).toFixed(1)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-zinc-400">Capacidade restante:</span>
-                        <span className="font-mono font-bold">{stats.capacity.capacidadeMensalPecas - stats.capacity.totalPecasVendidasMes} peças</span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </Card>
               </div>
