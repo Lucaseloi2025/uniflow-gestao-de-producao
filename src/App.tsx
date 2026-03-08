@@ -820,12 +820,14 @@ export default function App() {
             active={activeTab === 'orders'}
             onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
           />
-          <SidebarItem
-            icon={Users}
-            label="Colaboradores"
-            active={activeTab === 'collaborators'}
-            onClick={() => { setActiveTab('collaborators'); setIsMobileMenuOpen(false); }}
-          />
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={Users}
+              label="Colaboradores"
+              active={activeTab === 'collaborators'}
+              onClick={() => { setActiveTab('collaborators'); setIsMobileMenuOpen(false); }}
+            />
+          )}
           <SidebarItem
             icon={FileText}
             label="Relatórios"
@@ -840,12 +842,14 @@ export default function App() {
               onClick={() => { setActiveTab('costs'); setIsMobileMenuOpen(false); }}
             />
           )}
-          <SidebarItem
-            icon={Settings}
-            label="Configurações"
-            active={activeTab === 'settings'}
-            onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
-          />
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={Settings}
+              label="Configurações"
+              active={activeTab === 'settings'}
+              onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+            />
+          )}
         </nav>
 
         <div className="mt-auto pt-6 border-t border-zinc-100">
@@ -1119,13 +1123,15 @@ export default function App() {
               </div>
             )}
             {activeTab === 'dashboard' ? (
-              <button
-                onClick={() => setActiveTab('settings')}
-                className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
-              >
-                <Target size={18} />
-                Definir Metas
-              </button>
+              currentUser?.role === 'Admin' ? (
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
+                >
+                  <Target size={18} />
+                  Definir Metas
+                </button>
+              ) : null
             ) : (
               <button
                 onClick={() => {
