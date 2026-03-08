@@ -156,7 +156,7 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -817,6 +817,14 @@ export default function App() {
             active={activeTab === 'reports'}
             onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
           />
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={DollarSign}
+              label="Custos"
+              active={activeTab === 'costs'}
+              onClick={() => { setActiveTab('costs'); setIsMobileMenuOpen(false); }}
+            />
+          )}
           <SidebarItem
             icon={Settings}
             label="Configurações"
@@ -871,6 +879,7 @@ export default function App() {
                 {activeTab === 'orders' && 'Todos os Pedidos'}
                 {activeTab === 'collaborators' && 'Colaboradores'}
                 {activeTab === 'reports' && 'Relatórios'}
+                {activeTab === 'costs' && 'Análise de Custos'}
                 {activeTab === 'settings' && 'Configurações do Sistema'}
               </h2>
               <p className="text-zinc-500 text-xs lg:text-sm">
@@ -1513,8 +1522,12 @@ export default function App() {
                       <h4 className="font-bold text-zinc-900">{user.name}</h4>
                       <div className="flex items-center gap-3 text-xs text-zinc-500">
                         <span className="flex items-center gap-1"><UserIcon size={12} /> {user.email}</span>
-                        <span>•</span>
-                        <span>$ R$ {user.hourly_cost.toFixed(2)}/h</span>
+                        {currentUser?.role === 'Admin' && (
+                          <>
+                            <span>•</span>
+                            <span>$ R$ {user.hourly_cost.toFixed(2)}/h</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1644,19 +1657,6 @@ export default function App() {
                   <div>
                     <p className="text-xs text-zinc-500 font-medium">Tempo Médio/Etapa</p>
                     <h3 className="text-2xl font-bold">{formatSeconds(reportData.summary.avg_stage_time)}</h3>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Custo Total de Mão de Obra */}
-              <Card className="p-6 border-indigo-100">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-                    <DollarSign size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 font-medium">Custo Total M.O.</p>
-                    <h3 className="text-2xl font-bold">R$ {Math.round(reportData.summary.total_labor_cost || 0)}</h3>
                   </div>
                 </div>
               </Card>
@@ -1937,41 +1937,6 @@ export default function App() {
                   </ResponsiveContainer>
                 </div>
               </Card>
-
-              <Card className="p-8">
-                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                  <DollarSign size={20} />
-                  Custo de M.O. por Colaborador
-                </h3>
-                <div className="h-64">
-                  {reportData.costsByCollaborator.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={reportData.costsByCollaborator}
-                          dataKey="total_cost"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {reportData.costsByCollaborator.map((entry: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Custo']}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-zinc-400 italic">
-                      Sem dados
-                    </div>
-                  )}
-                </div>
-              </Card>
             </div>
 
             <Card className="p-8">
@@ -2037,299 +2002,408 @@ export default function App() {
         )
         }
 
-        {
-          activeTab === 'settings' && (
-            <div className="max-w-2xl space-y-8 pb-12">
-              <Card className="p-8">
-                <div className="flex justify-between items-start mb-6">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <Settings size={20} />
-                    Integração Supabase
-                  </h3>
-                  <button
-                    onClick={async () => {
-                      const data = await safeFetch('/api/supabase/status');
-                      if (data?.status === 'success') {
-                        alert('✅ Supabase conectado com sucesso!');
-                      } else {
-                        alert(`❌ Erro: ${data?.message || 'Falha na conexão'}`);
-                      }
-                    }}
-                    className="text-[10px] font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700"
-                  >
-                    Testar Conexão
-                  </button>
-                </div>
-                <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-zinc-500">Status do SDK:</span>
-                    <Badge variant="info">Ativo</Badge>
+        {activeTab === 'costs' && currentUser?.role === 'Admin' && reportData && (
+          <div className="space-y-8">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="p-6 border-emerald-100">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                    <DollarSign size={24} />
                   </div>
-                  <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    O SDK do Supabase foi inicializado. Para usar o Supabase como banco de dados principal (SQL),
-                    certifique-se de configurar a <strong>DATABASE_URL</strong> com a Connection String do Supabase nos Secrets.
-                  </p>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Custo Total M.O.</p>
+                    <h3 className="text-2xl font-bold">R$ {reportData.summary.total_labor_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                  </div>
                 </div>
               </Card>
 
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Target size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Custo Médio / Peça</p>
+                    <h3 className="text-2xl font-bold">R$ {(reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Package size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Total de Peças</p>
+                    <h3 className="text-2xl font-bold">{reportData.summary.total_parts}</h3>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Chart and Details */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Card className="p-8">
                 <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                  <BarChart3 size={20} />
-                  Configuração de Capacidade Produtiva
+                  <DollarSign size={20} />
+                  Custo de M.O. por Colaborador
                 </h3>
-                <form className="space-y-6" onSubmit={async (e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  const data = {
-                    jornada_horas: Number(formData.get('jornada_horas')),
-                    operadores_ativos: Number(formData.get('operadores_ativos')),
-                    eficiencia_percentual: Number(formData.get('eficiencia_percentual')) / 100,
-                    dias_uteis_mes: Number(formData.get('dias_uteis_mes'))
-                  };
-
-                  await fetch('/api/config/producao', {
-                    method: 'PATCH',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-user-role': currentUser?.role || ''
-                    },
-                    body: JSON.stringify(data)
-                  });
-                  fetchData();
-                }}>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Jornada de Trabalho (Horas)</label>
-                      <input
-                        name="jornada_horas"
-                        type="number"
-                        step="0.5"
-                        defaultValue={stats?.capacity.config.jornada_horas}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
+                <div className="h-80">
+                  {reportData.costsByCollaborator.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={reportData.costsByCollaborator}
+                          dataKey="total_cost"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={100}
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {reportData.costsByCollaborator.map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Custo']}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-zinc-400 italic">
+                      Sem dados
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Operadores Ativos</label>
-                      <input
-                        name="operadores_ativos"
-                        type="number"
-                        defaultValue={stats?.capacity.config.operadores_ativos}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Eficiência Operacional (%)</label>
-                      <input
-                        name="eficiencia_percentual"
-                        type="number"
-                        defaultValue={(stats?.capacity.config.eficiencia_percentual || 0.85) * 100}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Úteis no Mês</label>
-                      <input
-                        name="dias_uteis_mes"
-                        type="number"
-                        defaultValue={stats?.capacity.config.dias_uteis_mes}
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                    Salvar Configurações
-                  </button>
-                </form>
+                  )}
+                </div>
               </Card>
 
               <Card className="p-8">
                 <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <Users size={20} />
+                  Detalhamento por Colaborador
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left border-b border-zinc-100">
+                        <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome</th>
+                        <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Custo Total</th>
+                        <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">% do Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-50">
+                      {reportData.costsByCollaborator.map((c: any, i: number) => (
+                        <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="py-4 text-sm font-medium text-zinc-900">{c.name}</td>
+                          <td className="py-4 text-sm font-mono text-zinc-600 text-right">R$ {c.total_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-sm text-zinc-500 text-right">
+                            {((c.total_cost / reportData.summary.total_labor_cost) * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="max-w-2xl space-y-8 pb-12">
+            <Card className="p-8">
+              <div className="flex justify-between items-start mb-6">
+                <h3 className="text-lg font-bold flex items-center gap-2">
                   <Settings size={20} />
-                  Gerenciar Etapas de Produção
+                  Integração Supabase
                 </h3>
-
-                <div className="flex gap-2 mb-8">
-                  <input
-                    type="text"
-                    value={newStageName}
-                    onChange={(e) => setNewStageName(e.target.value)}
-                    placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
-                    className="flex-1 p-2 border border-zinc-200 rounded-lg text-sm"
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!newStageName) return;
-                      await fetch('/api/stages', {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'x-user-role': currentUser?.role || ''
-                        },
-                        body: JSON.stringify({ name: newStageName })
-                      });
-                      setNewStageName('');
-                      fetchData();
-                    }}
-                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
-                  >
-                    Adicionar
-                  </button>
+                <button
+                  onClick={async () => {
+                    const data = await safeFetch('/api/supabase/status');
+                    if (data?.status === 'success') {
+                      alert('✅ Supabase conectado com sucesso!');
+                    } else {
+                      alert(`❌ Erro: ${data?.message || 'Falha na conexão'}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700"
+                >
+                  Testar Conexão
+                </button>
+              </div>
+              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-500">Status do SDK:</span>
+                  <Badge variant="info">Ativo</Badge>
                 </div>
+                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                  O SDK do Supabase foi inicializado. Para usar o Supabase como banco de dados principal (SQL),
+                  certifique-se de configurar a <strong>DATABASE_URL</strong> com a Connection String do Supabase nos Secrets.
+                </p>
+              </div>
+            </Card>
 
-                <div className="space-y-3">
-                  {stages.map((stage) => (
-                    <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
-                      <div className="flex items-center gap-4 flex-1">
-                        <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
-                        {editingStageId === stage.id ? (
-                          <input
-                            type="text"
-                            autoFocus
-                            value={editingStageName}
-                            onChange={(e) => setEditingStageName(e.target.value)}
-                            onBlur={async () => {
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <BarChart3 size={20} />
+                Configuração de Capacidade Produtiva
+              </h3>
+              <form className="space-y-6" onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const data = {
+                  jornada_horas: Number(formData.get('jornada_horas')),
+                  operadores_ativos: Number(formData.get('operadores_ativos')),
+                  eficiencia_percentual: Number(formData.get('eficiencia_percentual')) / 100,
+                  dias_uteis_mes: Number(formData.get('dias_uteis_mes'))
+                };
+
+                await fetch('/api/config/producao', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-role': currentUser?.role || ''
+                  },
+                  body: JSON.stringify(data)
+                });
+                fetchData();
+              }}>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Jornada de Trabalho (Horas)</label>
+                    <input
+                      name="jornada_horas"
+                      type="number"
+                      step="0.5"
+                      defaultValue={stats?.capacity.config.jornada_horas}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Operadores Ativos</label>
+                    <input
+                      name="operadores_ativos"
+                      type="number"
+                      defaultValue={stats?.capacity.config.operadores_ativos}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Eficiência Operacional (%)</label>
+                    <input
+                      name="eficiencia_percentual"
+                      type="number"
+                      defaultValue={(stats?.capacity.config.eficiencia_percentual || 0.85) * 100}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Úteis no Mês</label>
+                    <input
+                      name="dias_uteis_mes"
+                      type="number"
+                      defaultValue={stats?.capacity.config.dias_uteis_mes}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
+                  Salvar Configurações
+                </button>
+              </form>
+            </Card>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <Settings size={20} />
+                Gerenciar Etapas de Produção
+              </h3>
+
+              <div className="flex gap-2 mb-8">
+                <input
+                  type="text"
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
+                  className="flex-1 p-2 border border-zinc-200 rounded-lg text-sm"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newStageName) return;
+                    await fetch('/api/stages', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-role': currentUser?.role || ''
+                      },
+                      body: JSON.stringify({ name: newStageName })
+                    });
+                    setNewStageName('');
+                    fetchData();
+                  }}
+                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
+                >
+                  Adicionar
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {stages.map((stage) => (
+                  <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
+                    <div className="flex items-center gap-4 flex-1">
+                      <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
+                      {editingStageId === stage.id ? (
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingStageName}
+                          onChange={(e) => setEditingStageName(e.target.value)}
+                          onBlur={async () => {
+                            if (editingStageName && editingStageName !== stage.name) {
+                              await fetch(`/api/stages/${stage.id}`, {
+                                method: 'PATCH',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'x-user-role': currentUser?.role || ''
+                                },
+                                body: JSON.stringify({ name: editingStageName })
+                              });
+                              fetchData();
+                            }
+                            setEditingStageId(null);
+                          }}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
                               if (editingStageName && editingStageName !== stage.name) {
                                 await fetch(`/api/stages/${stage.id}`, {
                                   method: 'PATCH',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                    'x-user-role': currentUser?.role || ''
-                                  },
+                                  headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ name: editingStageName })
                                 });
                                 fetchData();
                               }
                               setEditingStageId(null);
-                            }}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Enter') {
-                                if (editingStageName && editingStageName !== stage.name) {
-                                  await fetch(`/api/stages/${stage.id}`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ name: editingStageName })
-                                  });
-                                  fetchData();
-                                }
-                                setEditingStageId(null);
-                              }
-                              if (e.key === 'Escape') setEditingStageId(null);
-                            }}
-                            className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                          />
-                        ) : (
-                          <span className="text-sm font-medium">{stage.name}</span>
-                        )}
+                            }
+                            if (e.key === 'Escape') setEditingStageId(null);
+                          }}
+                          className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      ) : (
+                        <span className="text-sm font-medium">{stage.name}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="success">Ativa</Badge>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => {
+                            setEditingStageId(stage.id);
+                            setEditingStageName(stage.name);
+                          }}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
+                              await fetch(`/api/stages/${stage.id}`, {
+                                method: 'DELETE',
+                                headers: { 'x-user-role': currentUser?.role || '' }
+                              });
+                              fetchData();
+                            }
+                          }}
+                          className="p-1.5 hover:bg-rose-100 rounded text-rose-500 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="success">Ativa</Badge>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <ClipboardList size={20} />
+                  Gerenciar Templates de Pedido
+                </h3>
+                {currentUser?.role === 'Admin' && (
+                  <button
+                    onClick={() => {
+                      setEditingTemplate(null);
+                      setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                      setIsTemplateEditorOpen(true);
+                    }}
+                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                  >
+                    <Plus size={16} /> Novo Template
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {templates.map((template) => (
+                  <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
+                      {currentUser?.role === 'Admin' && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => {
-                              setEditingStageId(stage.id);
-                              setEditingStageName(stage.name);
+                              setEditingTemplate(template);
+                              setTemplateFormStages(template.required_stages || []);
+                              setIsTemplateEditorOpen(true);
                             }}
-                            className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
+                            className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
                           >
                             <Edit2 size={14} />
                           </button>
                           <button
                             onClick={async () => {
-                              if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
-                                await fetch(`/api/stages/${stage.id}`, {
+                              if (confirm(`Excluir template "${template.name}"?`)) {
+                                await fetch(`/api/order-templates/${template.id}`, {
                                   method: 'DELETE',
                                   headers: { 'x-user-role': currentUser?.role || '' }
                                 });
                                 fetchData();
                               }
                             }}
-                            className="p-1.5 hover:bg-rose-100 rounded text-rose-500 transition-colors"
+                            className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
                           >
                             <Trash2 size={14} />
                           </button>
                         </div>
-                      </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card className="p-8">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
-                    <ClipboardList size={20} />
-                    Gerenciar Templates de Pedido
-                  </h3>
-                  {currentUser?.role === 'Admin' && (
-                    <button
-                      onClick={() => {
-                        setEditingTemplate(null);
-                        setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                        setIsTemplateEditorOpen(true);
-                      }}
-                      className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
-                    >
-                      <Plus size={16} /> Novo Template
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {templates.map((template) => (
-                    <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
-                        {currentUser?.role === 'Admin' && (
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => {
-                                setEditingTemplate(template);
-                                setTemplateFormStages(template.required_stages || []);
-                                setIsTemplateEditorOpen(true);
-                              }}
-                              className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (confirm(`Excluir template "${template.name}"?`)) {
-                                  await fetch(`/api/order-templates/${template.id}`, {
-                                    method: 'DELETE',
-                                    headers: { 'x-user-role': currentUser?.role || '' }
-                                  });
-                                  fetchData();
-                                }
-                              }}
-                              className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        <Badge variant="default">{template.product_type}</Badge>
-                        <Badge variant="info">{template.print_type}</Badge>
-                      </div>
-                      <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Etapas Inclusas:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {stages.filter(s => template.required_stages?.includes(s.id)).map(s => (
-                          <span key={s.id} className="px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded text-[9px] font-bold">
-                            {s.name}
-                          </span>
-                        ))}
-                      </div>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <Badge variant="default">{template.product_type}</Badge>
+                      <Badge variant="info">{template.print_type}</Badge>
                     </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-          )
+                    <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Etapas Inclusas:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {stages.filter(s => template.required_stages?.includes(s.id)).map(s => (
+                        <span key={s.id} className="px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded text-[9px] font-bold">
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )
         }
 
         {/* Order Details Drawer */}
@@ -3052,17 +3126,19 @@ export default function App() {
                           <option value="Comercial">Comercial</option>
                         </select>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
-                        <input
-                          name="hourly_cost"
-                          type="number"
-                          step="0.01"
-                          defaultValue={selectedUserForEdit?.hourly_cost || 0}
-                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                          required
-                        />
-                      </div>
+                      {currentUser?.role === 'Admin' && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
+                          <input
+                            name="hourly_cost"
+                            type="number"
+                            step="0.01"
+                            defaultValue={selectedUserForEdit?.hourly_cost || 0}
+                            className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                            required
+                          />
+                        </div>
+                      )}
                     </div>
                     {selectedUserForEdit && (
                       <div className="flex items-center gap-2">
