@@ -33,7 +33,9 @@ import {
   ArrowLeft,
   PieChart as PieChartIcon,
   Target,
-  Archive
+  Archive,
+  CheckSquare,
+  Timer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
