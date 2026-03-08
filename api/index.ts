@@ -84,7 +84,7 @@ app.get("/api/config", async (_req, res) => {
 });
 
 app.patch("/api/config", isAdmin, async (req, res) => {
-    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas } = req.body;
+    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, meta_custo_por_peca } = req.body;
     const { data, error } = await supabase
         .from("config_producao")
         .update({
@@ -93,7 +93,8 @@ app.patch("/api/config", isAdmin, async (req, res) => {
             eficiencia_percentual,
             dias_uteis_mes,
             meta_diaria_pedidos,
-            meta_diaria_pecas
+            meta_diaria_pecas,
+            meta_custo_por_peca
         })
         .eq("id", 1)
         .select()

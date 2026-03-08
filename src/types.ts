@@ -131,6 +131,7 @@ export interface DashboardStats {
     overdueOrders: number;
     todayFinalizedPieces: number;
     avgLeadTimeSeconds: number;
+    meta_custo_por_peca?: number;
   };
   bottlenecks: {
     stage_name: string;
