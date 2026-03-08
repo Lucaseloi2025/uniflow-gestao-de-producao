@@ -2119,14 +2119,14 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Custo Total M.O.</p>
-                    <h3 className="text-2xl font-black text-zinc-900">R$ {reportData.summary.total_labor_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    <h3 className="text-2xl font-black text-zinc-900">R$ {(reportData?.summary?.total_labor_cost || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
                   </div>
                 </div>
               </Card>
 
               <Card className={cn(
                 "p-6 shadow-sm border-none bg-white relative overflow-hidden",
-                metaCustoPeca > 0 && (reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)) > metaCustoPeca
+                metaCustoPeca > 0 && ((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) > metaCustoPeca
                   ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-rose-500"
                   : metaCustoPeca > 0 ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-emerald-500" : ""
               )}>
@@ -2142,16 +2142,16 @@ export default function App() {
                   <div>
                     <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Custo Médio / Peça</p>
                     <div className="flex items-baseline gap-2">
-                      <h3 className="text-2xl font-black text-zinc-900">R$ {(reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                      <h3 className="text-2xl font-black text-zinc-900">R$ {((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
                       {metaCustoPeca > 0 && (
                         <div className={cn(
                           "flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm",
-                          (reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)) <= metaCustoPeca
+                          ((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) <= metaCustoPeca
                             ? "bg-emerald-100 text-emerald-700"
                             : "bg-rose-100 text-rose-700"
                         )}>
-                          {((reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)) <= metaCustoPeca) ? <TrendingDown size={10} /> : <TrendingUp size={10} />}
-                          {Math.abs(((reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)) / metaCustoPeca - 1) * 100).toFixed(0)}%
+                          {(((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) <= metaCustoPeca) ? <TrendingDown size={10} /> : <TrendingUp size={10} />}
+                          {Math.abs((((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) / metaCustoPeca - 1) * 100).toFixed(0)}%
                         </div>
                       )}
                     </div>
@@ -2169,7 +2169,7 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Volume Produzido</p>
-                    <h3 className="text-2xl font-black text-zinc-900">{reportData.summary.total_parts.toLocaleString('pt-BR')} <span className="text-xs font-medium text-zinc-400 uppercase">Peças</span></h3>
+                    <h3 className="text-2xl font-black text-zinc-900">{(reportData?.summary?.total_parts || 0).toLocaleString('pt-BR')} <span className="text-xs font-medium text-zinc-400 uppercase">Peças</span></h3>
                   </div>
                 </div>
               </Card>
@@ -2185,7 +2185,7 @@ export default function App() {
                   <div>
                     <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Tempo Total Gasto</p>
                     <h3 className="text-2xl font-black text-white">
-                      {(reportData.summary.total_labor_cost / 15).toFixed(1)} <span className="text-xs font-medium text-zinc-500 uppercase">Horas</span>
+                      {((reportData?.summary?.total_labor_cost || 0) / 15).toFixed(1)} <span className="text-xs font-medium text-zinc-500 uppercase">Horas</span>
                     </h3>
                   </div>
                 </div>
@@ -2207,11 +2207,11 @@ export default function App() {
                     </div>
                   </div>
                   <div className="h-80">
-                    {reportData.costsByCollaborator.length > 0 ? (
+                    {(reportData?.costsByCollaborator || []).length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
-                            data={reportData.costsByCollaborator}
+                            data={reportData?.costsByCollaborator || []}
                             dataKey="total_cost"
                             nameKey="name"
                             cx="50%"
@@ -2221,7 +2221,7 @@ export default function App() {
                             paddingAngle={8}
                             labelLine={false}
                           >
-                            {reportData.costsByCollaborator.map((entry: any, index: number) => (
+                            {(reportData?.costsByCollaborator || []).map((entry: any, index: number) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} className="hover:opacity-80 transition-opacity cursor-pointer" />
                             ))}
                           </Pie>
@@ -2240,11 +2240,11 @@ export default function App() {
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-4 mt-4">
-                    {reportData.costsByCollaborator.slice(0, 4).map((c: any, i: number) => (
+                    {(reportData?.costsByCollaborator || []).slice(0, 4).map((c: any, i: number) => (
                       <div key={i} className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                         <span className="text-[10px] font-bold text-zinc-500 uppercase truncate">{c.name}</span>
-                        <span className="text-[10px] font-black text-zinc-900 ml-auto">{((c.total_cost / reportData.summary.total_labor_cost) * 100).toFixed(0)}%</span>
+                        <span className="text-[10px] font-black text-zinc-900 ml-auto">{(((c.total_cost || 0) / (reportData?.summary?.total_labor_cost || 1)) * 100).toFixed(0)}%</span>
                       </div>
                     ))}
                   </div>
@@ -2262,10 +2262,10 @@ export default function App() {
                     <p className="text-xs text-zinc-500 font-medium mb-8">Colaboradores com menor custo por peça produzida</p>
 
                     <div className="space-y-6">
-                      {reportData.costsByCollaborator
-                        .sort((a: any, b: any) => (a.total_cost / (a.pecas || 1)) - (b.total_cost / (b.pecas || 1)))
+                      {(reportData?.costsByCollaborator || [])
+                        .sort((a: any, b: any) => ((a.total_cost || 0) / (a.pecas || 1)) - ((b.total_cost || 0) / (b.pecas || 1)))
                         .map((c: any, i: number) => {
-                          const costPerPiece = c.total_cost / (c.pecas || 1);
+                          const costPerPiece = (c.total_cost || 0) / (c.pecas || 1);
                           const isEfficient = metaCustoPeca > 0 ? costPerPiece <= metaCustoPeca : true;
                           return (
                             <div key={i} className="group">
@@ -2321,9 +2321,9 @@ export default function App() {
 
                   <div className="flex-grow overflow-y-auto max-h-[700px] pr-2 custom-scrollbar">
                     <div className="grid grid-cols-1 gap-4">
-                      {operationalReportData?.pedidos_concluidos.length ? (
+                      {operationalReportData?.pedidos_concluidos?.length ? (
                         operationalReportData.pedidos_concluidos.map((p: any, i: number) => {
-                          const costPerPiece = p.lead_time_horas > 0 ? (p.lead_time_horas * 15) / (p.pecas || 1) : 0;
+                          const costPerPiece = (p.lead_time_horas || 0) > 0 ? ((p.lead_time_horas || 0) * 15) / (p.pecas || 1) : 0;
                           const isEfficient = metaCustoPeca > 0 ? costPerPiece <= metaCustoPeca : true;
                           return (
                             <div key={i} className="group border border-zinc-100 rounded-2xl p-4 hover:border-emerald-200 hover:bg-emerald-50/10 transition-all cursor-pointer flex items-center gap-6">
