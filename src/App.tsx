@@ -265,11 +265,13 @@ export default function App() {
 
   useEffect(() => {
     if (session?.user?.email) {
-      safeFetch(`/api/users?search=${encodeURIComponent(session.user.email)}`).then(data => {
-        const found = data?.find((u: User) => u.email === session.user.email);
+      const userEmail = session.user.email.toLowerCase();
+      safeFetch(`/api/users?search=${encodeURIComponent(userEmail)}`).then(data => {
+        const found = data?.find((u: User) => u.email?.toLowerCase() === userEmail);
         if (found) {
           setCurrentUser(found);
         } else {
+          console.warn(`[Auth] Usuário não encontrado na tabela 'users': ${userEmail}`);
           setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Produção', hourly_cost: 0, active: true });
         }
       });

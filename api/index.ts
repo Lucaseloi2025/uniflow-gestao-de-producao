@@ -1045,7 +1045,7 @@ app.patch("/api/config/producao", isAdmin, async (req, res) => {
 // ── Users ─────────────────────────────────────────────────────────────────
 app.get("/api/users", async (req, res) => {
     const { search } = req.query;
-    let query = supabase
+    let query = supabaseAdmin
         .from("users")
         .select("id, name, email, role, hourly_cost, active");
 
