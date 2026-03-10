@@ -1564,7 +1564,7 @@ export default function App() {
                         </div>
                       </td>
                       <td className={cn("px-6 py-4 text-sm", isOverdue && "text-rose-600 font-bold")}>
-                        {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
+                        {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') ? (
                           <input
                             type="date"
                             defaultValue={order.deadline.split('T')[0]}
@@ -2792,7 +2792,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') && selectedOrder.status !== 'Cancelado' && (
+                      {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado' && (
                         <>
                           <button
                             onClick={() => openEditOrderModal(selectedOrder)}
@@ -2824,7 +2824,7 @@ export default function App() {
                         <FileText size={15} />
                         <span className="hidden sm:inline">Histórico</span>
                       </button>
-                      {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') && (
+                      {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && (
                         <button
                           onClick={() => handleDeleteOrder(selectedOrder.id)}
                           disabled={isDeletingOrder}
@@ -3818,7 +3818,7 @@ export default function App() {
         <AnimatePresence>
           {
             showEditOrderModal && selectedOrder && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -3990,7 +3990,7 @@ export default function App() {
         <AnimatePresence>
           {
             showHistoryModal && selectedOrder && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
