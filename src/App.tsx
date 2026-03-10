@@ -496,7 +496,7 @@ export default function App() {
     }
   };
 
-  const openEditOrderModal = async (order: Order) => {
+  const openEditOrderModal = (order: Order) => {
     setEditOrderForm({
       client_name: order.client_name,
       product_type: order.product_type,
@@ -507,10 +507,14 @@ export default function App() {
       required_stages: order.required_stages || [],
       num_colors: order.num_colors || 1,
     });
-    // Check if order has executions
-    const execs = await safeFetch(`/api/orders/${order.id}/executions`);
-    setEditOrderHasExecutions(execs && execs.length > 0);
+
+    // Open modal immediately to prevent "nothing happens" feeling
     setShowEditOrderModal(true);
+
+    // Check if order has executions in the background
+    safeFetch(`/api/orders/${order.id}/executions`).then(execs => {
+      setEditOrderHasExecutions(execs && execs.length > 0);
+    });
   };
 
   const handleEditOrderSubmit = async () => {
@@ -1560,7 +1564,7 @@ export default function App() {
                         </div>
                       </td>
                       <td className={cn("px-6 py-4 text-sm", isOverdue && "text-rose-600 font-bold")}>
-                        {currentUser.role === 'Admin' ? (
+                        {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
                           <input
                             type="date"
                             defaultValue={order.deadline.split('T')[0]}
@@ -2788,7 +2792,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {currentUser.role === 'Admin' && selectedOrder.status !== 'Cancelado' && (
+                      {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') && selectedOrder.status !== 'Cancelado' && (
                         <>
                           <button
                             onClick={() => openEditOrderModal(selectedOrder)}
