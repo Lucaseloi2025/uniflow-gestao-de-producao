@@ -48,6 +48,14 @@ const isAdmin = (req: express.Request, res: express.Response, next: express.Next
     next();
 };
 
+const isAdminOrComercial = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const role = req.headers['x-user-role'];
+    if (role !== 'Admin' && role !== 'Comercial') {
+        return res.status(403).json({ error: "Acesso negado. Ação permitida apenas para Administração ou Comercial." });
+    }
+    next();
+};
+
 // ── Supabase status (health check) ────────────────────────────────────────
 app.get("/api/supabase/status", async (_req, res) => {
     const { data, error } = await supabase
@@ -556,7 +564,7 @@ app.patch("/api/orders/:id/status", async (req, res) => {
 });
 
 // Full order edit with validation and audit log
-app.patch("/api/orders/:id", isAdmin, async (req, res) => {
+app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     const orderId = Number(req.params.id);
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
     const confirmFinalized = req.headers["x-confirm-finalized"] === "true";
@@ -620,7 +628,7 @@ app.patch("/api/orders/:id", isAdmin, async (req, res) => {
 });
 
 // Cancel order — keeps history, removes from capacity calculations
-app.patch("/api/orders/:id/cancel", isAdmin, async (req, res) => {
+app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
     const orderId = Number(req.params.id);
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
 
@@ -654,7 +662,7 @@ app.patch("/api/orders/:id/cancel", isAdmin, async (req, res) => {
 });
 
 // Order history / audit log
-app.get("/api/orders/:id/history", isAdmin, async (req, res) => {
+app.get("/api/orders/:id/history", isAdminOrComercial, async (req, res) => {
     const { data, error } = await supabaseAdmin
         .from("order_history")
         .select("*")

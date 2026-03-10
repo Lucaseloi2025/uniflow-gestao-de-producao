@@ -241,6 +241,15 @@ export default function App() {
     return forecast.riskLevel;
   };
 
+  const isImage = (url: string | undefined): boolean => {
+    if (!url) return false;
+    // Check if it's a data URL or has a common image extension
+    if (url.startsWith('data:image/')) return true;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const ext = cleanUrl.split('.').pop()?.toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext || '');
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
@@ -2793,7 +2802,7 @@ export default function App() {
                             onClick={() => handleCancelOrder(selectedOrder.id)}
                             disabled={isCancellingOrder}
                             className={cn(
-                              "flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl transition-all font-bold text-sm",
+                              "flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all font-bold text-sm",
                               isCancellingOrder && "opacity-50 cursor-not-allowed"
                             )}
                             title="Cancelar pedido"
@@ -2811,7 +2820,7 @@ export default function App() {
                         <FileText size={15} />
                         <span className="hidden sm:inline">Histórico</span>
                       </button>
-                      {currentUser.role === 'Admin' && (
+                      {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') && (
                         <button
                           onClick={() => handleDeleteOrder(selectedOrder.id)}
                           disabled={isDeletingOrder}
@@ -2851,7 +2860,7 @@ export default function App() {
                       </div>
                       <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 col-span-2 md:col-span-1">
                         <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
-                        {currentUser.role === 'Admin' ? (
+                        {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
                           <input
                             type="date"
                             defaultValue={selectedOrder.deadline.split('T')[0]}
@@ -2892,7 +2901,7 @@ export default function App() {
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="text-lg font-bold flex items-center gap-2">
                             <ImageIcon size={20} />
-                            Fichas / Estampas ({selectedOrder.art_urls?.length || 1})
+                            Fichas / Arquivos ({selectedOrder.art_urls?.length || 1})
                           </h3>
                           <label className={cn(
                             "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-all cursor-pointer",
@@ -2903,11 +2912,10 @@ export default function App() {
                             ) : (
                               <Plus size={14} />
                             )}
-                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar Imagem'}</span>
+                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar Arquivo'}</span>
                             <input
                               type="file"
                               multiple
-                              accept="image/*"
                               className="hidden"
                               disabled={isUploadingArt}
                               onChange={(e) => {
@@ -2921,35 +2929,80 @@ export default function App() {
                             selectedOrder.art_urls.map((url, i) => (
                               <div
                                 key={i}
-                                onClick={() => setSelectedFullImage(url)}
+                                onClick={() => {
+                                  if (isImage(url)) {
+                                    setSelectedFullImage(url);
+                                  } else {
+                                    window.open(url, '_blank');
+                                  }
+                                }}
                                 className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
                               >
-                                <img
-                                  src={url}
-                                  alt={`Estampa ${i + 1}`}
-                                  className="max-w-full max-h-full object-contain"
-                                  referrerPolicy="no-referrer"
-                                />
+                                {isImage(url) ? (
+                                  <img
+                                    src={url}
+                                    alt={`Ficha ${i + 1}`}
+                                    className="max-w-full max-h-full object-contain"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="flex flex-col items-center gap-2 text-zinc-400">
+                                    <FileText size={40} />
+                                    <span className="text-[10px] uppercase font-bold">Arquivo {url.split('.').pop()}</span>
+                                  </div>
+                                )}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
-                                  <Search size={16} />
-                                  Clique para Ampliar
+                                  {isImage(url) ? (
+                                    <>
+                                      <Search size={16} />
+                                      Clique para Ampliar
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Download size={16} />
+                                      Abrir / Baixar
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             ))
                           ) : (
                             <div
-                              onClick={() => setSelectedFullImage(selectedOrder.art_url || null)}
+                              onClick={() => {
+                                if (isImage(selectedOrder.art_url)) {
+                                  setSelectedFullImage(selectedOrder.art_url || null);
+                                } else if (selectedOrder.art_url) {
+                                  window.open(selectedOrder.art_url, '_blank');
+                                }
+                              }}
                               className="group relative w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 cursor-pointer hover:border-zinc-400 transition-all"
                             >
-                              <img
-                                src={selectedOrder.art_url}
-                                alt="Mockup do Cliente"
-                                className="w-full h-auto max-h-[400px] object-contain"
-                                referrerPolicy="no-referrer"
-                              />
+                              {isImage(selectedOrder.art_url) ? (
+                                <img
+                                  src={selectedOrder.art_url}
+                                  alt="Mockup do Cliente"
+                                  className="w-full h-auto max-h-[400px] object-contain"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="p-12 flex flex-col items-center gap-3 text-zinc-400">
+                                  <FileText size={48} />
+                                  <span className="text-sm font-bold">Documento / Ficha</span>
+                                  <span className="text-xs uppercase font-bold text-zinc-300">{selectedOrder.art_url?.split('.').pop()}</span>
+                                </div>
+                              )}
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
-                                <Search size={16} />
-                                Clique para Ampliar
+                                {isImage(selectedOrder.art_url) ? (
+                                  <>
+                                    <Search size={16} />
+                                    Clique para Ampliar
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download size={16} />
+                                    Abrir / Baixar
+                                  </>
+                                )}
                               </div>
                             </div>
                           )}
@@ -3198,19 +3251,18 @@ export default function App() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Imagem)</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Arquivos)</label>
                       <div className="flex items-center justify-center w-full">
                         <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
                           <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <Upload className="w-8 h-8 mb-3 text-zinc-400" />
                             <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
-                            <p className="text-xs text-zinc-400">PNG, JPG ou GIF</p>
+                            <p className="text-xs text-zinc-400">Imagens, PDFs, etc</p>
                           </div>
                           <input
                             name="art_files"
                             type="file"
                             className="hidden"
-                            accept="image/*"
                             multiple
                             onChange={(e) => {
                               const files = e.target.files;
@@ -3727,12 +3779,31 @@ export default function App() {
                   className="relative w-full h-full flex items-center justify-center"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <img
-                    src={selectedFullImage}
-                    alt="Detalhe da Estampa"
-                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
-                    referrerPolicy="no-referrer"
-                  />
+                  {isImage(selectedFullImage) ? (
+                    <img
+                      src={selectedFullImage}
+                      alt="Detalhe da Estampa"
+                      className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="bg-white p-12 rounded-2xl flex flex-col items-center gap-4">
+                      <FileText size={64} className="text-zinc-400" />
+                      <div className="text-center">
+                        <p className="font-bold text-lg mb-1">Arquivo: {selectedFullImage.split('/').pop()}</p>
+                        <p className="text-zinc-500 text-sm">Este arquivo não pode ser visualizado diretamente.</p>
+                      </div>
+                      <a
+                        href={selectedFullImage}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 px-6 py-3 bg-zinc-900 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-zinc-800 transition-all"
+                      >
+                        <Download size={20} />
+                        Baixar Arquivo
+                      </a>
+                    </div>
+                  )}
                 </motion.div>
               </motion.div>
             )
