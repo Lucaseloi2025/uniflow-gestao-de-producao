@@ -506,6 +506,8 @@ export default function App() {
       observations: order.observations,
       required_stages: order.required_stages || [],
       num_colors: order.num_colors || 1,
+      art_urls: order.art_urls || (order.art_url ? [order.art_url] : []),
+      art_url: order.art_url,
     });
 
     // Open modal immediately to prevent "nothing happens" feeling
@@ -3949,6 +3951,108 @@ export default function App() {
                             </label>
                           );
                         })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Fichas / Arquivos</label>
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById('edit-modal-upload')?.click()}
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-900 bg-zinc-100 hover:bg-zinc-200 px-2 py-1 rounded-md transition-colors"
+                        >
+                          <Plus size={12} /> Adicionar Arquivo
+                        </button>
+                        <input
+                          id="edit-modal-upload"
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={async (e) => {
+                            if (e.target.files && selectedOrder) {
+                              setIsUploadingArt(true);
+                              const formData = new FormData();
+                              for (let i = 0; i < e.target.files.length; i++) {
+                                formData.append('art_files', e.target.files[i]);
+                              }
+                              try {
+                                const res = await fetch(`/api/orders/${selectedOrder.id}/images`, {
+                                  method: 'POST',
+                                  body: formData
+                                });
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  setEditOrderForm({
+                                    ...editOrderForm,
+                                    art_urls: data.art_urls,
+                                    art_url: data.art_urls[0]
+                                  });
+                                  if (selectedOrder) {
+                                    setSelectedOrder({
+                                      ...selectedOrder,
+                                      art_urls: data.art_urls,
+                                      art_url: data.art_urls[0]
+                                    });
+                                  }
+                                  fetchData();
+                                }
+                              } catch (err) {
+                                alert('Erro no upload');
+                              } finally {
+                                setIsUploadingArt(false);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-zinc-50 rounded-xl border border-zinc-100">
+                        {(editOrderForm.art_urls || []).length > 0 ? (
+                          (editOrderForm.art_urls || []).map((url, i) => (
+                            <div key={url + i} className="relative group">
+                              <div
+                                className="w-12 h-12 rounded-lg border border-zinc-200 overflow-hidden bg-white flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
+                                onClick={() => {
+                                  if (isImage(url)) {
+                                    setSelectedFullImage(url);
+                                  } else {
+                                    window.open(url, '_blank');
+                                  }
+                                }}
+                              >
+                                {isImage(url) ? (
+                                  <img src={url} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <FileText size={16} className="text-zinc-400" />
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updatedUrls = (editOrderForm.art_urls || []).filter(u => u !== url);
+                                  setEditOrderForm({
+                                    ...editOrderForm,
+                                    art_urls: updatedUrls,
+                                    art_url: updatedUrls.length > 0 ? updatedUrls[0] : undefined
+                                  });
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="w-full h-12 flex items-center justify-center border-2 border-dashed border-zinc-200 rounded-lg">
+                            <span className="text-[10px] text-zinc-400 font-medium">Nenhum arquivo anexado</span>
+                          </div>
+                        )}
+                        {isUploadingArt && (
+                          <div className="w-12 h-12 rounded-lg border border-zinc-200 bg-white flex items-center justify-center">
+                            <RefreshCw size={16} className="text-zinc-400 animate-spin" />
+                          </div>
+                        )}
                       </div>
                     </div>
 

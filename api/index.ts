@@ -569,7 +569,7 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
     const confirmFinalized = req.headers["x-confirm-finalized"] === "true";
 
-    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors } = req.body;
+    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url } = req.body;
 
     // ── Validations ──────────────────────────────────────────────────────────
     if (quantity !== undefined && Number(quantity) <= 0) {
@@ -602,6 +602,8 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     if (observations !== undefined) updates.observations = observations;
     if (required_stages !== undefined) updates.required_stages = required_stages;
     if (num_colors !== undefined) updates.num_colors = Number(num_colors);
+    if (art_urls !== undefined) updates.art_urls = art_urls;
+    if (art_url !== undefined) updates.art_url = art_url;
 
     if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: "Nenhum campo para atualizar" });
