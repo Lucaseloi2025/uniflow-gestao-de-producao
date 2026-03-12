@@ -183,6 +183,7 @@ export default function App() {
   const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
   const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
+  const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -421,6 +422,7 @@ export default function App() {
       if (data.meta_custo_por_peca !== undefined) setMetaCustoPeca(data.meta_custo_por_peca);
       if (data.auto_pause_time_weekday) setAutoPauseTimeWeekday(data.auto_pause_time_weekday);
       if (data.auto_pause_time_friday) setAutoPauseTimeFriday(data.auto_pause_time_friday);
+      if (data.auto_pause_time_lunch) setAutoPauseTimeLunch(data.auto_pause_time_lunch);
     }
   };
 
@@ -432,16 +434,21 @@ export default function App() {
       const dayOfWeek = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sab
       if (dayOfWeek === 0 || dayOfWeek === 6) return; // Ignora fins de semana
 
-      const targetTime = dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday;
-      if (!targetTime) return;
+      const checkTime = (target: string) => {
+        if (!target) return false;
+        const [hh, mm] = target.split(':').map(Number);
+        return now.getHours() === hh && now.getMinutes() === mm;
+      };
 
-      const [hh, mm] = targetTime.split(':').map(Number);
-      const isExactMinute = now.getHours() === hh && now.getMinutes() === mm && now.getSeconds() < 60;
-      if (isExactMinute) {
+      const isLunch = checkTime(autoPauseTimeLunch);
+      const isEndOfDay = checkTime(dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday);
+
+      if (isLunch || isEndOfDay) {
         safeFetch('/api/executions/pause-all', { method: 'POST' })
           .then((r) => {
             if (r?.paused > 0) {
-              console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) automaticamente.`);
+              const reason = isLunch ? 'almoço' : 'fim de expediente';
+              console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) - ${reason}.`);
             }
           })
           .catch(console.error);
@@ -449,7 +456,7 @@ export default function App() {
     };
     const interval = setInterval(check, 60000);
     return () => clearInterval(interval);
-  }, [currentUser, autoPauseTimeWeekday, autoPauseTimeFriday]);
+  }, [currentUser, autoPauseTimeWeekday, autoPauseTimeFriday, autoPauseTimeLunch]);
 
   const fetchForecast = async () => {
     setIsLoadingForecast(true);
@@ -2610,20 +2617,32 @@ export default function App() {
                 const formData = new FormData(e.currentTarget);
                 const weekday = formData.get('auto_pause_time_weekday') as string;
                 const friday = formData.get('auto_pause_time_friday') as string;
+                const lunch = formData.get('auto_pause_time_lunch') as string;
                 const res = await fetch('/api/config', {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
-                  body: JSON.stringify({ auto_pause_time_weekday: weekday, auto_pause_time_friday: friday })
+                  body: JSON.stringify({ auto_pause_time_weekday: weekday, auto_pause_time_friday: friday, auto_pause_time_lunch: lunch })
                 });
                 if (res.ok) {
                   setAutoPauseTimeWeekday(weekday);
                   setAutoPauseTimeFriday(friday);
+                  setAutoPauseTimeLunch(lunch);
                   alert('✅ Horários salvos com sucesso!');
                 }
               }}>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Seg – Qui (Horário de Pausa)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Almoço (Horário de Pausa)</label>
+                    <input
+                      name="auto_pause_time_lunch"
+                      type="time"
+                      defaultValue={autoPauseTimeLunch}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Seg – Qui (Fim de Expediente)</label>
                     <input
                       name="auto_pause_time_weekday"
                       type="time"
@@ -2633,7 +2652,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Sexta (Horário de Pausa)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Sexta (Fim de Expediente)</label>
                     <input
                       name="auto_pause_time_friday"
                       type="time"

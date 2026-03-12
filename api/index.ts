@@ -92,7 +92,7 @@ app.get("/api/config", async (_req, res) => {
 });
 
 app.patch("/api/config", isAdmin, async (req, res) => {
-    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, meta_custo_por_peca, auto_pause_time_weekday, auto_pause_time_friday } = req.body;
+    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, meta_custo_por_peca, auto_pause_time_weekday, auto_pause_time_friday, auto_pause_time_lunch } = req.body;
     const updates: any = {};
     if (jornada_horas !== undefined) updates.jornada_horas = jornada_horas;
     if (operadores_ativos !== undefined) updates.operadores_ativos = operadores_ativos;
@@ -103,6 +103,7 @@ app.patch("/api/config", isAdmin, async (req, res) => {
     if (meta_custo_por_peca !== undefined) updates.meta_custo_por_peca = meta_custo_por_peca;
     if (auto_pause_time_weekday !== undefined) updates.auto_pause_time_weekday = auto_pause_time_weekday;
     if (auto_pause_time_friday !== undefined) updates.auto_pause_time_friday = auto_pause_time_friday;
+    if (auto_pause_time_lunch !== undefined) updates.auto_pause_time_lunch = auto_pause_time_lunch;
     const { data, error } = await supabase
         .from("config_producao")
         .update(updates)
