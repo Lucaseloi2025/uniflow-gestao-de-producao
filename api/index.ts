@@ -754,21 +754,28 @@ app.get("/api/executions/active/:userId", async (req, res) => {
         .select("duration_seconds, start_pause, end_pause")
         .eq("execution_id", data.id);
 
+    const is_paused = (pauses || []).some(p => p.end_pause === null);
+
     const accumulatedPauseSeconds = (pauses || []).reduce((sum, p) => {
         if (p.duration_seconds !== null) return sum + p.duration_seconds;
-        // If there's an active pause, we don't count it in the "running" clock 
-        // because the clock only runs when NOT paused. 
-        // But the frontend needs to know if it's currently paused.
+        if (p.end_pause === null) {
+            const pauseStart = new Date(p.start_pause).getTime();
+            const now = new Date().getTime();
+            return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
+        }
         return sum;
     }, 0);
 
-    const is_paused = (pauses || []).some(p => p.end_pause === null);
+    const nowMs = new Date().getTime();
+    const startMs = new Date(data.start_time).getTime();
+    const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
 
     const formatted = {
         ...data,
         stage_name: data.stages?.name,
         order_number: data.orders?.order_number,
         accumulated_pause_seconds: accumulatedPauseSeconds,
+        total_time_seconds: data.status === 'Finalizado' ? data.total_time_seconds : calculatedTotalSeconds,
         is_paused: is_paused,
         stages: undefined,
         orders: undefined,
@@ -794,16 +801,29 @@ app.get("/api/orders/:id/executions", async (req, res) => {
         ? await supabase.from("pauses").select("*").in("execution_id", executionIds)
         : { data: [] };
 
+    const nowMs = new Date().getTime();
     const formatted = (data || []).map((e: any) => {
         const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
-        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => sum + (p.duration_seconds || 0), 0);
+        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
+            if (p.duration_seconds !== null) return sum + p.duration_seconds;
+            if (p.end_pause === null) {
+                const pauseStart = new Date(p.start_pause).getTime();
+                const now = new Date().getTime();
+                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
+            }
+            return sum;
+        }, 0);
         const is_paused = itemPauses.some(p => p.end_pause === null);
+
+        const startMs = new Date(e.start_time).getTime();
+        const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
 
         return {
             ...e,
             stage_name: e.stages?.name,
             user_name: e.users?.name,
             accumulated_pause_seconds: accumulatedPauseSeconds,
+            total_time_seconds: e.status === 'Finalizado' ? e.total_time_seconds : calculatedTotalSeconds,
             is_paused: is_paused,
             stages: undefined,
             users: undefined,
@@ -929,18 +949,37 @@ app.post("/api/executions/:id/pause", async (req, res) => {
 
 app.post("/api/executions/:id/resume", async (req, res) => {
     const execution_id = Number(req.params.id);
+    const now = new Date();
+
+    // 1. Get the active pause
+    const { data: activePause, error: e0 } = await supabaseAdmin
+        .from("pauses")
+        .select("id, start_pause")
+        .eq("execution_id", execution_id)
+        .is("end_pause", null)
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (e0) return checkError(e0, res, "Erro ao buscar pausa ativa");
+
+    if (activePause) {
+        const duration = Math.floor((now.getTime() - new Date(activePause.start_pause).getTime()) / 1000);
+        const { error: e2 } = await supabaseAdmin
+            .from("pauses")
+            .update({
+                end_pause: now.toISOString(),
+                duration_seconds: Math.max(0, duration)
+            })
+            .eq("id", activePause.id);
+        if (checkError(e2, res, "Erro ao finalizar pausa")) return;
+    }
+
     const { error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .update({ status: "Em andamento" })
         .eq("id", execution_id);
     if (checkError(e1, res, "Erro ao retomar execução")) return;
-
-    const { error: e2 } = await supabaseAdmin
-        .from("pauses")
-        .update({ end_pause: new Date().toISOString() })
-        .eq("execution_id", execution_id)
-        .is("end_pause", null);
-    if (checkError(e2, res, "Erro ao finalizar pausa")) return;
 
     return res.json({ success: true });
 });
@@ -1026,6 +1065,17 @@ app.post("/api/executions/:id/finish", async (req, res) => {
             .update({ status: "Em Produção" })
             .eq("id", execution.order_id)
             .eq("status", "Entrada");
+    }
+
+    if (execution.stages?.name === "Conferência" || execution.stages?.name === "Conferencia") {
+        await supabaseAdmin
+            .from("orders")
+            .update({ 
+                status: "Entregue",
+                delivered_at: nowISO
+            })
+            .eq("id", execution.order_id);
+        console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Conferência.`);
     }
 
     return res.json({ success: true, total_time: totalExecutionSeconds });

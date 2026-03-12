@@ -117,6 +117,7 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
     const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
 
     const updateTimer = () => {
+      if (execution.is_paused) return; // Stop updating if paused
       const now = Date.now();
       setElapsed(Math.max(0, Math.floor((now - start - pauseMs) / 1000)));
     };
@@ -125,7 +126,7 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
 
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
-  }, [execution.start_time, execution.accumulated_pause_seconds]);
+  }, [execution.start_time, execution.accumulated_pause_seconds, execution.is_paused]);
 
   return (
     <motion.div
@@ -3099,6 +3100,10 @@ export default function App() {
                                     <span className="text-[11px] font-mono font-bold text-rose-600">
                                       {(() => {
                                         if (!execution.start_time) return "00:00:00";
+                                        if (execution.status === 'Pausado') {
+                                            // When paused, show the time spent up to the pause
+                                            return formatSeconds(execution.total_time_seconds || 0);
+                                        }
                                         const start = parseISO(execution.start_time).getTime();
                                         const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
                                         const current = now.getTime();
