@@ -181,6 +181,8 @@ export default function App() {
   const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
+  const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
+  const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -415,10 +417,39 @@ export default function App() {
 
   const fetchConfig = async () => {
     const data = await safeFetch('/api/config');
-    if (data && data.meta_custo_por_peca !== undefined) {
-      setMetaCustoPeca(data.meta_custo_por_peca);
+    if (data) {
+      if (data.meta_custo_por_peca !== undefined) setMetaCustoPeca(data.meta_custo_por_peca);
+      if (data.auto_pause_time_weekday) setAutoPauseTimeWeekday(data.auto_pause_time_weekday);
+      if (data.auto_pause_time_friday) setAutoPauseTimeFriday(data.auto_pause_time_friday);
     }
   };
+
+  // Agendador de pausa automática: verifica o horário a cada minuto
+  useEffect(() => {
+    if (currentUser?.role !== 'Admin') return; // Só Admin dispara o pause-all
+    const check = () => {
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sab
+      if (dayOfWeek === 0 || dayOfWeek === 6) return; // Ignora fins de semana
+
+      const targetTime = dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday;
+      if (!targetTime) return;
+
+      const [hh, mm] = targetTime.split(':').map(Number);
+      const isExactMinute = now.getHours() === hh && now.getMinutes() === mm && now.getSeconds() < 60;
+      if (isExactMinute) {
+        safeFetch('/api/executions/pause-all', { method: 'POST' })
+          .then((r) => {
+            if (r?.paused > 0) {
+              console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) automaticamente.`);
+            }
+          })
+          .catch(console.error);
+      }
+    };
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, [currentUser, autoPauseTimeWeekday, autoPauseTimeFriday]);
 
   const fetchForecast = async () => {
     setIsLoadingForecast(true);
@@ -2565,6 +2596,58 @@ export default function App() {
               </form>
             </Card>
 
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                <Clock size={20} />
+                Horários de Pausa Automática
+              </h3>
+              <p className="text-xs text-zinc-400 mb-6">
+                Ao atingir o horário configurado, todas as tarefas em andamento são pausadas automaticamente.
+                O sistema requer que um Admin esteja com o sistema aberto no horário.
+              </p>
+              <form className="space-y-5" onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const weekday = formData.get('auto_pause_time_weekday') as string;
+                const friday = formData.get('auto_pause_time_friday') as string;
+                const res = await fetch('/api/config', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
+                  body: JSON.stringify({ auto_pause_time_weekday: weekday, auto_pause_time_friday: friday })
+                });
+                if (res.ok) {
+                  setAutoPauseTimeWeekday(weekday);
+                  setAutoPauseTimeFriday(friday);
+                  alert('✅ Horários salvos com sucesso!');
+                }
+              }}>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Seg – Qui (Horário de Pausa)</label>
+                    <input
+                      name="auto_pause_time_weekday"
+                      type="time"
+                      defaultValue={autoPauseTimeWeekday}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Sexta (Horário de Pausa)</label>
+                    <input
+                      name="auto_pause_time_friday"
+                      type="time"
+                      defaultValue={autoPauseTimeFriday}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
+                  Salvar Horários
+                </button>
+              </form>
+            </Card>
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                 <Settings size={20} />

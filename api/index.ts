@@ -92,18 +92,20 @@ app.get("/api/config", async (_req, res) => {
 });
 
 app.patch("/api/config", isAdmin, async (req, res) => {
-    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, meta_custo_por_peca } = req.body;
+    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, meta_custo_por_peca, auto_pause_time_weekday, auto_pause_time_friday } = req.body;
+    const updates: any = {};
+    if (jornada_horas !== undefined) updates.jornada_horas = jornada_horas;
+    if (operadores_ativos !== undefined) updates.operadores_ativos = operadores_ativos;
+    if (eficiencia_percentual !== undefined) updates.eficiencia_percentual = eficiencia_percentual;
+    if (dias_uteis_mes !== undefined) updates.dias_uteis_mes = dias_uteis_mes;
+    if (meta_diaria_pedidos !== undefined) updates.meta_diaria_pedidos = meta_diaria_pedidos;
+    if (meta_diaria_pecas !== undefined) updates.meta_diaria_pecas = meta_diaria_pecas;
+    if (meta_custo_por_peca !== undefined) updates.meta_custo_por_peca = meta_custo_por_peca;
+    if (auto_pause_time_weekday !== undefined) updates.auto_pause_time_weekday = auto_pause_time_weekday;
+    if (auto_pause_time_friday !== undefined) updates.auto_pause_time_friday = auto_pause_time_friday;
     const { data, error } = await supabase
         .from("config_producao")
-        .update({
-            jornada_horas,
-            operadores_ativos,
-            eficiencia_percentual,
-            dias_uteis_mes,
-            meta_diaria_pedidos,
-            meta_diaria_pecas,
-            meta_custo_por_peca
-        })
+        .update(updates)
         .eq("id", 1)
         .select()
         .single();
@@ -856,6 +858,32 @@ app.post("/api/executions/start", async (req, res) => {
         return res.status(400).json({ error: "Usuário não identificado. Por favor, saia e entre novamente." });
     }
 
+    // ── AUTO-PAUSA: pausar qualquer tarefa ativa do mesmo usuário ──────────
+    try {
+        const { data: activeExecs } = await supabaseAdmin
+            .from("stage_executions")
+            .select("id")
+            .eq("user_id", Number(user_id))
+            .eq("status", "Em andamento");
+
+        if (activeExecs && activeExecs.length > 0) {
+            const now = new Date();
+            for (const exec of activeExecs) {
+                await supabaseAdmin
+                    .from("stage_executions")
+                    .update({ status: "Pausado" })
+                    .eq("id", exec.id);
+                await supabaseAdmin
+                    .from("pauses")
+                    .insert({ execution_id: exec.id, start_pause: now.toISOString() });
+                console.log(`[API] Auto-pausa: execução ${exec.id} pausada para o usuário ${user_id} ao iniciar nova tarefa.`);
+            }
+        }
+    } catch (autoPauseErr) {
+        console.error("[API] Erro na auto-pausa:", autoPauseErr);
+        // Não bloquear o início da tarefa se o auto-pause falhar
+    }
+
     const { data, error } = await supabaseAdmin
         .from("stage_executions")
         .insert({
@@ -929,6 +957,39 @@ app.post("/api/executions/start", async (req, res) => {
     }
 
     return res.json({ id: data.id });
+});
+
+// ── Pause-All: pausa todas as execuções ativas (fim de expediente) ────────
+app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
+    try {
+        const now = new Date();
+
+        const { data: activeExecs, error: fetchErr } = await supabaseAdmin
+            .from("stage_executions")
+            .select("id")
+            .eq("status", "Em andamento");
+
+        if (fetchErr) return checkError(fetchErr, res, "Erro ao buscar execuções ativas");
+        if (!activeExecs || activeExecs.length === 0) {
+            return res.json({ success: true, paused: 0 });
+        }
+
+        for (const exec of activeExecs) {
+            await supabaseAdmin
+                .from("stage_executions")
+                .update({ status: "Pausado" })
+                .eq("id", exec.id);
+            await supabaseAdmin
+                .from("pauses")
+                .insert({ execution_id: exec.id, start_pause: now.toISOString() });
+        }
+
+        console.log(`[API] Pause-all: ${activeExecs.length} execução(ões) pausada(s) no fim de expediente.`);
+        return res.json({ success: true, paused: activeExecs.length });
+    } catch (err: any) {
+        console.error("[API] Erro no pause-all:", err);
+        return res.status(500).json({ error: "Erro ao pausar todas as execuções" });
+    }
 });
 
 app.post("/api/executions/:id/pause", async (req, res) => {
