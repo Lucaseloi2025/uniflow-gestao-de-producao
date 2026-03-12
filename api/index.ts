@@ -835,6 +835,62 @@ app.get("/api/orders/:id/executions", async (req, res) => {
     return res.json(formatted);
 });
 
+app.get("/api/executions/running", async (_req, res) => {
+    const { data, error } = await supabaseAdmin
+        .from("stage_executions")
+        .select(`
+            *,
+            stages(name),
+            users(name),
+            orders(order_number, client_name, product_type)
+        `)
+        .or("status.eq.Em andamento,status.eq.Pausado")
+        .order("start_time", { ascending: false });
+
+    if (error) {
+        console.error("[API] Erro ao buscar execuções ativas:", error);
+        return res.status(500).json({ error: "Erro ao buscar tarefas." });
+    }
+
+    // Fetch all pauses for these executions to calculate accumulated time
+    const executionIds = (data || []).map(e => e.id);
+    const { data: pauses } = executionIds.length > 0
+        ? await supabaseAdmin.from("pauses").select("*").in("execution_id", executionIds)
+        : { data: [] };
+
+    const now = new Date().getTime();
+    const formatted = (data || []).map((e: any) => {
+        const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
+        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
+            if (p.duration_seconds !== null) return sum + p.duration_seconds;
+            if (p.end_pause === null) {
+                const pauseStart = new Date(p.start_pause).getTime();
+                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
+            }
+            return sum;
+        }, 0);
+
+        const startMs = new Date(e.start_time).getTime();
+        const calculatedTotalSeconds = Math.max(0, Math.floor((now - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+
+        return {
+            ...e,
+            stage_name: e.stages?.name,
+            user_name: e.users?.name,
+            order_number: e.orders?.order_number,
+            client_name: e.orders?.client_name,
+            product_type: e.orders?.product_type,
+            elapsed_seconds: calculatedTotalSeconds,
+            total_time_seconds: accumulatedPauseSeconds, // Using this to store pause time in the object
+            stages: undefined,
+            users: undefined,
+            orders: undefined
+        };
+    });
+
+    return res.json(formatted);
+});
+
 app.post("/api/executions/start", async (req, res) => {
     const { order_id, stage_id, user_id } = req.body;
 

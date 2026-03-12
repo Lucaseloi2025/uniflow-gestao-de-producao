@@ -45,7 +45,8 @@ import {
   Download,
   DownloadCloud,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Monitor
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -151,6 +152,10 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end text-zinc-400">
+            <span className="text-[10px] font-bold uppercase tracking-wider">Operador</span>
+            <span className="text-xs font-bold">{execution.user_name}</span>
+          </div>
           <div className="flex flex-col items-end">
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tempo Decorrido</span>
             <span className="text-xl font-mono font-bold tabular-nums">{formatSeconds(elapsed)}</span>
@@ -163,7 +168,16 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'terminal' | 'supervisor'>('dashboard');
+  const [terminalMode, setTerminalMode] = useState(localStorage.getItem('terminalMode') === 'true');
+  const [selectedSectorId, setSelectedSectorId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('selectedSectorId');
+    return saved ? Number(saved) : null;
+  });
+  const [activeTerminalExecution, setActiveTerminalExecution] = useState<StageExecution | null>(null);
+  const [showOperatorModal, setShowOperatorModal] = useState(false);
+  const [selectedOrderForTerminal, setSelectedOrderForTerminal] = useState<Order | null>(null);
+  const [allRunningTasks, setAllRunningTasks] = useState<StageExecution[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -348,6 +362,34 @@ export default function App() {
     setActiveExecution(data);
   };
 
+  const handlePauseExecution = async (id: number) => {
+    const res = await safeFetch(`/api/executions/${id}/pause`, { method: 'POST' });
+    if (res) {
+      fetchRunningTasks();
+      fetchActiveExecution();
+      fetchData();
+    }
+  };
+
+  const handleResumeExecution = async (id: number) => {
+    const res = await safeFetch(`/api/executions/${id}/resume`, { method: 'POST' });
+    if (res) {
+      fetchRunningTasks();
+      fetchActiveExecution();
+      fetchData();
+    }
+  };
+
+  const handleFinishExecution = async (id: number) => {
+    if (!confirm('Deseja finalizar esta tarefa?')) return;
+    const res = await safeFetch(`/api/executions/${id}/finish`, { method: 'POST' });
+    if (res) {
+      fetchRunningTasks();
+      fetchActiveExecution();
+      fetchData();
+    }
+  };
+
   const fetchData = async () => {
     let statsUrl = '/api/dashboard/stats?';
     if (dateRange) {
@@ -419,6 +461,19 @@ export default function App() {
     const data = await safeFetch(url);
     if (data) setOperationalReportData(data);
   };
+
+  const fetchRunningTasks = async () => {
+    const data = await safeFetch('/api/executions/running');
+    if (data) setAllRunningTasks(data);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'supervisor' || terminalMode) {
+      fetchRunningTasks();
+      const interval = setInterval(fetchRunningTasks, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, terminalMode]);
 
   const fetchConfig = async () => {
     const data = await safeFetch('/api/config');
@@ -957,6 +1012,24 @@ export default function App() {
               onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
             />
           )}
+
+          <div className="my-2 border-t border-zinc-100" />
+
+          <SidebarItem
+            icon={Monitor}
+            label="Modo Terminal"
+            active={activeTab === 'terminal'}
+            onClick={() => { setActiveTab('terminal'); setTerminalMode(true); setIsMobileMenuOpen(false); }}
+          />
+
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={Activity}
+              label="Painel Supervisor"
+              active={activeTab === 'supervisor'}
+              onClick={() => { setActiveTab('supervisor'); setIsMobileMenuOpen(false); }}
+            />
+          )}
         </nav>
 
         <div className="mt-auto pt-6 border-t border-zinc-100">
@@ -979,7 +1052,7 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 lg:p-8">
         <AnimatePresence>
-          {activeExecution && (
+          {!terminalMode && activeExecution && (
             <RunningTaskBanner
               execution={activeExecution}
               onNavigate={async () => {
@@ -996,6 +1069,362 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+        
+        {terminalMode ? (
+          <div className="space-y-8 h-full">
+            {!selectedSectorId ? (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+                <div className="w-20 h-20 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 mb-6">
+                  <Monitor size={40} />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Terminal de Produção</h2>
+                <p className="text-zinc-500 mb-8 max-w-sm">Configure o setor fixo deste computador. Esta configuração será salva localmente.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-3xl">
+                  {stages.filter(s => s.active).map(stage => (
+                    <button
+                      key={stage.id}
+                      onClick={() => {
+                        setSelectedSectorId(stage.id);
+                        localStorage.setItem('selectedSectorId', stage.id.toString());
+                      }}
+                      className="p-6 bg-white border border-zinc-200 rounded-2xl hover:border-zinc-900 hover:shadow-md transition-all text-left group"
+                    >
+                      <div className="w-10 h-10 bg-zinc-50 rounded-lg flex items-center justify-center text-zinc-400 group-hover:bg-zinc-900 group-hover:text-white mb-4 transition-colors">
+                        <Package size={20} />
+                      </div>
+                      <h3 className="font-bold text-lg">{stage.name}</h3>
+                      <p className="text-xs text-zinc-400">Clique para selecionar</p>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    setTerminalMode(false);
+                    localStorage.setItem('terminalMode', 'false');
+                    setActiveTab('dashboard');
+                  }}
+                  className="mt-12 text-zinc-400 hover:text-zinc-900 flex items-center gap-2 text-sm font-medium"
+                >
+                  <ArrowLeft size={16} /> Voltar para Dashboard
+                </button>
+              </div>
+            ) : (
+              // Terminal is configured
+              <div>
+                <header className="flex justify-between items-center mb-8 bg-zinc-900 text-white p-6 rounded-2xl shadow-xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center">
+                      <Monitor size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">{stages.find(s => s.id === selectedSectorId)?.name}</h2>
+                      <p className="text-xs text-zinc-400 uppercase tracking-widest font-bold">Terminal de Produção</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    {activeTab !== 'supervisor' && (
+                       <button
+                       onClick={() => setActiveTab('supervisor')}
+                       className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-bold transition-colors"
+                     >
+                       Painel Supervisor
+                     </button>
+                    )}
+                    {activeTab === 'supervisor' && (
+                       <button
+                       onClick={() => setActiveTab('terminal')}
+                       className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-bold transition-colors"
+                     >
+                       Voltar ao Setor
+                     </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSelectedSectorId(null);
+                        localStorage.removeItem('selectedSectorId');
+                      }}
+                      className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors"
+                      title="Alterar Setor"
+                    >
+                      <Settings size={20} />
+                    </button>
+                  </div>
+                </header>
+
+                {activeTab === 'supervisor' ? (
+                  <div className="space-y-12 pb-24">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-2">
+                      <div>
+                        <h2 className="text-4xl font-black text-zinc-900 tracking-tight">Monitoramento em Tempo Real</h2>
+                        <div className="flex items-center gap-3 mt-2">
+                          <Badge variant="info" className="px-3 py-1 text-xs">Supervisor</Badge>
+                          <p className="text-zinc-500 font-medium italic">Gerenciando {allRunningTasks.length} tarefas ativas</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={fetchRunningTasks}
+                        className="flex items-center gap-3 px-6 py-3 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all shadow-xl shadow-zinc-900/10 active:scale-95"
+                      >
+                        <RefreshCw size={20} /> Atualizar Painel
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                      {allRunningTasks.length > 0 ? (
+                        allRunningTasks.map(task => (
+                          <Card key={task.id} className="p-8 border-zinc-100 shadow-2xl relative group overflow-hidden bg-white">
+                            <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform text-zinc-900">
+                              <Activity size={120} />
+                            </div>
+                            
+                            <div className="flex justify-between items-start mb-10 relative z-10">
+                              <Badge variant={task.status === 'Pausado' ? 'warning' : 'success'} className="px-3 py-1 font-black">
+                                {task.status}
+                              </Badge>
+                              <div className="text-right">
+                                <div className="text-3xl font-mono font-black tabular-nums text-zinc-900 tracking-tight">
+                                  {formatSeconds(task.status === 'Em andamento' 
+                                    ? Math.max(0, Math.floor((now.getTime() - parseISO(task.start_time).getTime()) / 1000) - (task.total_time_seconds || 0))
+                                    : (task.elapsed_seconds || 0))}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mb-10 relative z-10">
+                              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Pedido #{task.order_number}</p>
+                              <h4 className="text-2xl font-black text-zinc-900 tracking-tight leading-tight">{task.client_name}</h4>
+                              <p className="text-sm text-zinc-500 font-bold mt-2 uppercase tracking-wide">{task.product_type}</p>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-8 border-t border-zinc-50 relative z-10">
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-zinc-950 text-white rounded-full flex items-center justify-center font-bold text-lg ring-4 ring-zinc-50">
+                                  {task.user_name?.charAt(0)}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-black text-zinc-900 leading-none">{task.user_name}</p>
+                                  <p className="text-[10px] text-zinc-400 uppercase font-black tracking-widest mt-2">{task.stage_name}</p>
+                                </div>
+                              </div>
+                              
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => handleFinishExecution(task.id)} 
+                                  className="p-3 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-600 hover:text-white transition-all active:scale-90"
+                                  title="Forçar Finalização"
+                                >
+                                  <LogOut size={20} />
+                                </button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))
+                      ) : (
+                        <div className="col-span-full py-32 bg-zinc-50/50 rounded-[40px] border-4 border-dashed border-zinc-100 flex flex-col items-center justify-center">
+                          <div className="p-8 bg-white rounded-full shadow-inner mb-6">
+                            <Activity size={64} className="text-zinc-200" />
+                          </div>
+                          <h3 className="text-2xl font-black text-zinc-400 tracking-tight italic">Silêncio na Produção</h3>
+                          <p className="text-zinc-400 font-medium">Nenhuma tarefa ativa monitorada no momento.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-12 pb-24">
+                    {/* Active Tasks Section */}
+                    {allRunningTasks.filter(t => t.stage_id === selectedSectorId).length > 0 && (
+                      <div className="space-y-6">
+                        <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2 px-2">
+                          <Activity size={16} className="text-zinc-900" />
+                          Tarefas em Execução no Setor
+                        </h3>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                          {allRunningTasks.filter(t => t.stage_id === selectedSectorId).map(task => {
+                            const elapsed = task.status === 'Em andamento' 
+                              ? Math.max(0, Math.floor((now.getTime() - parseISO(task.start_time).getTime()) / 1000) - (task.total_time_seconds || 0))
+                              : (task.elapsed_seconds || 0);
+                            
+                            const isForgotten = (reportData?.summary?.avg_stage_time && elapsed > reportData.summary.avg_stage_time) || false;
+
+                            return (
+                              <Card key={task.id} className={cn(
+                                "p-8 border-[3px] shadow-2xl relative overflow-hidden transition-all",
+                                isForgotten ? "border-rose-500 bg-rose-50/50 animate-pulse" : "border-zinc-900 bg-white"
+                              )}>
+                                {isForgotten && (
+                                  <div className="absolute top-0 right-0 bg-rose-500 text-white px-6 py-1.5 text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                                    <AlertTriangle size={14} /> Alerta: Tempo Excedido
+                                  </div>
+                                )}
+                                <div className="flex justify-between items-start mb-8">
+                                  <div>
+                                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-2">Pedido #{task.order_number}</span>
+                                    <h3 className="text-4xl font-black text-zinc-900 leading-tight tracking-tight">{task.client_name}</h3>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-5xl font-mono font-black tabular-nums text-zinc-900 mb-2 tracking-tighter">
+                                      {formatSeconds(elapsed)}
+                                    </div>
+                                    <Badge variant={task.status === 'Pausado' ? 'warning' : 'success'} className="px-4 py-1.5 text-xs font-black">
+                                      {task.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-8 border-t border-zinc-100">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 bg-zinc-950 text-white rounded-full flex items-center justify-center font-black text-2xl shadow-xl border-4 border-zinc-100">
+                                      {task.user_name?.charAt(0)}
+                                    </div>
+                                    <div>
+                                      <p className="text-lg font-black text-zinc-900 leading-none">{task.user_name}</p>
+                                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mt-2">{task.stage_name}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-3">
+                                    {task.status === 'Em andamento' ? (
+                                      <button
+                                        onClick={() => handlePauseExecution(task.id)}
+                                        className="p-5 bg-zinc-100 hover:bg-zinc-200 rounded-2xl text-zinc-600 transition-all active:scale-90"
+                                      >
+                                        <Pause size={28} fill="currentColor" />
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleResumeExecution(task.id)}
+                                        className="p-5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-2xl transition-all active:scale-90"
+                                      >
+                                        <Play size={28} fill="currentColor" />
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => handleFinishExecution(task.id)}
+                                      className="px-10 py-5 bg-zinc-900 text-white rounded-2xl text-xl font-black hover:bg-zinc-800 transition-all active:scale-95 flex items-center gap-3 shadow-2xl shadow-zinc-900/30"
+                                    >
+                                      <CheckCircle size={28} />
+                                      Finalizar
+                                    </button>
+                                  </div>
+                                </div>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Orders Table Section */}
+                    <div className="space-y-6">
+                      <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2 px-2">
+                        <ClipboardList size={16} />
+                        Fila de Produção do Setor
+                      </h3>
+                      <Card className="overflow-hidden border-2 border-zinc-100 shadow-2xl bg-white rounded-[32px]">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-zinc-50/50 border-b-2 border-zinc-100">
+                              <th className="px-8 py-8 text-xs font-black text-zinc-400 uppercase tracking-[0.2em]">Pedido</th>
+                              <th className="px-8 py-8 text-xs font-black text-zinc-400 uppercase tracking-[0.2em]">Cliente</th>
+                              <th className="px-8 py-8 text-xs font-black text-zinc-400 uppercase tracking-[0.2em] text-center">Peças</th>
+                              <th className="px-8 py-8 text-xs font-black text-zinc-400 uppercase tracking-[0.2em] text-center">Prazo</th>
+                              <th className="px-8 py-8 text-xs font-black text-zinc-400 uppercase tracking-[0.2em] text-right">Ação</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100">
+                            {orders.filter(order => {
+                              if (order.status === 'Entregue' || order.status === 'Cancelado') return false;
+                              const currentStage = order.stages_status.find(s => !s.finished);
+                              return currentStage?.id === selectedSectorId;
+                            }).length > 0 ? (
+                              orders.filter(order => {
+                                if (order.status === 'Entregue' || order.status === 'Cancelado') return false;
+                                const currentStage = order.stages_status.find(s => !s.finished);
+                                return currentStage?.id === selectedSectorId;
+                              }).map(order => (
+                                <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors group">
+                                  <td className="px-8 py-8">
+                                    <span className="text-2xl font-mono font-black text-zinc-900">#{order.order_number}</span>
+                                  </td>
+                                  <td className="px-8 py-8">
+                                    <div className="flex items-center gap-4">
+                                       <div>
+                                          <span className="text-xl font-black text-zinc-900 block group-hover:text-zinc-600 transition-colors">{order.client_name}</span>
+                                          <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider mt-1">{order.product_type} • {order.print_type}</p>
+                                       </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-8 py-8 text-center">
+                                    <span className="text-2xl font-black text-zinc-900">{order.quantity}</span>
+                                    <p className="text-[10px] text-zinc-400 font-bold uppercase">unidades</p>
+                                  </td>
+                                  <td className="px-8 py-8 text-center">
+                                    <div className={cn(
+                                       "inline-flex flex-col items-center p-3 rounded-2xl border-2",
+                                       isPast(endOfDay(parseISO(order.deadline))) ? "border-rose-100 bg-rose-50 text-rose-600" : "border-zinc-100 bg-zinc-50 text-zinc-600"
+                                    )}>
+                                      <span className="text-lg font-black">{format(parseISO(order.deadline), 'dd/MM')}</span>
+                                      <span className="text-[9px] font-black uppercase tracking-widest">{format(parseISO(order.deadline), 'yyyy')}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-8 py-8 text-right">
+                                    <div className="flex justify-end gap-3">
+                                      <button 
+                                        onClick={async () => {
+                                           const orderData = await safeFetch(`/api/orders?search=${order.order_number}`);
+                                           if (orderData && orderData.length > 0) {
+                                              const fullOrder = orderData.find((o: Order) => o.id === order.id);
+                                              if (fullOrder) {
+                                                setSelectedOrder(fullOrder);
+                                                setShowEditOrderModal(true);
+                                              }
+                                           }
+                                        }}
+                                        className="p-5 bg-zinc-100 hover:bg-zinc-200 rounded-2xl text-zinc-600 transition-all active:scale-95"
+                                        title="Ver Ficha Técnica"
+                                      >
+                                        <FileText size={28} />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedOrderForTerminal(order);
+                                          setShowOperatorModal(true);
+                                        }}
+                                        className="px-10 py-5 bg-zinc-900 text-white rounded-2xl font-black text-xl hover:bg-zinc-800 transition-all active:scale-95 shadow-xl shadow-zinc-900/10 flex items-center gap-3"
+                                      >
+                                        <Play size={24} fill="currentColor" />
+                                        Iniciar
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={5} className="py-32 text-center bg-zinc-50/30">
+                                  <div className="max-w-xs mx-auto">
+                                    <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-400 mx-auto mb-6">
+                                      <CheckCircle size={40} />
+                                    </div>
+                                    <h4 className="text-xl font-black text-zinc-400">Setor em Dia</h4>
+                                    <p className="text-zinc-400 font-medium mt-2">Nenhum pedido pendente aguardando nesta etapa.</p>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </Card>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
         <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
           <div className="flex items-center justify-between">
             <div>
@@ -1686,6 +2115,85 @@ export default function App() {
                   </div>
                 </Card>
               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'supervisor' && (
+          <div className="space-y-12 pb-24">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 px-2">
+              <div>
+                <h2 className="text-4xl font-black text-zinc-900 tracking-tight">Monitoramento em Tempo Real</h2>
+                <div className="flex items-center gap-3 mt-2">
+                  <Badge variant="info" className="px-3 py-1 text-xs">Supervisor</Badge>
+                  <p className="text-zinc-500 font-medium italic">Gerenciando {allRunningTasks.length} tarefas ativas</p>
+                </div>
+              </div>
+              <button 
+                onClick={fetchRunningTasks}
+                className="flex items-center gap-3 px-6 py-3 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all shadow-xl shadow-zinc-900/10 active:scale-95"
+              >
+                <RefreshCw size={20} /> Atualizar Painel
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+              {allRunningTasks.length > 0 ? (
+                allRunningTasks.map(task => (
+                  <Card key={task.id} className="p-8 border-zinc-100 shadow-2xl relative group overflow-hidden bg-white">
+                    <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform text-zinc-900">
+                      <Activity size={120} />
+                    </div>
+                    
+                    <div className="flex justify-between items-start mb-10 relative z-10">
+                      <Badge variant={task.status === 'Pausado' ? 'warning' : 'success'} className="px-3 py-1 font-black">
+                        {task.status}
+                      </Badge>
+                      <div className="text-right">
+                        <div className="text-3xl font-mono font-black tabular-nums text-zinc-900 tracking-tight">
+                          {formatSeconds((task.elapsed_seconds || 0))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-10 relative z-10">
+                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Pedido #{task.order_number}</p>
+                      <h4 className="text-2xl font-black text-zinc-900 tracking-tight leading-tight">{task.client_name}</h4>
+                      <p className="text-sm text-zinc-500 font-bold mt-2 uppercase tracking-wide">{task.product_type}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-8 border-t border-zinc-50 relative z-10">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-zinc-950 text-white rounded-full flex items-center justify-center font-bold text-lg ring-4 ring-zinc-50">
+                          {task.user_name?.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-zinc-900 leading-none">{task.user_name}</p>
+                          <p className="text-[10px] text-zinc-400 uppercase font-black tracking-widest mt-2">{task.stage_name}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleFinishExecution(task.id)} 
+                          className="p-3 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-600 hover:text-white transition-all active:scale-90"
+                          title="Forçar Finalização"
+                        >
+                          <LogOut size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                ))
+              ) : (
+                <div className="col-span-full py-32 bg-zinc-50/50 rounded-[40px] border-4 border-dashed border-zinc-100 flex flex-col items-center justify-center">
+                  <div className="p-8 bg-white rounded-full shadow-inner mb-6">
+                    <Activity size={64} className="text-zinc-200" />
+                  </div>
+                  <h3 className="text-2xl font-black text-zinc-400 tracking-tight italic">Silêncio na Produção</h3>
+                  <p className="text-zinc-400 font-medium">Nenhuma tarefa ativa monitorada no momento.</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -4305,7 +4813,76 @@ export default function App() {
               </div>
             )}
         </AnimatePresence>
+          </>
+        )}
       </main >
+      
+      {/* Operator Selection Modal - Terminal Mode */}
+      <AnimatePresence>
+        {showOperatorModal && selectedOrderForTerminal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+              onClick={() => setShowOperatorModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold text-zinc-900">Quem está iniciando?</h2>
+                  <p className="text-zinc-500 font-medium">Selecione seu nome para começar o pedido #{selectedOrderForTerminal.order_number}</p>
+                </div>
+                <button onClick={() => setShowOperatorModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div className="p-8 max-h-[60vh] overflow-y-auto">
+                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {users.filter(u => u.active).map(user => (
+                      <button
+                        key={user.id}
+                        onClick={async () => {
+                          const res = await safeFetch('/api/executions/start', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              order_id: selectedOrderForTerminal.id,
+                              stage_id: selectedSectorId,
+                              user_id: user.id
+                            })
+                          });
+                          if (res && !res.error) {
+                            setShowOperatorModal(false);
+                            setSelectedOrderForTerminal(null);
+                            fetchRunningTasks();
+                            fetchData();
+                          } else {
+                            alert(res?.error || 'Erro ao iniciar tarefa');
+                          }
+                        }}
+                        className="flex flex-col items-center gap-3 p-4 bg-zinc-50 hover:bg-zinc-900 hover:text-white rounded-2xl transition-all border border-zinc-200 group"
+                      >
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-zinc-900 group-hover:bg-zinc-800 group-hover:text-white font-bold shadow-sm">
+                          {user.name.charAt(0)}
+                        </div>
+                        <span className="text-sm font-bold text-center leading-tight truncate w-full">{user.name}</span>
+                      </button>
+                    ))}
+                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div >
   );
 }
