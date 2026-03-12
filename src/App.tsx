@@ -176,6 +176,7 @@ export default function App() {
   const [reportPeriod, setReportPeriod] = useState<'day' | 'week' | 'month'>('week');
   const [reportUser, setReportUser] = useState<string>('');
   const [reportStage, setReportStage] = useState<string>('');
+  const [reportPrintType, setReportPrintType] = useState<string>('');
   const [profileReport, setProfileReport] = useState<any[]>([]);
   const [operationalReportData, setOperationalReportData] = useState<OperationalReportData | null>(null);
   const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
@@ -395,24 +396,27 @@ export default function App() {
     let url = `/api/reports?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}`;
     if (reportUser) url += `&user_id=${reportUser}`;
     if (reportStage) url += `&stage_id=${reportStage}`;
+    if (reportPrintType) url += `&print_type=${encodeURIComponent(reportPrintType)}`;
 
     const data = await safeFetch(url);
     if (data) setReportData(data);
 
-    const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
     if (deliveryData) setDeliveryReportData(deliveryData);
 
-    const delaysData = await safeFetch(`/api/reports/delays?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    const delaysData = await safeFetch(`/api/reports/delays?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
     if (delaysData) setDelaysReportData(delaysData);
 
-    const profileData = await safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    const profileData = await safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
     if (profileData) setProfileReport(profileData || []);
 
     fetchOperationalReport();
   };
 
   const fetchOperationalReport = async () => {
-    const data = await safeFetch(`/api/reports/operational?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    let url = `/api/reports/operational?startDate=${reportStartDate}&endDate=${reportEndDate}`;
+    if (reportPrintType) url += `&print_type=${encodeURIComponent(reportPrintType)}`;
+    const data = await safeFetch(url);
     if (data) setOperationalReportData(data);
   };
 
@@ -774,7 +778,7 @@ export default function App() {
         if (data) setProfileReport(data);
       });
     }
-  }, [activeTab, reportPeriod, reportUser, reportStage, reportStartDate, reportEndDate]);
+  }, [activeTab, reportPeriod, reportUser, reportStage, reportStartDate, reportEndDate, reportPrintType]);
 
   useEffect(() => {
     if (currentUser && currentUser.id !== 0) {
@@ -1220,6 +1224,19 @@ export default function App() {
                       {stages.map(stage => (
                         <option key={stage.id} value={stage.id}>{stage.name}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 border-l border-zinc-100 py-1 sm:py-0">
+                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Setor:</span>
+                    <select
+                      value={reportPrintType}
+                      onChange={(e) => setReportPrintType(e.target.value)}
+                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
+                    >
+                      <option value="">Todos</option>
+                      <option value="Silk">Silk</option>
+                      <option value="DTF">DTF</option>
+                      <option value="Sublimação">Sublimação</option>
                     </select>
                   </div>
                 </div>

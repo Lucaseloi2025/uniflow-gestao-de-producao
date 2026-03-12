@@ -1262,7 +1262,7 @@ app.post("/api/clients", async (req, res) => {
 
 // ── Delivery & Delays Reports ─────────────────────────────────────────────
 app.get("/api/reports/delays", async (req, res) => {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, print_type } = req.query;
     const today = new Date().toISOString().split("T")[0];
 
     let query = supabase
@@ -1271,6 +1271,8 @@ app.get("/api/reports/delays", async (req, res) => {
         .neq("status", "Entregue")
         .neq("status", "Cancelado")
         .is("deleted_at", null);
+
+    if (print_type) query = query.eq("print_type", print_type as string);
 
     if (startDate && endDate) {
         query = query.gte("deadline", startDate).lte("deadline", endDate);
@@ -1295,7 +1297,7 @@ app.get("/api/reports/delays", async (req, res) => {
 });
 
 app.get("/api/reports/delivery", async (req, res) => {
-    const { period, startDate: queryStartDate, endDate: queryEndDate } = req.query;
+    const { period, startDate: queryStartDate, endDate: queryEndDate, print_type } = req.query;
     const now = new Date();
     let startDate = new Date();
 
@@ -1324,13 +1326,17 @@ app.get("/api/reports/delivery", async (req, res) => {
         endDate.setHours(23, 59, 59, 999);
     }
 
-    const { data: orders, error } = await supabase
+    let ordersQuery = supabase
         .from("orders")
         .select("id, created_at, quantity, deadline, delivered_at")
         .eq("status", "Entregue")
         .is("deleted_at", null)
         .gte("delivered_at", startDate.toISOString())
         .lte("delivered_at", endDate.toISOString());
+
+    if (print_type) ordersQuery = ordersQuery.eq("print_type", print_type as string);
+
+    const { data: orders, error } = await ordersQuery;
 
     if (checkError(error, res, "Erro ao buscar entregas")) return;
 
@@ -1409,16 +1415,19 @@ app.get("/api/reports/delivery", async (req, res) => {
 
 // ── Operational Report (Drill-Down) ───────────────────────────────────────
 app.get("/api/reports/operational", async (req, res) => {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, print_type } = req.query;
 
     if (!startDate || !endDate) {
         return res.status(400).json({ error: "Parâmetros startDate e endDate são obrigatórios" });
     }
 
-    const { data, error } = await supabase.rpc("get_operational_report", {
+    const rpcParams: any = {
         p_start_date: startDate,
         p_end_date: endDate
-    });
+    };
+    if (print_type) rpcParams.p_print_type = print_type;
+
+    const { data, error } = await supabase.rpc("get_operational_report", rpcParams);
 
     if (checkError(error, res, "Erro ao buscar relatório operacional")) return;
     return res.json(data);
