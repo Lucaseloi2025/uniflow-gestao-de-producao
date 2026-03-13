@@ -1520,13 +1520,20 @@ export default function App() {
                         )}
                       >
                         {order.art_url && (
-                          <div className="w-full h-32 bg-zinc-100 relative overflow-hidden">
-                            <img
-                              src={order.art_url}
-                              alt="Mockup"
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
+                          <div className="w-full h-32 bg-zinc-100 relative overflow-hidden group/art">
+                            {isImage(order.art_url) ? (
+                              <img
+                                src={order.art_url}
+                                alt="Mockup"
+                                className="w-full h-full object-cover transition-transform group-hover/art:scale-110"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
+                                <FileText size={40} />
+                                <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{order.art_url.split('.').pop()}</span>
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className="p-4">
