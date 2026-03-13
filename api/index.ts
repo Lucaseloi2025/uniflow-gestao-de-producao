@@ -397,18 +397,19 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
             const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
             const filePath = `pedidos/${fileName}`;
 
-            const { error: uploadError } = await supabase.storage
+            const { error: uploadError } = await supabaseAdmin.storage
                 .from('artes')
                 .upload(filePath, file.buffer, {
                     contentType: file.mimetype,
+                    upsert: true
                 });
 
             if (uploadError) {
-                console.error("Erro no upload da arte para o Supabase:", uploadError);
-                continue; // Skip failed uploads
+                console.error(`[API] Erro no upload da arte (${file.originalname}):`, uploadError);
+                continue;
             }
 
-            const { data: publicUrlData } = supabase.storage.from('artes').getPublicUrl(filePath);
+            const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
             art_urls.push(publicUrlData.publicUrl);
         }
     }
@@ -519,18 +520,19 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `pedidos/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabaseAdmin.storage
             .from('artes')
             .upload(filePath, file.buffer, {
                 contentType: file.mimetype,
+                upsert: true
             });
 
         if (uploadError) {
-            console.error("Erro no upload da arte para o Supabase:", uploadError);
+            console.error(`[API] Erro no upload da arte (${file.originalname}):`, uploadError);
             continue;
         }
 
-        const { data: publicUrlData } = supabase.storage.from('artes').getPublicUrl(filePath);
+        const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
         new_urls.push(publicUrlData.publicUrl);
     }
 

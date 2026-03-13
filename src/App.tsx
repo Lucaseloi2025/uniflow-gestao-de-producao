@@ -3393,8 +3393,8 @@ export default function App() {
                         <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
                           <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <Upload className="w-8 h-8 mb-3 text-zinc-400" />
-                            <p className="mb-2 text-sm text-zinc-500"><span className="font-semibold">Clique para upload</span> ou arraste</p>
-                            <p className="text-xs text-zinc-400">Imagens, PDFs, etc</p>
+                            <p className="mb-2 text-sm text-zinc-500 text-center px-4"><span className="font-semibold">Clique para upload</span> ou arraste</p>
+                            <p className="text-[10px] text-zinc-400 font-medium">PDF, JPG, PNG, etc</p>
                           </div>
                           <input
                             name="art_files"
