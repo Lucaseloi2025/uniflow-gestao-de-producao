@@ -174,23 +174,6 @@ export default function App() {
     const saved = localStorage.getItem('selectedSectorId');
     return saved ? Number(saved) : null;
   });
-  const [selectedTerminalUser, setSelectedTerminalUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('selectedTerminalUser');
-    try {
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    if (selectedTerminalUser) {
-      localStorage.setItem('selectedTerminalUser', JSON.stringify(selectedTerminalUser));
-    } else {
-      localStorage.removeItem('selectedTerminalUser');
-    }
-  }, [selectedTerminalUser]);
-
   const [activeTerminalExecution, setActiveTerminalExecution] = useState<StageExecution | null>(null);
   const [showOperatorModal, setShowOperatorModal] = useState(false);
   const [selectedOrderForTerminal, setSelectedOrderForTerminal] = useState<Order | null>(null);
@@ -404,26 +387,6 @@ export default function App() {
       fetchRunningTasks();
       fetchActiveExecution();
       fetchData();
-    }
-  };
-
-  const handleTerminalStartExecution = async (orderId: number, stageId: number) => {
-    if (!selectedTerminalUser) return;
-    
-    const res = await safeFetch('/api/executions/start', {
-      method: 'POST',
-      body: JSON.stringify({
-        order_id: orderId,
-        stage_id: stageId,
-        user_id: selectedTerminalUser.id
-      })
-    });
-
-    if (res?.error) {
-       alert(res.error);
-    } else {
-       fetchRunningTasks();
-       fetchData();
     }
   };
 
@@ -1109,24 +1072,28 @@ export default function App() {
         
         {terminalMode ? (
           <div className="space-y-8 h-full">
-            {!selectedTerminalUser ? (
+            {!selectedSectorId ? (
               <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-                <div className="w-20 h-20 bg-zinc-900 text-white rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
-                  <UserIcon size={40} />
+                <div className="w-20 h-20 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 mb-6">
+                  <Monitor size={40} />
                 </div>
-                <h2 className="text-3xl font-black mb-2 tracking-tight">Acesso do Operador</h2>
-                <p className="text-zinc-500 mb-12 max-w-sm font-medium">Selecione seu nome para iniciar sua sessão de trabalho neste terminal.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 w-full max-w-5xl px-4">
-                  {users.filter(u => u.active && u.role === 'Produção').map(user => (
+                <h2 className="text-2xl font-bold mb-2">Terminal de Produção</h2>
+                <p className="text-zinc-500 mb-8 max-w-sm">Configure o setor fixo deste computador. Esta configuração será salva localmente.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-3xl">
+                  {stages.filter(s => s.active).map(stage => (
                     <button
-                      key={user.id}
-                      onClick={() => setSelectedTerminalUser(user)}
-                      className="group p-6 bg-white border-2 border-zinc-100 rounded-[32px] hover:border-zinc-900 hover:shadow-2xl transition-all text-center flex flex-col items-center"
+                      key={stage.id}
+                      onClick={() => {
+                        setSelectedSectorId(stage.id);
+                        localStorage.setItem('selectedSectorId', stage.id.toString());
+                      }}
+                      className="p-6 bg-white border border-zinc-200 rounded-2xl hover:border-zinc-900 hover:shadow-md transition-all text-left group"
                     >
-                      <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-400 group-hover:bg-zinc-900 group-hover:text-white mb-4 transition-all shadow-inner group-hover:scale-110">
-                        <span className="text-xl font-black">{user.name.charAt(0)}</span>
+                      <div className="w-10 h-10 bg-zinc-50 rounded-lg flex items-center justify-center text-zinc-400 group-hover:bg-zinc-900 group-hover:text-white mb-4 transition-colors">
+                        <Package size={20} />
                       </div>
-                      <h3 className="font-black text-sm tracking-tight text-zinc-900">{user.name}</h3>
+                      <h3 className="font-bold text-lg">{stage.name}</h3>
+                      <p className="text-xs text-zinc-400">Clique para selecionar</p>
                     </button>
                   ))}
                 </div>
@@ -1136,118 +1103,52 @@ export default function App() {
                     localStorage.setItem('terminalMode', 'false');
                     setActiveTab('dashboard');
                   }}
-                  className="mt-16 text-zinc-400 hover:text-zinc-900 flex items-center gap-2 text-sm font-bold transition-colors"
+                  className="mt-12 text-zinc-400 hover:text-zinc-900 flex items-center gap-2 text-sm font-medium"
                 >
-                  <ArrowLeft size={16} /> Voltar para o Dashboard Principal
+                  <ArrowLeft size={16} /> Voltar para Dashboard
                 </button>
-              </div>
-            ) : !selectedSectorId ? (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-                <div className="flex items-center gap-4 mb-8 bg-zinc-900 text-white p-4 rounded-2xl shadow-xl">
-                  <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center font-black">
-                    {selectedTerminalUser.name.charAt(0)}
-                  </div>
-                  <div className="text-left">
-                    <p className="text-[10px] text-zinc-400 uppercase font-black tracking-widest">Sessão Ativa</p>
-                    <p className="text-sm font-black">{selectedTerminalUser.name}</p>
-                  </div>
-                  <button 
-                    onClick={() => setSelectedTerminalUser(null)}
-                    className="ml-4 p-2 bg-zinc-800 hover:bg-rose-600 rounded-lg transition-colors"
-                    title="Trocar Operador"
-                  >
-                    <LogOut size={16} />
-                  </button>
-                </div>
-
-                <div className="w-20 h-20 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-900 mb-6 shadow-inner">
-                  <Monitor size={40} />
-                </div>
-                <h2 className="text-3xl font-black mb-2 tracking-tight">Onde você está hoje?</h2>
-                <p className="text-zinc-500 mb-12 max-w-sm font-medium">Selecione o setor de produção deste terminal para carregar a fila de tarefas.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl px-4">
-                  {stages.filter(s => s.active).map(stage => (
-                    <button
-                      key={stage.id}
-                      onClick={() => {
-                        setSelectedSectorId(stage.id);
-                        localStorage.setItem('selectedSectorId', stage.id.toString());
-                      }}
-                      className="group p-8 bg-white border-2 border-zinc-100 rounded-[32px] hover:border-zinc-900 hover:shadow-2xl transition-all text-left"
-                    >
-                      <div className="w-12 h-12 bg-zinc-50 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-zinc-900 group-hover:text-white mb-6 transition-colors shadow-inner">
-                        <Package size={24} />
-                      </div>
-                      <h3 className="font-black text-xl tracking-tight text-zinc-900">{stage.name}</h3>
-                      <p className="text-xs text-zinc-400 font-bold mt-2 uppercase tracking-widest">Clique para selecionar</p>
-                    </button>
-                  ))}
-                </div>
               </div>
             ) : (
               // Terminal is configured
               <div>
-                <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 bg-zinc-900 text-white p-8 rounded-[40px] shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-8 opacity-10">
-                    <Monitor size={120} />
-                  </div>
-                  
-                  <div className="flex items-center gap-6 relative z-10">
-                    <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center shadow-inner">
-                      <Monitor size={32} />
+                <header className="flex justify-between items-center mb-8 bg-zinc-900 text-white p-6 rounded-2xl shadow-xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center">
+                      <Monitor size={24} />
                     </div>
                     <div>
-                      <h2 className="text-3xl font-black tracking-tight">{stages.find(s => s.id === selectedSectorId)?.name}</h2>
-                      <p className="text-xs text-zinc-400 uppercase tracking-[0.3em] font-black">Terminal de Produção</p>
+                      <h2 className="text-xl font-bold">{stages.find(s => s.id === selectedSectorId)?.name}</h2>
+                      <p className="text-xs text-zinc-400 uppercase tracking-widest font-bold">Terminal de Produção</p>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-6 relative z-10">
-                    <div className="flex items-center gap-4 bg-zinc-800/50 p-3 rounded-2xl border border-zinc-700/50">
-                      <div className="w-12 h-12 bg-zinc-700 text-white rounded-xl flex items-center justify-center font-black text-xl">
-                        {selectedTerminalUser.name.charAt(0)}
-                      </div>
-                      <div className="pr-4">
-                        <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Operador</p>
-                        <p className="text-lg font-black">{selectedTerminalUser.name}</p>
-                      </div>
-                      <button 
-                        onClick={() => setSelectedTerminalUser(null)}
-                        className="p-3 bg-zinc-700 hover:bg-rose-600 rounded-xl transition-all active:scale-90"
-                        title="Trocar Operador"
-                      >
-                        <UserIcon size={20} />
-                      </button>
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      {activeTab !== 'supervisor' && (
-                        <button
-                          onClick={() => setActiveTab('supervisor')}
-                          className="px-6 py-3 bg-zinc-100 text-zinc-900 hover:bg-white rounded-2xl text-sm font-black transition-all active:scale-95 shadow-lg"
-                        >
-                          Supervisor
-                        </button>
-                      )}
-                      {activeTab === 'supervisor' && (
-                        <button
-                          onClick={() => setActiveTab('terminal')}
-                          className="px-6 py-3 bg-zinc-100 text-zinc-900 hover:bg-white rounded-2xl text-sm font-black transition-all active:scale-95 shadow-lg"
-                        >
-                          Voltar
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setSelectedSectorId(null);
-                          localStorage.removeItem('selectedSectorId');
-                        }}
-                        className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-2xl text-zinc-400 transition-colors shadow-lg"
-                        title="Alterar Setor"
-                      >
-                        <Settings size={24} />
-                      </button>
-                    </div>
+                  
+                  <div className="flex items-center gap-3">
+                    {activeTab !== 'supervisor' && (
+                       <button
+                       onClick={() => setActiveTab('supervisor')}
+                       className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-bold transition-colors"
+                     >
+                       Painel Supervisor
+                     </button>
+                    )}
+                    {activeTab === 'supervisor' && (
+                       <button
+                       onClick={() => setActiveTab('terminal')}
+                       className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-bold transition-colors"
+                     >
+                       Voltar ao Setor
+                     </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSelectedSectorId(null);
+                        localStorage.removeItem('selectedSectorId');
+                      }}
+                      className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors"
+                      title="Alterar Setor"
+                    >
+                      <Settings size={20} />
+                    </button>
                   </div>
                 </header>
 
@@ -1333,14 +1234,14 @@ export default function App() {
                 ) : (
                   <div className="space-y-12 pb-24">
                     {/* Active Tasks Section */}
-                    {allRunningTasks.filter(t => t.stage_id === selectedSectorId && t.user_id === selectedTerminalUser.id).length > 0 && (
+                    {allRunningTasks.filter(t => t.stage_id === selectedSectorId).length > 0 && (
                       <div className="space-y-6">
                         <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2 px-2">
                           <Activity size={16} className="text-zinc-900" />
                           Tarefas em Execução no Setor
                         </h3>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                          {allRunningTasks.filter(t => t.stage_id === selectedSectorId && t.user_id === selectedTerminalUser.id).map(task => {
+                          {allRunningTasks.filter(t => t.stage_id === selectedSectorId).map(task => {
                             const elapsed = task.status === 'Em andamento' 
                               ? Math.max(0, Math.floor((now.getTime() - parseISO(task.start_time).getTime()) / 1000) - (task.total_time_seconds || 0))
                               : (task.elapsed_seconds || 0);
@@ -1488,10 +1389,8 @@ export default function App() {
                                       </button>
                                       <button
                                         onClick={() => {
-                                          const currentStage = order.stages_status.find(s => !s.finished);
-                                          if (currentStage) {
-                                            handleTerminalStartExecution(order.id, currentStage.id);
-                                          }
+                                          setSelectedOrderForTerminal(order);
+                                          setShowOperatorModal(true);
                                         }}
                                         className="px-10 py-5 bg-zinc-900 text-white rounded-2xl font-black text-xl hover:bg-zinc-800 transition-all active:scale-95 shadow-xl shadow-zinc-900/10 flex items-center gap-3"
                                       >
