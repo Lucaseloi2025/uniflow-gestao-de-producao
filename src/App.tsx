@@ -620,7 +620,15 @@ export default function App() {
   };
 
   const handleAddImages = async (orderId: number, files: FileList) => {
-    if (files.length === 0) return;
+    // Check file sizes (max 4MB to avoid Vercel limit)
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > MAX_FILE_SIZE) {
+        alert(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+        return;
+      }
+    }
+
     setIsUploadingArt(true);
 
     const formData = new FormData();
@@ -634,7 +642,11 @@ export default function App() {
         body: formData
       });
 
-      if (!res.ok) throw new Error('Falha no upload');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        const details = errData?.details ? `\n\nDetalhes:\n${errData.details.join('\n')}` : '';
+        throw new Error(`${errData?.error || 'Falha no upload'}${details}`);
+      }
 
       const data = await res.json();
       // Update local state for the selected order
@@ -3337,6 +3349,15 @@ export default function App() {
                     // Explicitly append all files from the input
                     const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
                     if (fileInput && fileInput.files) {
+                      const MAX_FILE_SIZE = 4 * 1024 * 1024;
+                      for (let i = 0; i < fileInput.files.length; i++) {
+                        if (fileInput.files[i].size > MAX_FILE_SIZE) {
+                          alert(`O arquivo "${fileInput.files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+                          setIsCreatingOrder(false);
+                          return;
+                        }
+                      }
+                      
                       // Clear any existing art_files to be sure
                       formData.delete('art_files');
                       for (let i = 0; i < fileInput.files.length; i++) {
@@ -3353,7 +3374,8 @@ export default function App() {
 
                       if (!res.ok) {
                         const errData = await res.json().catch(() => null);
-                        alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}`);
+                        const details = errData?.details ? `\n\nDetalhes:\n${errData.details.join('\n')}` : '';
+                        alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}${details}`);
                         setIsCreatingOrder(false);
                         return;
                       }

@@ -390,6 +390,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
     const art_urls: string[] = [];
 
     const files = (req as any).files;
+    const uploadErrors: string[] = [];
     console.log(`[API] Criando pedido. Arquivos recebidos: ${files?.length || 0}`);
     if (files && Array.isArray(files)) {
         for (const file of files) {
@@ -406,12 +407,20 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
 
             if (uploadError) {
                 console.error(`[API] Erro no upload da arte (${file.originalname}):`, uploadError);
+                uploadErrors.push(`${file.originalname}: ${uploadError.message}`);
                 continue;
             }
 
             const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
             art_urls.push(publicUrlData.publicUrl);
         }
+    }
+
+    if (uploadErrors.length > 0) {
+        return res.status(400).json({ 
+            error: "Falha no upload de alguns arquivos", 
+            details: uploadErrors 
+        });
     }
 
     // 2. Estimate time
@@ -515,6 +524,7 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
     const new_urls: string[] = [];
 
     // 2. Upload new files
+    const uploadErrors: string[] = [];
     for (const file of files) {
         const fileExt = file.originalname.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -529,11 +539,19 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
 
         if (uploadError) {
             console.error(`[API] Erro no upload da arte (${file.originalname}):`, uploadError);
+            uploadErrors.push(`${file.originalname}: ${uploadError.message}`);
             continue;
         }
 
         const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
         new_urls.push(publicUrlData.publicUrl);
+    }
+
+    if (uploadErrors.length > 0) {
+        return res.status(400).json({ 
+            error: "Falha no upload de alguns arquivos", 
+            details: uploadErrors 
+        });
     }
 
     const updated_urls = [...current_urls, ...new_urls];
