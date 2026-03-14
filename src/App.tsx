@@ -1639,7 +1639,59 @@ export default function App() {
         )}
 
         {activeTab === 'orders' && (
-          <Card>
+          <div className="space-y-6">
+            <Card className="p-6 bg-zinc-900 text-white shadow-xl">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  const scannedOp = formData.get('escanearOp') as string;
+                  if (!scannedOp) return;
+
+                  const foundOrder = orders.find(o => o.order_number === scannedOp.trim());
+                  if (foundOrder) {
+                    setSelectedOrder(foundOrder);
+                    fetchExecutions(foundOrder.id);
+                    (e.target as HTMLFormElement).reset();
+                  } else {
+                    alert('OP não encontrada no sistema. Verifique o número e tente novamente.');
+                  }
+                }}
+                className="flex flex-col sm:flex-row items-center gap-4"
+              >
+                <div className="flex-1 w-full relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Search className="h-5 w-5 text-zinc-400" />
+                  </div>
+                  <input
+                    type="text"
+                    name="escanearOp"
+                    autoFocus
+                    placeholder="Escanear OP (Código de barras)"
+                    className="block w-full pl-11 pr-4 py-4 bg-zinc-800 border-zinc-700 rounded-xl text-white font-mono text-lg font-bold placeholder:text-zinc-500 placeholder:font-sans focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    autoComplete="off"
+                    onBlur={(e) => {
+                      // Attempt to keep focus on the scanner input unless we opened an order modal
+                      if (!selectedOrder && activeTab === 'orders') {
+                         setTimeout(() => e.target.focus(), 100);
+                      }
+                    }}
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <kbd className="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-zinc-400 bg-zinc-700 rounded border border-zinc-600">ENTER</kbd>
+                  </div>
+                </div>
+                <button 
+                  type="submit"
+                  className="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
+                >
+                  <Search size={20} />
+                  Buscar OP
+                </button>
+              </form>
+            </Card>
+
+            <Card>
             <table className="w-full text-left">
               <thead>
                 <tr className="border-bottom border-zinc-200 bg-zinc-50">
@@ -1718,7 +1770,8 @@ export default function App() {
                 })}
               </tbody>
             </table>
-          </Card>
+            </Card>
+          </div>
         )}
 
         {activeTab === 'collaborators' && (
@@ -2973,6 +3026,58 @@ export default function App() {
                   exit={{ x: '100%' }}
                   className="bg-white w-full h-full shadow-2xl overflow-y-auto"
                 >
+                  {/* Keyboard Shortcuts Listener for the current order drawer */}
+                  {(() => {
+                    useEffect(() => {
+                      const handleGlobalKeyDown = (e: KeyboardEvent) => {
+                        // Ignore input if user is typing in a form field
+                        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+                        if (e.key === 'Escape') {
+                          setSelectedOrder(null);
+                          return;
+                        }
+
+                        // Determine the "current stage" (the first that is not finished)
+                        // It must match exactly the logic below
+                        const currentOrderStage = selectedOrder.stages_status.find(s => !s.finished);
+                        if (!currentOrderStage) return; // Order is fully finished
+
+                        const stage = stages.find(s => s.id === currentOrderStage.id);
+                        if (!stage) return;
+                        
+                        const execution = executions.find(e => e.stage_id === stage.id);
+
+                        switch (e.key) {
+                          case '1':
+                            e.preventDefault();
+                            if (!execution) {
+                              handleStartStage(stage.id);
+                            } else if (execution.status === 'Pausado') {
+                              handleResumeStage(execution.id);
+                            }
+                            break;
+                          case '2':
+                            e.preventDefault();
+                            if (execution?.status === 'Em andamento') {
+                              handlePauseStage(execution.id);
+                            }
+                            break;
+                          case '3':
+                            e.preventDefault();
+                            if (execution?.status === 'Em andamento') {
+                              handleFinishStage(execution.id);
+                            }
+                            break;
+                        }
+                      };
+
+                      window.addEventListener('keydown', handleGlobalKeyDown);
+                      return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+                    }, [selectedOrder, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
+                    return null;
+                  })()}
+
                   <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center px-8 lg:px-12">
                     <div className="flex items-center gap-6">
                       <button
@@ -2980,7 +3085,7 @@ export default function App() {
                         className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl transition-all font-bold text-sm active:scale-95"
                       >
                         <ArrowLeft size={18} />
-                        Voltar ao Menu
+                        Voltar ao Menu <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-200 border border-zinc-300 rounded text-zinc-500 font-normal">Esc</kbd>
                       </button>
                       <div className="h-8 w-[1px] bg-zinc-200 hidden lg:block" />
                       <div>
@@ -3255,7 +3360,7 @@ export default function App() {
                                       className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
                                     >
                                       <Play size={18} fill="currentColor" />
-                                      <span className="font-bold text-sm">Iniciar</span>
+                                      <span className="font-bold text-sm flex items-center">Iniciar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded text-zinc-300">1</kbd></span>
                                     </button>
                                   )}
                                   {execution?.status === 'Em andamento' && (
@@ -3266,14 +3371,14 @@ export default function App() {
                                         title="Pausar"
                                       >
                                         <Pause size={18} fill="currentColor" />
-                                        <span className="font-bold text-sm">Pausar</span>
+                                        <span className="font-bold text-sm flex items-center">Pausar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-amber-200 border border-amber-300 rounded text-amber-800">2</kbd></span>
                                       </button>
                                       <button
                                         onClick={() => handleFinishStage(execution.id)}
                                         className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 border-b-4 border-emerald-800"
                                       >
                                         <CheckCircle size={18} />
-                                        <span className="font-bold text-sm uppercase tracking-tight">Finalizar</span>
+                                        <span className="font-bold text-sm flex items-center uppercase tracking-tight">Finalizar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-emerald-700 border border-emerald-800 rounded text-emerald-100">3</kbd></span>
                                       </button>
                                     </>
                                   )}
@@ -3283,7 +3388,7 @@ export default function App() {
                                       className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-95"
                                     >
                                       <Play size={18} fill="currentColor" />
-                                      <span className="font-bold text-sm">Retomar</span>
+                                      <span className="font-bold text-sm flex items-center">Retomar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded text-zinc-300">1</kbd></span>
                                     </button>
                                   )}
                                 </div>
