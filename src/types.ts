@@ -32,6 +32,7 @@ export interface Order {
   num_colors?: number;
   deleted_at?: string | null;
   cancelled_at?: string | null;
+  current_operator?: string | null;
 }
 
 export interface OrderHistory {

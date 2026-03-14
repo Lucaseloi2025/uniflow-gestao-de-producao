@@ -381,6 +381,27 @@ app.get("/api/orders", async (req, res) => {
         p_stage_status: stage_status || null,
     });
     if (checkError(error, res, "Erro ao buscar pedidos")) return;
+
+    if (data && data.length > 0) {
+        const orderIds = data.map((o: any) => o.id);
+        const { data: executions } = await supabase
+            .from("stage_executions")
+            .select("order_id, users(name)")
+            .in("order_id", orderIds)
+            .in("status", ["Em andamento"]);
+
+        const operatorMap = new Map();
+        if (executions) {
+            executions.forEach((ex: any) => {
+                operatorMap.set(ex.order_id, ex.users?.name || null);
+            });
+        }
+
+        data.forEach((order: any) => {
+            order.current_operator = operatorMap.get(order.id) || null;
+        });
+    }
+
     return res.json(data);
 });
 

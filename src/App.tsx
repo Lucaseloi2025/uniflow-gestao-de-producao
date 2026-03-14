@@ -372,7 +372,15 @@ export default function App() {
       safeFetch('/api/order-templates')
     ]);
 
-    if (ordersData) setOrders(ordersData);
+    if (ordersData) {
+      // Prioridade visual por prazo (crescente)
+      const sortedOrders = ordersData.sort((a: Order, b: Order) => {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      });
+      setOrders(sortedOrders);
+    }
     if (stagesData) setStages(stagesData);
     if (statsData) setStats(statsData);
     if (templatesData) setTemplates(templatesData);
@@ -666,6 +674,11 @@ export default function App() {
 
   const handleStartStage = async (stageId: number) => {
     if (!selectedOrder) return;
+    
+    // Confirmação ao iniciar tarefa
+    const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nDeseja iniciar esta tarefa?`);
+    if (!confirmStart) return;
+    
     const res = await fetch('/api/executions/start', {
       method: 'POST',
       headers: {
@@ -990,6 +1003,19 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+        
+        {/* Banner Operador Ativo */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-6 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+              <span className="text-sm font-bold text-emerald-900">Operador Ativo: {currentUser.name}</span>
+              <span className="hidden sm:inline text-emerald-300">•</span>
+              <span className="text-xs font-medium text-emerald-700">Setor: {currentUser.role}</span>
+            </div>
+          </div>
+        </div>
+
         <AnimatePresence>
           {activeExecution && (
             <RunningTaskBanner
@@ -1559,17 +1585,39 @@ export default function App() {
                           <p className="text-xs text-zinc-500 mb-3">{order.quantity}x {order.product_type}</p>
 
                           {order.stages_status && order.stages_status.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mb-3">
-                              {order.stages_status.map((stage, i) => (
-                                <div
-                                  key={i}
-                                  title={stage.name}
-                                  className={cn(
-                                    "w-2 h-2 rounded-full",
-                                    stage.finished ? "bg-emerald-500" : "bg-zinc-200"
-                                  )}
-                                />
-                              ))}
+                            <div className="mb-3 space-y-2">
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                {order.stages_status.map((stage, i) => {
+                                  const isCurrent = !stage.finished && (i === 0 || order.stages_status[i - 1].finished);
+                                  const isFinished = stage.finished;
+                                  return (
+                                    <React.Fragment key={i}>
+                                      <span className={cn(
+                                        "truncate max-w-[80px]",
+                                        isCurrent ? "font-bold text-zinc-900 border-b border-zinc-900" 
+                                        : isFinished ? "text-emerald-600 font-medium" 
+                                        : "text-zinc-400"
+                                      )} title={stage.name}>
+                                        {stage.name}
+                                      </span>
+                                      {i < order.stages_status.length - 1 && (
+                                        <span className="text-zinc-300">→</span>
+                                      )}
+                                    </React.Fragment>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-emerald-500 rounded-full transition-all" 
+                                    style={{ width: `${Math.round((order.stages_status.filter(s => s.finished).length / order.stages_status.length) * 100)}%` }} 
+                                  />
+                                </div>
+                                <span className="text-[9px] font-bold text-zinc-500">
+                                  {Math.round((order.stages_status.filter(s => s.finished).length / order.stages_status.length) * 100)}%
+                                </span>
+                              </div>
                             </div>
                           )}
 
@@ -1599,6 +1647,8 @@ export default function App() {
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Operador</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Status</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-right">Tempo</th>
                 </tr>
@@ -1652,6 +1702,12 @@ export default function App() {
                         ) : (
                           format(parseISO(order.deadline), 'dd/MM/yyyy')
                         )}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-zinc-600">
+                        {order.stages_status.find(s => !s.finished)?.name || 'Concluído'}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-zinc-600">
+                        {order.current_operator || '-'}
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant={order.status === 'Entregue' ? 'success' : (isOverdue ? 'danger' : 'info')}>{order.status}</Badge>
