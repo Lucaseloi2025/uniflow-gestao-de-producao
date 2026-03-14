@@ -255,6 +255,13 @@ export default function App() {
     return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext || '');
   };
 
+  const isPdf = (url: string | undefined): boolean => {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const ext = cleanUrl.split('.').pop()?.toLowerCase();
+    return ext === 'pdf';
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(new Date());
@@ -1291,16 +1298,66 @@ export default function App() {
                 </button>
               ) : null
             ) : (
-              <button
-                onClick={() => {
-                  setShowNewOrderModal(true);
-                  setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-                }}
-                className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
-              >
-                <Plus size={18} />
-                Novo Pedido
-              </button>
+              <div className="flex items-center gap-3 w-full lg:w-auto">
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    const scannedOp = (formData.get('escanearOp') as string).trim().toLowerCase();
+                    if (!scannedOp) return;
+
+                    let foundOrder = orders.find(o => 
+                      o.order_number.toLowerCase().includes(scannedOp) || 
+                      (o.client_name && o.client_name.toLowerCase().includes(scannedOp))
+                    );
+
+                    const handleOrderFound = (order: Order) => {
+                      setSelectedOrder(order);
+                      fetchExecutions(order.id);
+                      (e.target as HTMLFormElement).reset();
+                    };
+
+                    if (foundOrder) {
+                      handleOrderFound(foundOrder);
+                    } else {
+                      safeFetch(`/api/orders?search=${encodeURIComponent(scannedOp)}`).then(data => {
+                        if (data && data.length > 0) {
+                          const exactMatch = data.find((o: Order) => 
+                            o.order_number.toLowerCase() === scannedOp || 
+                            o.client_name?.toLowerCase() === scannedOp
+                          );
+                          handleOrderFound(exactMatch || data[0]);
+                        } else {
+                          alert('OP não encontrada no sistema.');
+                        }
+                      });
+                    }
+                  }}
+                  className="relative group flex-1 lg:w-64"
+                >
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none transition-colors group-focus-within:text-zinc-900 text-zinc-400">
+                    <Search className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="text"
+                    name="escanearOp"
+                    placeholder="Buscar OP..."
+                    className="block w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-bold text-zinc-900 placeholder:text-zinc-400 placeholder:font-normal focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-all outline-none"
+                    autoComplete="off"
+                  />
+                </form>
+
+                <button
+                  onClick={() => {
+                    setShowNewOrderModal(true);
+                    setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+                  }}
+                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm whitespace-nowrap"
+                >
+                  <Plus size={18} />
+                  Novo Pedido
+                </button>
+              </div>
             )}
           </div>
         </header>
@@ -1566,6 +1623,11 @@ export default function App() {
                                 className="w-full h-full object-cover transition-transform group-hover/art:scale-110"
                                 referrerPolicy="no-referrer"
                               />
+                            ) : isPdf(order.art_url) ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50 border-b border-rose-100 text-rose-500">
+                                <FileText size={40} />
+                                <span className="text-[10px] font-bold mt-1">PDF</span>
+                              </div>
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
                                 <FileText size={40} />
@@ -1640,55 +1702,11 @@ export default function App() {
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <Card className="p-6 bg-zinc-900 text-white shadow-xl">
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  const scannedOp = formData.get('escanearOp') as string;
-                  if (!scannedOp) return;
-
-                  const foundOrder = orders.find(o => o.order_number === scannedOp.trim());
-                  if (foundOrder) {
-                    setSelectedOrder(foundOrder);
-                    fetchExecutions(foundOrder.id);
-                    (e.target as HTMLFormElement).reset();
-                  } else {
-                    alert('OP não encontrada no sistema. Verifique o número e tente novamente.');
-                  }
-                }}
-                className="flex flex-col sm:flex-row items-center gap-4"
-              >
-                <div className="flex-1 w-full relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Search className="h-5 w-5 text-zinc-400" />
-                  </div>
-                  <input
-                    type="text"
-                    name="escanearOp"
-                    autoFocus
-                    placeholder="Escanear OP (Código de barras)"
-                    className="block w-full pl-11 pr-4 py-4 bg-zinc-800 border-zinc-700 rounded-xl text-white font-mono text-lg font-bold placeholder:text-zinc-500 placeholder:font-sans focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                    autoComplete="off"
-                    onBlur={(e) => {
-                      // Attempt to keep focus on the scanner input unless we opened an order modal
-                      if (!selectedOrder && activeTab === 'orders') {
-                         setTimeout(() => e.target.focus(), 100);
-                      }
-                    }}
-                  />
-                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                    <kbd className="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-zinc-400 bg-zinc-700 rounded border border-zinc-600">ENTER</kbd>
-                  </div>
-                </div>
-                <button 
-                  type="submit"
-                  className="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
-                >
-                  <Search size={20} />
-                  Buscar OP
-                </button>
-              </form>
+            <Card className="p-4 bg-zinc-50 border-zinc-200">
+              <div className="flex items-center gap-3 text-zinc-500 text-xs italic">
+                <Search size={14} />
+                Use a barra de busca no topo para localizar OPs por número ou nome do cliente.
+              </div>
             </Card>
 
             <Card>
@@ -1738,7 +1756,12 @@ export default function App() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="text-sm">{order.product_type}</span>
+                          <span className="text-sm flex items-center gap-1.5">
+                            {order.product_type}
+                            {((order.art_url && isPdf(order.art_url)) || (order.art_urls && order.art_urls.some(url => isPdf(url)))) && (
+                              <FileText size={14} className="text-rose-500" title="Possui PDF" />
+                            )}
+                          </span>
                           <span className="text-[10px] text-zinc-500">{order.print_type} • {order.quantity} un</span>
                         </div>
                       </td>
@@ -3251,10 +3274,17 @@ export default function App() {
                                     className="max-w-full max-h-full object-contain"
                                     referrerPolicy="no-referrer"
                                   />
+                                ) : isPdf(url) ? (
+                                  <div className="flex flex-col items-center gap-2 text-rose-500">
+                                    <FileText size={48} />
+                                    <span className="text-[10px] uppercase font-bold tracking-widest">Documento PDF</span>
+                                  </div>
                                 ) : (
                                   <div className="flex flex-col items-center gap-2 text-zinc-400">
                                     <FileText size={40} />
-                                    <span className="text-[10px] uppercase font-bold">Arquivo {url.split('.').pop()}</span>
+                                    <span className="text-[10px] uppercase font-bold whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
+                                      Arquivo {url.split('.').pop()}
+                                    </span>
                                   </div>
                                 )}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
@@ -3290,6 +3320,16 @@ export default function App() {
                                   className="w-full h-auto max-h-[400px] object-contain"
                                   referrerPolicy="no-referrer"
                                 />
+                              ) : isPdf(selectedOrder.art_url) ? (
+                                <div className="p-12 flex flex-col items-center gap-4 text-rose-500 bg-rose-50/30 w-full">
+                                  <div className="p-6 bg-rose-100 rounded-full">
+                                    <FileText size={48} />
+                                  </div>
+                                  <div className="text-center">
+                                    <span className="text-sm font-black uppercase tracking-widest block">Documento PDF</span>
+                                    <span className="text-[10px] text-rose-400 font-bold">Clique para visualizar</span>
+                                  </div>
+                                </div>
                               ) : (
                                 <div className="p-12 flex flex-col items-center gap-3 text-zinc-400">
                                   <FileText size={48} />

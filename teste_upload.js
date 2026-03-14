@@ -1,23 +1,23 @@
-import fs from 'fs';
-
 async function run() {
-    const form = new FormData();
-    form.append('client_name', 'Teste RLS CLI');
-    form.append('product_type', 'Dry Fit');
-    form.append('print_type', 'Silk');
-    form.append('quantity', '1');
-    form.append('deadline', '2026-12-31');
+    const formData = new FormData();
+    formData.append('client_name', 'Teste RLS CLI');
+    formData.append('product_type', 'Dry Fit');
+    formData.append('print_type', 'Silk');
+    formData.append('quantity', '1');
+    formData.append('deadline', '2026-12-31');
 
     const fileContent = Buffer.from('conteudo de teste');
-
-    // Criar um blob simulando um arquivo para o fetch nativo do node 24
+    // Usando Blob para compatibilidade com o fetch nativo do Node.js
     const blob = new Blob([fileContent], { type: 'image/jpeg' });
-    form.append('art_file', blob, 'teste.jpg');
+    
+    // O backend espera 'art_files' (plural)
+    formData.append('art_files', blob, 'teste.jpg');
 
     try {
+        console.log('Enviando requisição para o backend...');
         const res = await fetch('https://uniflow-gestao-de-producao.vercel.app/api/orders', {
             method: 'POST',
-            body: form
+            body: formData
         });
         console.log('STATUS:', res.status);
         const text = await res.text();
