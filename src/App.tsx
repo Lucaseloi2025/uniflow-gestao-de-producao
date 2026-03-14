@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -239,6 +239,18 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [activeExecution, setActiveExecution] = useState<StageExecution | null>(null);
   const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the "Escanear OP" field
+  useEffect(() => {
+    if (activeTab === 'kanban' || activeTab === 'orders') {
+      // Small delay to ensure any modals/drawers have finished animating if needed
+      const timer = setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, selectedOrder, showNewOrderModal, showEditOrderModal, showHistoryModal, executions]);
 
   const getOrderRisk = (orderId: number) => {
     const forecast = forecastData.find(f => f.orderId === orderId);
@@ -820,6 +832,66 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Shortcut Listener at top level to avoid Hook order violation
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ignore input if user is typing in another form field
+      if ((e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) && e.target !== scanInputRef.current) {
+        return;
+      }
+
+      // Handle Escape even if scan input is focused (to close order)
+      if (e.key === 'Escape' && selectedOrder) {
+        setSelectedOrder(null);
+        return;
+      }
+
+      // If no order is selected, we don't handle the numbered shortcuts
+      if (!selectedOrder) return;
+
+      // Also ignore if the scan field is focused but the key is not one of our shortcuts
+      const isShortcutKey = ['1', '2', '3'].includes(e.key);
+      if (e.target === scanInputRef.current && !isShortcutKey) {
+        return;
+      }
+
+      // Shortcut logic for the open order
+      const currentOrderStage = selectedOrder.stages_status.find(s => !s.finished);
+      if (!currentOrderStage) return;
+
+      const stage = stages.find(s => s.id === currentOrderStage.id);
+      if (!stage) return;
+      
+      const execution = (executions || []).find(ex => ex.stage_id === stage.id);
+
+      switch (e.key) {
+        case '1':
+          e.preventDefault();
+          if (!execution) {
+            handleStartStage(stage.id);
+          } else if (execution.status === 'Pausado') {
+            handleResumeStage(execution.id);
+          }
+          break;
+        case '2':
+          e.preventDefault();
+          if (execution?.status === 'Em andamento') {
+            handlePauseStage(execution.id);
+          }
+          break;
+        case '3':
+          e.preventDefault();
+          if (execution?.status === 'Em andamento') {
+            handleFinishStage(execution.id);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [selectedOrder, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
+
   // New Order Form State
   const [newOrderForm, setNewOrderForm] = useState({
     client_name: '',
@@ -1303,12 +1375,13 @@ export default function App() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
-                    const scannedOp = (formData.get('escanearOp') as string).trim().toLowerCase();
-                    if (!scannedOp) return;
+                    const scannedValue = (formData.get('escanearOp') as string).trim();
+                    if (!scannedValue) return;
 
+                    // Procura especificamente no campo client_name (como solicitado pelo usuário)
+                    const searchLower = scannedValue.toLowerCase();
                     let foundOrder = orders.find(o => 
-                      o.order_number.toLowerCase().includes(scannedOp) || 
-                      (o.client_name && o.client_name.toLowerCase().includes(scannedOp))
+                      o.client_name && o.client_name.toLowerCase().includes(searchLower)
                     );
 
                     const handleOrderFound = (order: Order) => {
@@ -1320,15 +1393,22 @@ export default function App() {
                     if (foundOrder) {
                       handleOrderFound(foundOrder);
                     } else {
-                      safeFetch(`/api/orders?search=${encodeURIComponent(scannedOp)}`).then(data => {
+                      // Se não encontrar localmente, busca na API focando no nome do cliente
+                      safeFetch(`/api/orders?search=${encodeURIComponent(scannedValue)}`).then(data => {
                         if (data && data.length > 0) {
-                          const exactMatch = data.find((o: Order) => 
-                            o.order_number.toLowerCase() === scannedOp || 
-                            o.client_name?.toLowerCase() === scannedOp
+                          // Prioriza match no client_name
+                          const clientMatch = data.find((o: Order) => 
+                            o.client_name && o.client_name.toLowerCase().includes(searchLower)
                           );
-                          handleOrderFound(exactMatch || data[0]);
+                          if (clientMatch) {
+                            handleOrderFound(clientMatch);
+                          } else {
+                            // Se encontrar algo por outros campos mas o usuário quer apenas cliente
+                            // podemos abrir o primeiro se for um scan literal do campo circled
+                            handleOrderFound(data[0]);
+                          }
                         } else {
-                          alert('OP não encontrada no sistema.');
+                          alert('OP (Cliente) não encontrada no sistema.');
                         }
                       });
                     }
@@ -1341,7 +1421,8 @@ export default function App() {
                   <input
                     type="text"
                     name="escanearOp"
-                    placeholder="Buscar OP..."
+                    ref={scanInputRef}
+                    placeholder="Escanear OP (Cliente)..."
                     className="block w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-bold text-zinc-900 placeholder:text-zinc-400 placeholder:font-normal focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-all outline-none"
                     autoComplete="off"
                   />
@@ -3049,57 +3130,7 @@ export default function App() {
                   exit={{ x: '100%' }}
                   className="bg-white w-full h-full shadow-2xl overflow-y-auto"
                 >
-                  {/* Keyboard Shortcuts Listener for the current order drawer */}
-                  {(() => {
-                    useEffect(() => {
-                      const handleGlobalKeyDown = (e: KeyboardEvent) => {
-                        // Ignore input if user is typing in a form field
-                        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-                        if (e.key === 'Escape') {
-                          setSelectedOrder(null);
-                          return;
-                        }
-
-                        // Determine the "current stage" (the first that is not finished)
-                        // It must match exactly the logic below
-                        const currentOrderStage = selectedOrder.stages_status.find(s => !s.finished);
-                        if (!currentOrderStage) return; // Order is fully finished
-
-                        const stage = stages.find(s => s.id === currentOrderStage.id);
-                        if (!stage) return;
-                        
-                        const execution = executions.find(e => e.stage_id === stage.id);
-
-                        switch (e.key) {
-                          case '1':
-                            e.preventDefault();
-                            if (!execution) {
-                              handleStartStage(stage.id);
-                            } else if (execution.status === 'Pausado') {
-                              handleResumeStage(execution.id);
-                            }
-                            break;
-                          case '2':
-                            e.preventDefault();
-                            if (execution?.status === 'Em andamento') {
-                              handlePauseStage(execution.id);
-                            }
-                            break;
-                          case '3':
-                            e.preventDefault();
-                            if (execution?.status === 'Em andamento') {
-                              handleFinishStage(execution.id);
-                            }
-                            break;
-                        }
-                      };
-
-                      window.addEventListener('keydown', handleGlobalKeyDown);
-                      return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-                    }, [selectedOrder, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
-                    return null;
-                  })()}
+                  {/* Shortcuts moved to top level */}
 
                   <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center px-8 lg:px-12">
                     <div className="flex items-center gap-6">
