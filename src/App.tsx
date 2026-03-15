@@ -190,6 +190,7 @@ export default function App() {
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -699,7 +700,8 @@ export default function App() {
     if (!selectedOrder) return;
     
     // Confirmação ao iniciar tarefa
-    const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nDeseja iniciar esta tarefa?`);
+    const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
+    const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
     if (!confirmStart) return;
     
     const res = await fetch('/api/executions/start', {
@@ -836,6 +838,20 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Initialize selectedStageId when order is opened
+  useEffect(() => {
+    if (selectedOrder) {
+      const firstUnfinished = selectedOrder.stages_status.find(s => !s.finished);
+      if (firstUnfinished) {
+        setSelectedStageId(firstUnfinished.id);
+      } else if (selectedOrder.stages_status.length > 0) {
+        setSelectedStageId(selectedOrder.stages_status[0].id);
+      }
+    } else {
+      setSelectedStageId(null);
+    }
+  }, [selectedOrder]);
+
   // Shortcut Listener at top level to avoid Hook order violation
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -853,24 +869,41 @@ export default function App() {
       // If no order is selected, we don't handle the numbered shortcuts
       if (!selectedOrder) return;
 
+      // Handle Arrow Navigation
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const stageIds = selectedOrder.stages_status.map(s => s.id);
+        const currentIndex = stageIds.indexOf(selectedStageId || -1);
+        
+        if (e.key === 'ArrowDown') {
+          const nextIndex = (currentIndex + 1) % stageIds.length;
+          setSelectedStageId(stageIds[nextIndex]);
+        } else {
+          const prevIndex = (currentIndex - 1 + stageIds.length) % stageIds.length;
+          setSelectedStageId(stageIds[prevIndex]);
+        }
+        return;
+      }
+
       // Also ignore if the scan field is focused but the key is not one of our shortcuts
       const isShortcutKey = ['1', '2', '3'].includes(e.key);
       if (e.target === scanInputRef.current && !isShortcutKey) {
         return;
       }
 
-      // Shortcut logic for the open order
-      const currentOrderStage = selectedOrder.stages_status.find(s => !s.finished);
-      if (!currentOrderStage) return;
-
-      const stage = stages.find(s => s.id === currentOrderStage.id);
+      // Shortcut logic for the selected stage
+      if (!selectedStageId) return;
+      
+      const stage = stages.find(s => s.id === selectedStageId);
       if (!stage) return;
       
       const execution = (executions || []).find(ex => ex.stage_id === stage.id);
+      const isFinished = selectedOrder.stages_status.find(s => s.id === selectedStageId)?.finished;
 
       switch (e.key) {
         case '1':
           e.preventDefault();
+          if (isFinished) return;
           if (!execution) {
             handleStartStage(stage.id);
           } else if (execution.status === 'Pausado') {
@@ -894,7 +927,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [selectedOrder, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
+  }, [selectedOrder, selectedStageId, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
 
   // New Order Form State
   const [newOrderForm, setNewOrderForm] = useState({
@@ -3296,12 +3329,15 @@ export default function App() {
                               const stage = stages.find(s => s.id === orderStage.id);
                               if (!stage) return null;
                               const execution = executions.find(e => e.stage_id === stage.id);
+                              const isSelected = selectedStageId === stage.id;
                               const isNextToStart = !execution && stage.id === firstUnfinishedId;
 
                               return (
                                 <div key={stage.id} 
+                                  onClick={() => setSelectedStageId(stage.id)}
                                   className={cn(
-                                    "p-3 rounded-lg border transition-all duration-200",
+                                    "p-3 rounded-lg border transition-all duration-200 cursor-pointer",
+                                    isSelected ? "ring-2 ring-sky-500 bg-sky-50/20 border-sky-200" :
                                     execution?.status === 'Em andamento' ? "bg-white border-zinc-900 shadow-md ring-1 ring-zinc-900" :
                                     execution?.status === 'Pausado' ? "bg-amber-50/30 border-amber-100" :
                                     orderStage.finished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
@@ -3357,7 +3393,7 @@ export default function App() {
                                           )}
                                         >
                                           <Play size={12} fill="currentColor" />
-                                          INICIAR {isNextToStart && <kbd className="ml-1 opacity-50 font-mono">1</kbd>}
+                                          INICIAR {isSelected && <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>}
                                         </button>
                                       )}
 
@@ -3368,14 +3404,14 @@ export default function App() {
                                             className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
                                           >
                                             <Pause size={12} fill="currentColor" />
-                                            PAUSAR <kbd className="opacity-50 font-mono">2</kbd>
+                                            PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
                                           </button>
                                           <button
                                             onClick={() => handleFinishStage(execution.id)}
                                             className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
                                           >
                                             <CheckCircle size={12} />
-                                            FINALIZAR <kbd className="opacity-50 font-mono">3</kbd>
+                                            FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
                                           </button>
                                         </>
                                       )}
@@ -3386,7 +3422,7 @@ export default function App() {
                                           className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
                                         >
                                           <Play size={12} fill="currentColor" />
-                                          RETOMAR <kbd className="ml-1 opacity-50 font-mono">1</kbd>
+                                          RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
                                         </button>
                                       )}
                                     </div>
