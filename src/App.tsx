@@ -3134,171 +3134,162 @@ export default function App() {
                   exit={{ x: '100%' }}
                   className="bg-white w-full h-full shadow-2xl overflow-y-auto"
                 >
-                  {/* Shortcuts moved to top level */}
-
-                  <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-6 border-b border-zinc-100 flex justify-between items-center px-8 lg:px-12">
-                    <div className="flex items-center gap-6">
+                  <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-3 sm:p-4 border-b border-zinc-100 flex justify-between items-center px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-4">
                       <button
                         onClick={() => setSelectedOrder(null)}
-                        className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl transition-all font-bold text-sm active:scale-95"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg transition-all font-bold text-xs active:scale-95"
                       >
-                        <ArrowLeft size={18} />
-                        Voltar ao Menu <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-200 border border-zinc-300 rounded text-zinc-500 font-normal">Esc</kbd>
+                        <ArrowLeft size={16} />
+                        Voltar <kbd className="ml-1 px-1 py-0.5 text-[9px] font-mono bg-zinc-200 border border-zinc-300 rounded text-zinc-500 font-normal">Esc</kbd>
                       </button>
-                      <div className="h-8 w-[1px] bg-zinc-200 hidden lg:block" />
+                      <div className="h-6 w-[1px] bg-zinc-200 hidden sm:block" />
                       <div>
-                        <h2 className="text-2xl font-black tracking-tight text-zinc-900">{selectedOrder.client_name}</h2>
-                        <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                        <h2 className="text-xl font-black tracking-tight text-zinc-900 leading-tight">{selectedOrder.client_name}</h2>
+                        <p className="text-[10px] text-zinc-500 font-mono">{selectedOrder.order_number}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado' && (
                         <>
                           <button
                             onClick={() => openEditOrderModal(selectedOrder)}
-                            className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-all font-bold text-sm"
-                            title="Editar pedido"
+                            className="flex items-center gap-1 px-2 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg transition-all font-bold text-xs"
+                            title="Editar"
                           >
-                            <Edit2 size={15} />
-                            <span className="hidden sm:inline">Editar</span>
+                            <Edit2 size={13} />
+                            <span className="hidden xl:inline">Editar</span>
                           </button>
                           <button
                             onClick={() => handleCancelOrder(selectedOrder.id)}
                             disabled={isCancellingOrder}
                             className={cn(
-                              "flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all font-bold text-sm",
+                              "flex items-center gap-1 px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-lg transition-all font-bold text-xs",
                               isCancellingOrder && "opacity-50 cursor-not-allowed"
                             )}
-                            title="Cancelar pedido"
                           >
-                            {isCancellingOrder ? <RefreshCw size={15} className="animate-spin" /> : <X size={15} />}
-                            <span className="hidden sm:inline">Cancelar</span>
+                            {isCancellingOrder ? <RefreshCw size={13} className="animate-spin" /> : <X size={13} />}
+                            <span className="hidden xl:inline">Cancelar</span>
                           </button>
                         </>
                       )}
                       <button
                         onClick={() => handleViewHistory(selectedOrder.id)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl transition-all font-bold text-sm"
-                        title="Ver histórico de alterações"
+                        className="flex items-center gap-1 px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-lg transition-all font-bold text-xs"
                       >
-                        <FileText size={15} />
-                        <span className="hidden sm:inline">Histórico</span>
+                        <FileText size={13} />
+                        <span className="hidden xl:inline">Histórico</span>
                       </button>
                       {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && (
                         <button
                           onClick={() => handleDeleteOrder(selectedOrder.id)}
                           disabled={isDeletingOrder}
                           className={cn(
-                            "flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all font-bold text-sm",
+                            "flex items-center gap-1 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all font-bold text-xs",
                             isDeletingOrder && "opacity-50 cursor-not-allowed"
                           )}
-                          title="Excluir pedido (soft-delete)"
                         >
-                          {isDeletingOrder ? <RefreshCw size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                          <span className="hidden sm:inline">Excluir</span>
+                          {isDeletingOrder ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          <span className="hidden xl:inline">Excluir</span>
                         </button>
                       )}
                       <Badge variant={
                         selectedOrder.status === 'Entregue' ? 'success' :
                           selectedOrder.status === 'Cancelado' ? 'error' : 'info'
-                      }>
+                      } className="text-[9px] py-0.5 px-2">
                         {selectedOrder.status}
                       </Badge>
                       {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
-                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full flex items-center gap-1">
+                        <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex items-center gap-1">
                           🎨 {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
                         </span>
                       )}
                     </div>
                   </div>
-
-                  <div className="p-6 lg:p-8 max-w-full mx-auto h-[calc(100vh-100px)] overflow-hidden">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
+                     <div className="p-4 sm:p-5 lg:p-6 max-w-full mx-auto h-[calc(100vh-64px)] overflow-hidden">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 h-full">
                       
                       {/* Left Column: Order Information */}
-                      <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
                         <section>
-                          <h3 className="text-sm font-black text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <Package size={16} /> Informações do Pedido
+                          <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                            <Package size={14} /> INFORMAÇÕES GERAIS
                           </h3>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
-                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
-                              <p className="text-lg font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
+                              <p className="text-base font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
                             </div>
-                            <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
-                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
-                              <p className="text-lg font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
+                            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
+                              <p className="text-base font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
                             </div>
-                            <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm sm:col-span-2">
-                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
+                            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm col-span-2">
+                              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
                               {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
                                 <input
                                   type="date"
                                   defaultValue={selectedOrder.deadline.split('T')[0]}
                                   onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
-                                  className="text-lg font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
+                                  className="text-base font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
                                 />
                               ) : (
-                                <p className="text-lg font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
+                                <p className="text-base font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
                               )}
                             </div>
                           </div>
                         </section>
-
-                        <section className="p-5 bg-zinc-900 border-none rounded-2xl text-white relative overflow-hidden shadow-xl">
-                          <div className="relative z-10">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Detalhes de Produção</h4>
-                            <div className="space-y-4">
-                              <div>
-                                <span className="text-[10px] font-bold text-zinc-500 uppercase block">Produto</span>
-                                <span className="text-md font-black">{selectedOrder.product_type}</span>
-                              </div>
-                              <div className="flex justify-between items-center">
-                                <div>
-                                  <span className="text-[10px] font-bold text-zinc-500 uppercase block">Estampa</span>
-                                  <span className="text-md font-black text-sky-400">{selectedOrder.print_type}</span>
-                                </div>
-                                <div className="text-right">
-                                  <span className="text-[10px] font-bold text-zinc-500 uppercase block">Quantidade</span>
-                                  <span className="text-xl font-black">{selectedOrder.quantity} <span className="text-xs text-zinc-500 font-medium">pçs</span></span>
-                                </div>
-                              </div>
+                        <section className="p-4 sm:p-5 bg-white border border-zinc-200 rounded-2xl shadow-sm">
+                          <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">DETALHES DE PRODUÇÃO</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Produto</span>
+                              <span className="text-xs font-bold text-zinc-900">{selectedOrder.product_type}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Quantidade</span>
+                              <span className="text-xs font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-zinc-500 font-medium text-[10px]">pçs</span></span>
+                            </div>
+                            <div className="col-span-2 pt-2 border-t border-zinc-50">
+                              <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-1">Estampa</span>
+                              <Badge variant="info" className="text-[10px] px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-100">
+                                {selectedOrder.print_type}
+                              </Badge>
                             </div>
                           </div>
                         </section>
 
                         {selectedOrder.observations && (
                           <section>
-                            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                              <ClipboardList size={14} /> Observações
+                            <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                              <ClipboardList size={12} /> OBSERVAÇÕES
                             </h3>
-                            <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm font-medium text-amber-900 leading-relaxed shadow-sm italic">
+                            <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs font-medium text-amber-900 leading-relaxed italic">
                               "{selectedOrder.observations}"
                             </div>
                           </section>
                         )}
                         
                         {selectedOrder.total_time_seconds > selectedOrder.estimated_time_seconds * 1.2 && (
-                          <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 shadow-sm">
-                            <AlertCircle size={20} />
-                            <p className="text-xs font-bold uppercase tracking-tight">O tempo real ultrapassou 20% da estimativa padrão.</p>
+                          <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-700">
+                            <AlertCircle size={16} />
+                            <p className="text-[9px] font-bold uppercase tracking-tight">ALERTA: Tempo real +20% acima do esperado.</p>
                           </div>
                         )}
                       </div>
 
                       {/* Middle Column: Stage Management */}
-                      <div className="space-y-6 flex flex-col h-full">
-                        <h3 className="text-sm font-black text-zinc-900 flex items-center justify-between">
+                      <div className="space-y-4 flex flex-col h-full border-x lg:border-zinc-100 px-4">
+                        <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Layers size={18} className="text-sky-500" /> Fluxo de Produção
+                            <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
                           </div>
-                          <Badge variant="info" className="text-[9px]">
-                            {selectedOrder.stages_status.filter(s => s.finished).length} / {selectedOrder.stages_status.length} Concluídas
+                          <Badge variant="info" className="text-[8px] py-0 px-1.5">
+                            {selectedOrder.stages_status.filter(s => s.finished).length}/{selectedOrder.stages_status.length}
                           </Badge>
                         </h3>
 
-                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-12">
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
                           {(() => {
                             const firstUnfinishedId = selectedOrder.stages_status.find(s => !s.finished)?.id;
                             return selectedOrder.stages_status.map(orderStage => {
@@ -3310,99 +3301,96 @@ export default function App() {
                               return (
                                 <div key={stage.id} 
                                   className={cn(
-                                    "p-5 rounded-2xl border transition-all duration-300 relative group",
-                                    execution?.status === 'Em andamento' ? "bg-zinc-50 border-emerald-200 shadow-md ring-1 ring-emerald-500/20" :
-                                    execution?.status === 'Pausado' ? "bg-amber-50/50 border-amber-100" :
-                                    orderStage.finished ? "bg-zinc-50 border-zinc-100 opacity-60" : "bg-white border-zinc-100 hover:border-zinc-200"
+                                    "p-3 rounded-lg border transition-all duration-200",
+                                    execution?.status === 'Em andamento' ? "bg-white border-zinc-900 shadow-md ring-1 ring-zinc-900" :
+                                    execution?.status === 'Pausado' ? "bg-amber-50/30 border-amber-100" :
+                                    orderStage.finished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
                                   )}
                                 >
-                                  <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-4">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2.5 overflow-hidden">
                                       <div className={cn(
-                                        "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shadow-sm transition-colors",
-                                        orderStage.finished ? "bg-emerald-500 text-white" : "bg-zinc-100 text-zinc-500"
+                                        "w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors",
+                                        orderStage.finished ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"
                                       )}>
-                                        {orderStage.finished ? <CheckCircle2 size={20} /> : stage.sort_order}
+                                        {orderStage.finished ? <CheckCircle2 size={14} /> : stage.sort_order}
                                       </div>
-                                      <div>
-                                        <p className="font-black text-zinc-900 flex items-center gap-2">
+                                      <div className="min-w-0">
+                                        <p className={cn(
+                                          "font-bold text-xs truncate",
+                                          orderStage.finished ? "text-zinc-500" : "text-zinc-900"
+                                        )}>
                                           {stage.name}
-                                          {execution?.status === 'Em andamento' && (
-                                            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                                          )}
                                         </p>
                                         {execution && (
-                                          <p className="text-[10px] font-bold text-zinc-400 gap-1 flex items-center uppercase tracking-widest">
-                                            <UserIcon size={10} /> {execution.user_name} <span className="opacity-50 mx-1">|</span> <Timer size={10} /> {formatSeconds(execution.total_time_seconds)}
+                                          <p className="text-[9px] text-zinc-400 truncate uppercase font-medium">
+                                            {execution.user_name} <span className="opacity-30">|</span> {formatSeconds(execution.total_time_seconds)}
                                           </p>
                                         )}
                                       </div>
                                     </div>
                                     
                                     {execution?.status === 'Em andamento' && (
-                                      <div className="py-1 px-3 bg-emerald-100 rounded-lg shadow-inner">
-                                        <span className="text-sm font-mono font-black text-emerald-700 tabular-nums">
-                                          {(() => {
-                                            if (!execution.start_time) return "00:00:00";
-                                            const start = parseISO(execution.start_time).getTime();
-                                            const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
-                                            const current = now.getTime();
-                                            const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
-                                            return formatSeconds(diffSeconds);
-                                          })()}
-                                        </span>
+                                      <div className="shrink-0 py-0.5 px-1.5 border border-emerald-100 bg-emerald-50 rounded text-emerald-700 font-mono text-[10px] font-bold">
+                                        {(() => {
+                                          if (!execution.start_time) return "00:00:00";
+                                          const start = parseISO(execution.start_time).getTime();
+                                          const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
+                                          const current = now.getTime();
+                                          const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
+                                          return formatSeconds(diffSeconds);
+                                        })()}
                                       </div>
                                     )}
                                   </div>
 
-                                  <div className="flex items-center gap-2">
-                                    {!execution && !orderStage.finished && (
-                                      <button
-                                        onClick={() => handleStartStage(stage.id)}
-                                        className={cn(
-                                          "flex-1 flex items-center justify-center gap-3 px-6 py-4 rounded-xl transition-all font-black text-lg active:scale-95 shadow-lg",
-                                          isNextToStart 
-                                            ? "bg-zinc-900 text-white hover:bg-zinc-800 ring-2 ring-zinc-900 ring-offset-2" 
-                                            : "bg-zinc-100 text-zinc-400 cursor-not-allowed grayscale"
-                                        )}
-                                      >
-                                        <Play size={20} fill="currentColor" />
-                                        <span>INICIAR</span>
-                                        {isNextToStart && (
-                                          <kbd className="ml-2 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 flex items-center justify-center min-w-[24px]">1</kbd>
-                                        )}
-                                      </button>
-                                    )}
-
-                                    {execution?.status === 'Em andamento' && (
-                                      <>
+                                  {!orderStage.finished && (
+                                    <div className="mt-2 flex items-center gap-1.5">
+                                      {!execution && (
                                         <button
-                                          onClick={() => handlePauseStage(execution.id)}
-                                          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all active:scale-95 font-black text-lg shadow-sm border border-amber-200"
+                                          onClick={() => handleStartStage(stage.id)}
+                                          className={cn(
+                                            "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
+                                            isNextToStart 
+                                              ? "bg-zinc-900 text-white hover:bg-zinc-800" 
+                                              : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
+                                          )}
                                         >
-                                          <Pause size={20} fill="currentColor" />
-                                          PAUSAR <kbd className="ml-1 px-2 py-0.5 text-xs font-mono bg-amber-200 border border-amber-300 rounded-lg">2</kbd>
+                                          <Play size={12} fill="currentColor" />
+                                          INICIAR {isNextToStart && <kbd className="ml-1 opacity-50 font-mono">1</kbd>}
                                         </button>
-                                        <button
-                                          onClick={() => handleFinishStage(execution.id)}
-                                          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-black text-lg shadow-lg active:scale-95 border-b-4 border-emerald-800"
-                                        >
-                                          <CheckCircle size={20} />
-                                          FINALIZAR <kbd className="ml-1 px-2 py-0.5 text-xs font-mono bg-emerald-700 border border-emerald-800 rounded-lg">3</kbd>
-                                        </button>
-                                      </>
-                                    )}
+                                      )}
 
-                                    {execution?.status === 'Pausado' && (
-                                      <button
-                                        onClick={() => handleResumeStage(execution.id)}
-                                        className="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-lg active:scale-95 font-black text-lg ring-2 ring-zinc-900 ring-offset-2"
-                                      >
-                                        <Play size={20} fill="currentColor" />
-                                        RETOMAR <kbd className="ml-2 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 min-w-[24px]">1</kbd>
-                                      </button>
-                                    )}
-                                  </div>
+                                      {execution?.status === 'Em andamento' && (
+                                        <>
+                                          <button
+                                            onClick={() => handlePauseStage(execution.id)}
+                                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
+                                          >
+                                            <Pause size={12} fill="currentColor" />
+                                            PAUSAR <kbd className="opacity-50 font-mono">2</kbd>
+                                          </button>
+                                          <button
+                                            onClick={() => handleFinishStage(execution.id)}
+                                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                          >
+                                            <CheckCircle size={12} />
+                                            FINALIZAR <kbd className="opacity-50 font-mono">3</kbd>
+                                          </button>
+                                        </>
+                                      )}
+
+                                      {execution?.status === 'Pausado' && (
+                                        <button
+                                          onClick={() => handleResumeStage(execution.id)}
+                                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
+                                        >
+                                          <Play size={12} fill="currentColor" />
+                                          RETOMAR <kbd className="ml-1 opacity-50 font-mono">1</kbd>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             });
@@ -3411,21 +3399,21 @@ export default function App() {
                       </div>
 
                       {/* Right Column: Files & Attachments */}
-                      <div className="space-y-6 flex flex-col h-full">
+                      <div className="space-y-4 flex flex-col h-full">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-black text-zinc-900 flex items-center gap-2">
-                            <ImageIcon size={18} className="text-sky-500" /> Fichas e Arquivos
+                          <h3 className="text-xs font-black text-zinc-900 flex items-center gap-2">
+                            <ImageIcon size={16} className="text-sky-500" /> FICHAS E ARQUIVOS
                           </h3>
                           <label className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-zinc-800 transition-all cursor-pointer shadow-md active:scale-95",
+                            "flex items-center gap-1.5 px-2 py-1 bg-zinc-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-zinc-800 transition-all cursor-pointer shadow-sm active:scale-95",
                             isUploadingArt && "opacity-50 cursor-not-allowed"
                           )}>
                             {isUploadingArt ? (
-                              <RefreshCw size={14} className="animate-spin" />
+                              <RefreshCw size={12} className="animate-spin" />
                             ) : (
-                                <Plus size={14} />
+                                <Plus size={12} />
                             )}
-                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar'}</span>
+                            <span>{isUploadingArt ? '...' : 'Adicionar'}</span>
                             <input
                               type="file"
                               multiple
@@ -3438,7 +3426,7 @@ export default function App() {
                           </label>
                         </div>
 
-                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-12">
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4">
                           {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
                             <div className="grid grid-cols-1 gap-4">
                               {selectedOrder.art_urls.map((url, i) => (
@@ -3451,7 +3439,7 @@ export default function App() {
                                       window.open(url, '_blank');
                                     }
                                   }}
-                                  className="group relative rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-sky-400 hover:shadow-lg transition-all"
+                                  className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-900 transition-all"
                                 >
                                   {isImage(url) ? (
                                     <img
@@ -3462,39 +3450,27 @@ export default function App() {
                                     />
                                   ) : isPdf(url) ? (
                                     <div className="flex flex-col items-center gap-2 text-rose-500">
-                                      <div className="p-4 bg-rose-100 rounded-full">
-                                        <FileText size={32} />
+                                      <div className="p-3 bg-rose-50 rounded-full border border-rose-100">
+                                        <FileText size={24} />
                                       </div>
-                                      <span className="text-[10px] uppercase font-black tracking-widest">Documento PDF</span>
+                                      <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Documento PDF</span>
                                     </div>
                                   ) : (
                                     <div className="flex flex-col items-center gap-2 text-zinc-400">
-                                      <FileText size={32} />
-                                      <span className="text-[10px] uppercase font-bold whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
-                                        Arquivo {url.split('.').pop()}
-                                      </span>
+                                      <FileText size={24} />
+                                      <span className="text-[10px] uppercase font-bold text-zinc-500">Arquivo</span>
                                     </div>
                                   )}
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-black text-xs gap-3 backdrop-blur-[2px]">
-                                    {isImage(url) ? (
-                                      <>
-                                        <Search size={20} />
-                                        AMPLIAR
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Download size={20} />
-                                        ABRIR
-                                      </>
-                                    )}
+                                  <div className="absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-2">
+                                    <Search size={14} /> AMPLIAR
                                   </div>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <div className="flex flex-col items-center justify-center py-20 bg-zinc-50 rounded-2xl border-2 border-dashed border-zinc-200 text-zinc-400 gap-4">
-                              <ImageIcon size={48} className="opacity-20" />
-                              <p className="text-xs font-bold uppercase tracking-widest">Nenhum arquivo anexado</p>
+                            <div className="flex flex-col items-center justify-center py-16 bg-zinc-50/50 rounded-xl border border-dashed border-zinc-200 text-zinc-400 gap-3">
+                              <ImageIcon size={32} className="opacity-20" />
+                              <p className="text-[10px] font-bold uppercase tracking-widest">Sem arquivos</p>
                             </div>
                           )}
                         </div>
