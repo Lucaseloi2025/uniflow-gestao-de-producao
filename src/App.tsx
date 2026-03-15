@@ -68,6 +68,10 @@ import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
 import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity } from './types';
 
+// Helpers
+const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url);
+const isPdf = (url: string) => /\.pdf(\?.*)?$/i.test(url);
+
 // Components
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
   <button
@@ -3208,71 +3212,220 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="p-8 lg:p-12 max-w-7xl mx-auto">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
-                        <p className="text-lg font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
-                      </div>
-                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
-                        <p className="text-lg font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
-                      </div>
-                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 col-span-2 md:col-span-1">
-                        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
-                        {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
-                          <input
-                            type="date"
-                            defaultValue={selectedOrder.deadline.split('T')[0]}
-                            onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
-                            className="text-lg font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
-                          />
-                        ) : (
-                          <p className="text-lg font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
+                  <div className="p-6 lg:p-8 max-w-full mx-auto h-[calc(100vh-100px)] overflow-hidden">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
+                      
+                      {/* Left Column: Order Information */}
+                      <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                        <section>
+                          <h3 className="text-sm font-black text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <Package size={16} /> Informações do Pedido
+                          </h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
+                              <p className="text-lg font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
+                            </div>
+                            <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
+                              <p className="text-lg font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
+                            </div>
+                            <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm sm:col-span-2">
+                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
+                              {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
+                                <input
+                                  type="date"
+                                  defaultValue={selectedOrder.deadline.split('T')[0]}
+                                  onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
+                                  className="text-lg font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
+                                />
+                              ) : (
+                                <p className="text-lg font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
+                              )}
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="p-5 bg-zinc-900 border-none rounded-2xl text-white relative overflow-hidden shadow-xl">
+                          <div className="relative z-10">
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Detalhes de Produção</h4>
+                            <div className="space-y-4">
+                              <div>
+                                <span className="text-[10px] font-bold text-zinc-500 uppercase block">Produto</span>
+                                <span className="text-md font-black">{selectedOrder.product_type}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <span className="text-[10px] font-bold text-zinc-500 uppercase block">Estampa</span>
+                                  <span className="text-md font-black text-sky-400">{selectedOrder.print_type}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[10px] font-bold text-zinc-500 uppercase block">Quantidade</span>
+                                  <span className="text-xl font-black">{selectedOrder.quantity} <span className="text-xs text-zinc-500 font-medium">pçs</span></span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+
+                        {selectedOrder.observations && (
+                          <section>
+                            <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                              <ClipboardList size={14} /> Observações
+                            </h3>
+                            <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm font-medium text-amber-900 leading-relaxed shadow-sm italic">
+                              "{selectedOrder.observations}"
+                            </div>
+                          </section>
+                        )}
+                        
+                        {selectedOrder.total_time_seconds > selectedOrder.estimated_time_seconds * 1.2 && (
+                          <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 shadow-sm">
+                            <AlertCircle size={20} />
+                            <p className="text-xs font-bold uppercase tracking-tight">O tempo real ultrapassou 20% da estimativa padrão.</p>
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    <div className="mb-8">
-                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                        <CheckCircle size={20} />
-                        Progresso das Etapas
-                      </h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {selectedOrder.stages_status.map((stage) => (
-                          <div
-                            key={stage.id}
-                            className={cn(
-                              "flex items-center gap-2 p-3 rounded-xl border text-xs font-medium transition-colors",
-                              stage.finished
-                                ? "bg-emerald-50 border-emerald-100 text-emerald-700"
-                                : "bg-zinc-50 border-zinc-100 text-zinc-500"
-                            )}
-                          >
-                            {stage.finished ? <CheckCircle size={14} /> : <Circle size={14} />}
-                            {stage.name}
+                      {/* Middle Column: Stage Management */}
+                      <div className="space-y-6 flex flex-col h-full">
+                        <h3 className="text-sm font-black text-zinc-900 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Layers size={18} className="text-sky-500" /> Fluxo de Produção
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                          <Badge variant="info" className="text-[9px]">
+                            {selectedOrder.stages_status.filter(s => s.finished).length} / {selectedOrder.stages_status.length} Concluídas
+                          </Badge>
+                        </h3>
 
-                    {(selectedOrder.art_url || (selectedOrder.art_urls && selectedOrder.art_urls.length > 0)) && (
-                      <div className="mb-8">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-bold flex items-center gap-2">
-                            <ImageIcon size={20} />
-                            Fichas / Arquivos ({selectedOrder.art_urls?.length || 1})
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-12">
+                          {(() => {
+                            const firstUnfinishedId = selectedOrder.stages_status.find(s => !s.finished)?.id;
+                            return selectedOrder.stages_status.map(orderStage => {
+                              const stage = stages.find(s => s.id === orderStage.id);
+                              if (!stage) return null;
+                              const execution = executions.find(e => e.stage_id === stage.id);
+                              const isNextToStart = !execution && stage.id === firstUnfinishedId;
+
+                              return (
+                                <div key={stage.id} 
+                                  className={cn(
+                                    "p-5 rounded-2xl border transition-all duration-300 relative group",
+                                    execution?.status === 'Em andamento' ? "bg-zinc-50 border-emerald-200 shadow-md ring-1 ring-emerald-500/20" :
+                                    execution?.status === 'Pausado' ? "bg-amber-50/50 border-amber-100" :
+                                    orderStage.finished ? "bg-zinc-50 border-zinc-100 opacity-60" : "bg-white border-zinc-100 hover:border-zinc-200"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-4">
+                                      <div className={cn(
+                                        "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shadow-sm transition-colors",
+                                        orderStage.finished ? "bg-emerald-500 text-white" : "bg-zinc-100 text-zinc-500"
+                                      )}>
+                                        {orderStage.finished ? <CheckCircle2 size={20} /> : stage.sort_order}
+                                      </div>
+                                      <div>
+                                        <p className="font-black text-zinc-900 flex items-center gap-2">
+                                          {stage.name}
+                                          {execution?.status === 'Em andamento' && (
+                                            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                          )}
+                                        </p>
+                                        {execution && (
+                                          <p className="text-[10px] font-bold text-zinc-400 gap-1 flex items-center uppercase tracking-widest">
+                                            <UserIcon size={10} /> {execution.user_name} <span className="opacity-50 mx-1">|</span> <Timer size={10} /> {formatSeconds(execution.total_time_seconds)}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    {execution?.status === 'Em andamento' && (
+                                      <div className="py-1 px-3 bg-emerald-100 rounded-lg shadow-inner">
+                                        <span className="text-sm font-mono font-black text-emerald-700 tabular-nums">
+                                          {(() => {
+                                            if (!execution.start_time) return "00:00:00";
+                                            const start = parseISO(execution.start_time).getTime();
+                                            const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
+                                            const current = now.getTime();
+                                            const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
+                                            return formatSeconds(diffSeconds);
+                                          })()}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    {!execution && !orderStage.finished && (
+                                      <button
+                                        onClick={() => handleStartStage(stage.id)}
+                                        className={cn(
+                                          "flex-1 flex items-center justify-center gap-3 px-6 py-4 rounded-xl transition-all font-black text-lg active:scale-95 shadow-lg",
+                                          isNextToStart 
+                                            ? "bg-zinc-900 text-white hover:bg-zinc-800 ring-2 ring-zinc-900 ring-offset-2" 
+                                            : "bg-zinc-100 text-zinc-400 cursor-not-allowed grayscale"
+                                        )}
+                                      >
+                                        <Play size={20} fill="currentColor" />
+                                        <span>INICIAR</span>
+                                        {isNextToStart && (
+                                          <kbd className="ml-2 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 flex items-center justify-center min-w-[24px]">1</kbd>
+                                        )}
+                                      </button>
+                                    )}
+
+                                    {execution?.status === 'Em andamento' && (
+                                      <>
+                                        <button
+                                          onClick={() => handlePauseStage(execution.id)}
+                                          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all active:scale-95 font-black text-lg shadow-sm border border-amber-200"
+                                        >
+                                          <Pause size={20} fill="currentColor" />
+                                          PAUSAR <kbd className="ml-1 px-2 py-0.5 text-xs font-mono bg-amber-200 border border-amber-300 rounded-lg">2</kbd>
+                                        </button>
+                                        <button
+                                          onClick={() => handleFinishStage(execution.id)}
+                                          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all font-black text-lg shadow-lg active:scale-95 border-b-4 border-emerald-800"
+                                        >
+                                          <CheckCircle size={20} />
+                                          FINALIZAR <kbd className="ml-1 px-2 py-0.5 text-xs font-mono bg-emerald-700 border border-emerald-800 rounded-lg">3</kbd>
+                                        </button>
+                                      </>
+                                    )}
+
+                                    {execution?.status === 'Pausado' && (
+                                      <button
+                                        onClick={() => handleResumeStage(execution.id)}
+                                        className="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-lg active:scale-95 font-black text-lg ring-2 ring-zinc-900 ring-offset-2"
+                                      >
+                                        <Play size={20} fill="currentColor" />
+                                        RETOMAR <kbd className="ml-2 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 min-w-[24px]">1</kbd>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Files & Attachments */}
+                      <div className="space-y-6 flex flex-col h-full">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-black text-zinc-900 flex items-center gap-2">
+                            <ImageIcon size={18} className="text-sky-500" /> Fichas e Arquivos
                           </h3>
                           <label className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-all cursor-pointer",
+                            "flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-zinc-800 transition-all cursor-pointer shadow-md active:scale-95",
                             isUploadingArt && "opacity-50 cursor-not-allowed"
                           )}>
                             {isUploadingArt ? (
                               <RefreshCw size={14} className="animate-spin" />
                             ) : (
-                              <Plus size={14} />
+                                <Plus size={14} />
                             )}
-                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar Arquivo'}</span>
+                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar'}</span>
                             <input
                               type="file"
                               multiple
@@ -3284,209 +3437,67 @@ export default function App() {
                             />
                           </label>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-12">
                           {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
-                            selectedOrder.art_urls.map((url, i) => (
-                              <div
-                                key={i}
-                                onClick={() => {
-                                  if (isImage(url)) {
-                                    setSelectedFullImage(url);
-                                  } else {
-                                    window.open(url, '_blank');
-                                  }
-                                }}
-                                className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
-                              >
-                                {isImage(url) ? (
-                                  <img
-                                    src={url}
-                                    alt={`Ficha ${i + 1}`}
-                                    className="max-w-full max-h-full object-contain"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                ) : isPdf(url) ? (
-                                  <div className="flex flex-col items-center gap-2 text-rose-500">
-                                    <FileText size={48} />
-                                    <span className="text-[10px] uppercase font-bold tracking-widest">Documento PDF</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col items-center gap-2 text-zinc-400">
-                                    <FileText size={40} />
-                                    <span className="text-[10px] uppercase font-bold whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
-                                      Arquivo {url.split('.').pop()}
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
+                            <div className="grid grid-cols-1 gap-4">
+                              {selectedOrder.art_urls.map((url, i) => (
+                                <div
+                                  key={i}
+                                  onClick={() => {
+                                    if (isImage(url)) {
+                                      setSelectedFullImage(url);
+                                    } else {
+                                      window.open(url, '_blank');
+                                    }
+                                  }}
+                                  className="group relative rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-sky-400 hover:shadow-lg transition-all"
+                                >
                                   {isImage(url) ? (
-                                    <>
-                                      <Search size={16} />
-                                      Clique para Ampliar
-                                    </>
+                                    <img
+                                      src={url}
+                                      alt={`Ficha ${i + 1}`}
+                                      className="max-w-full max-h-full object-contain"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : isPdf(url) ? (
+                                    <div className="flex flex-col items-center gap-2 text-rose-500">
+                                      <div className="p-4 bg-rose-100 rounded-full">
+                                        <FileText size={32} />
+                                      </div>
+                                      <span className="text-[10px] uppercase font-black tracking-widest">Documento PDF</span>
+                                    </div>
                                   ) : (
-                                    <>
-                                      <Download size={16} />
-                                      Abrir / Baixar
-                                    </>
+                                    <div className="flex flex-col items-center gap-2 text-zinc-400">
+                                      <FileText size={32} />
+                                      <span className="text-[10px] uppercase font-bold whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
+                                        Arquivo {url.split('.').pop()}
+                                      </span>
+                                    </div>
                                   )}
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-black text-xs gap-3 backdrop-blur-[2px]">
+                                    {isImage(url) ? (
+                                      <>
+                                        <Search size={20} />
+                                        AMPLIAR
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Download size={20} />
+                                        ABRIR
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ))
+                              ))}
+                            </div>
                           ) : (
-                            <div
-                              onClick={() => {
-                                if (isImage(selectedOrder.art_url)) {
-                                  setSelectedFullImage(selectedOrder.art_url || null);
-                                } else if (selectedOrder.art_url) {
-                                  window.open(selectedOrder.art_url, '_blank');
-                                }
-                              }}
-                              className="group relative w-full rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 cursor-pointer hover:border-zinc-400 transition-all"
-                            >
-                              {isImage(selectedOrder.art_url) ? (
-                                <img
-                                  src={selectedOrder.art_url}
-                                  alt="Mockup do Cliente"
-                                  className="w-full h-auto max-h-[400px] object-contain"
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : isPdf(selectedOrder.art_url) ? (
-                                <div className="p-12 flex flex-col items-center gap-4 text-rose-500 bg-rose-50/30 w-full">
-                                  <div className="p-6 bg-rose-100 rounded-full">
-                                    <FileText size={48} />
-                                  </div>
-                                  <div className="text-center">
-                                    <span className="text-sm font-black uppercase tracking-widest block">Documento PDF</span>
-                                    <span className="text-[10px] text-rose-400 font-bold">Clique para visualizar</span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="p-12 flex flex-col items-center gap-3 text-zinc-400">
-                                  <FileText size={48} />
-                                  <span className="text-sm font-bold">Documento / Ficha</span>
-                                  <span className="text-xs uppercase font-bold text-zinc-300">{selectedOrder.art_url?.split('.').pop()}</span>
-                                </div>
-                              )}
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-2">
-                                {isImage(selectedOrder.art_url) ? (
-                                  <>
-                                    <Search size={16} />
-                                    Clique para Ampliar
-                                  </>
-                                ) : (
-                                  <>
-                                    <Download size={16} />
-                                    Abrir / Baixar
-                                  </>
-                                )}
-                              </div>
+                            <div className="flex flex-col items-center justify-center py-20 bg-zinc-50 rounded-2xl border-2 border-dashed border-zinc-200 text-zinc-400 gap-4">
+                              <ImageIcon size={48} className="opacity-20" />
+                              <p className="text-xs font-bold uppercase tracking-widest">Nenhum arquivo anexado</p>
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-
-                    {selectedOrder.total_time_seconds > selectedOrder.estimated_time_seconds * 1.2 && (
-                      <div className="mb-8 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700">
-                        <AlertCircle size={20} />
-                        <p className="text-sm font-medium">Atenção: Tempo real ultrapassou 20% da estimativa padrão.</p>
-                      </div>
-                    )}
-
-                    <div className="mb-8">
-                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                        <ClipboardList size={20} />
-                        Etapas da Produção
-                      </h3>
-                      <div className="space-y-3">
-                        {selectedOrder.stages_status.map(orderStage => {
-                          const stage = stages.find(s => s.id === orderStage.id);
-                          if (!stage) return null;
-                          const execution = executions.find(e => e.stage_id === stage.id);
-                          return (
-                            <div key={stage.id} className="p-4 border border-zinc-200 rounded-xl flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className={cn(
-                                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
-                                  execution?.status === 'Finalizado' ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
-                                )}>
-                                  {execution?.status === 'Finalizado' ? <CheckCircle2 size={16} /> : stage.sort_order}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-sm">{stage.name}</p>
-                                  {execution && (
-                                    <p className="text-[10px] text-zinc-500">
-                                      {execution.user_name} • {formatSeconds(execution.total_time_seconds)}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col items-end gap-3">
-                                <div className="flex items-center gap-3">
-                                  {!execution && (
-                                    <button
-                                      onClick={() => handleStartStage(stage.id)}
-                                      className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
-                                    >
-                                      <Play size={18} fill="currentColor" />
-                                      <span className="font-bold text-sm flex items-center">Iniciar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded text-zinc-300">1</kbd></span>
-                                    </button>
-                                  )}
-                                  {execution?.status === 'Em andamento' && (
-                                    <>
-                                      <button
-                                        onClick={() => handlePauseStage(execution.id)}
-                                        className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-all active:scale-95"
-                                        title="Pausar"
-                                      >
-                                        <Pause size={18} fill="currentColor" />
-                                        <span className="font-bold text-sm flex items-center">Pausar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-amber-200 border border-amber-300 rounded text-amber-800">2</kbd></span>
-                                      </button>
-                                      <button
-                                        onClick={() => handleFinishStage(execution.id)}
-                                        className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-md active:scale-95 border-b-4 border-emerald-800"
-                                      >
-                                        <CheckCircle size={18} />
-                                        <span className="font-bold text-sm flex items-center uppercase tracking-tight">Finalizar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-emerald-700 border border-emerald-800 rounded text-emerald-100">3</kbd></span>
-                                      </button>
-                                    </>
-                                  )}
-                                  {execution?.status === 'Pausado' && (
-                                    <button
-                                      onClick={() => handleResumeStage(execution.id)}
-                                      className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-95"
-                                    >
-                                      <Play size={18} fill="currentColor" />
-                                      <span className="font-bold text-sm flex items-center">Retomar <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded text-zinc-300">1</kbd></span>
-                                    </button>
-                                  )}
-                                </div>
-
-                                {execution?.status === 'Em andamento' && (
-                                  <div className="flex items-center gap-2 py-1 px-3 bg-rose-50 border border-rose-100 rounded-full animate-pulse">
-                                    <span className="w-2 h-2 bg-rose-500 rounded-full"></span>
-                                    <span className="text-[11px] font-mono font-bold text-rose-600">
-                                      {(() => {
-                                        if (!execution.start_time) return "00:00:00";
-                                        if (execution.status === 'Pausado') {
-                                            // When paused, show the time spent up to the pause
-                                            return formatSeconds(execution.total_time_seconds || 0);
-                                        }
-                                        const start = parseISO(execution.start_time).getTime();
-                                        const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
-                                        const current = now.getTime();
-                                        const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
-                                        return formatSeconds(diffSeconds);
-                                      })()}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   </div>
@@ -3494,7 +3505,7 @@ export default function App() {
               </div>
             )
           }
-        </AnimatePresence >
+        </AnimatePresence>
 
         {/* New Order Modal (Simplified for MVP) */}
         <AnimatePresence>
