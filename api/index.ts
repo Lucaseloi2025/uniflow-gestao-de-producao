@@ -730,7 +730,7 @@ app.get("/api/stages", async (_req, res) => {
 });
 
 app.post("/api/stages", async (req, res) => {
-    const { name } = req.body;
+    const { name, average_time_seconds } = req.body;
     const { data: maxData } = await supabase
         .from("stages")
         .select("sort_order")
@@ -741,7 +741,7 @@ app.post("/api/stages", async (req, res) => {
 
     const { data, error } = await supabase
         .from("stages")
-        .insert({ name, sort_order })
+        .insert({ name, sort_order, average_time_seconds: Number(average_time_seconds) || 0 })
         .select()
         .single();
     if (checkError(error, res)) return;
@@ -749,11 +749,12 @@ app.post("/api/stages", async (req, res) => {
 });
 
 app.patch("/api/stages/:id", async (req, res) => {
-    const { name, active, sort_order } = req.body;
+    const { name, active, sort_order, average_time_seconds } = req.body;
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (active !== undefined) updates.active = active;
     if (sort_order !== undefined) updates.sort_order = sort_order;
+    if (average_time_seconds !== undefined) updates.average_time_seconds = Number(average_time_seconds);
 
     const { error } = await supabase
         .from("stages")
@@ -770,6 +771,78 @@ app.delete("/api/stages/:id", async (req, res) => {
         .eq("id", Number(req.params.id));
     if (checkError(error, res)) return;
     return res.json({ success: true });
+});
+app.get("/api/executions/monitor", isAdmin, async (req, res) => {
+    try {
+        const { data: executions, error } = await supabaseAdmin
+            .from("stage_executions")
+            .select(`
+                id,
+                order_id,
+                stage_id,
+                user_id,
+                start_time,
+                status,
+                pauses (
+                    duration_seconds,
+                    start_pause,
+                    end_pause
+                ),
+                users ( name ),
+                stages ( name, average_time_seconds ),
+                orders ( order_number, client_name, product_type )
+            `)
+            .eq("status", "Em andamento");
+
+        if (error) throw error;
+
+        const now = new Date().getTime();
+
+        const monitorData = (executions || []).map((exec: any) => {
+            let totalPauseSeconds = 0;
+            let isPaused = false;
+
+            if (exec.pauses) {
+                for (const p of exec.pauses) {
+                    if (p.duration_seconds !== null) {
+                        totalPauseSeconds += p.duration_seconds;
+                    } else if (p.end_pause === null) {
+                        isPaused = true;
+                        const pauseStart = new Date(p.start_pause).getTime();
+                        totalPauseSeconds += Math.max(0, Math.floor((now - pauseStart) / 1000));
+                    }
+                }
+            }
+
+            const startTimeMs = new Date(exec.start_time).getTime();
+            const rawElapsedSeconds = Math.max(0, Math.floor((now - startTimeMs) / 1000));
+            const netElapsedSeconds = Math.max(0, rawElapsedSeconds - totalPauseSeconds);
+
+            return {
+                id: exec.id,
+                order_id: exec.order_id,
+                stage_id: exec.stage_id,
+                user_id: exec.user_id,
+                start_time: exec.start_time,
+                status: exec.status,
+                is_paused: isPaused,
+                total_time_seconds: netElapsedSeconds,
+                user_name: exec.users?.name,
+                stage_name: exec.stages?.name,
+                average_time_seconds: exec.stages?.average_time_seconds,
+                order_number: exec.orders?.order_number,
+                client_name: exec.orders?.client_name,
+                product_type: exec.orders?.product_type
+            };
+        });
+
+        monitorData.sort((a, b) => b.total_time_seconds - a.total_time_seconds);
+
+        return res.json(monitorData);
+    } catch (err: any) {
+        console.error("[Monitor] Error:", err);
+        return res.status(500).json({ error: "Erro ao carregar monitoramento em tempo real" });
+    }
 });
 
 app.get("/api/executions/active/:userId", async (req, res) => {
@@ -871,6 +944,60 @@ app.get("/api/orders/:id/executions", async (req, res) => {
             is_paused: is_paused,
             stages: undefined,
             users: undefined,
+        };
+    });
+    return res.json(formatted);
+});
+
+app.get("/api/executions/monitor", isAdmin, async (req, res) => {
+    const { data, error } = await supabase
+        .from("stage_executions")
+        .select(`
+          *,
+          stages ( name, average_time_seconds ),
+          users ( name ),
+          orders ( order_number, client_name, product_type )
+        `)
+        .eq("status", "Em andamento");
+
+    if (checkError(error, res, "Erro ao buscar monitor de tarefas")) return;
+
+    const executionIds = (data || []).map(e => e.id);
+    const { data: pauses } = executionIds.length > 0
+        ? await supabase.from("pauses").select("*").in("execution_id", executionIds)
+        : { data: [] };
+
+    const nowMs = new Date().getTime();
+    const formatted = (data || []).map((e: any) => {
+        const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
+        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
+            if (p.duration_seconds !== null) return sum + p.duration_seconds;
+            if (p.end_pause === null) {
+                const pauseStart = new Date(p.start_pause).getTime();
+                const now = new Date().getTime();
+                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
+            }
+            return sum;
+        }, 0);
+        const is_paused = itemPauses.some(p => p.end_pause === null);
+
+        const startMs = new Date(e.start_time).getTime();
+        const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+
+        return {
+            ...e,
+            stage_name: e.stages?.name,
+            user_name: e.users?.name,
+            order_number: e.orders?.order_number,
+            client_name: e.orders?.client_name,
+            product_type: e.orders?.product_type,
+            average_time_seconds: e.stages?.average_time_seconds || 0,
+            accumulated_pause_seconds: accumulatedPauseSeconds,
+            total_time_seconds: calculatedTotalSeconds,
+            is_paused: is_paused,
+            stages: undefined,
+            users: undefined,
+            orders: undefined
         };
     });
     return res.json(formatted);

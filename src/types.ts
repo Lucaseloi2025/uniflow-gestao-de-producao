@@ -84,12 +84,15 @@ export interface Stage {
   name: string;
   sort_order: number;
   active: boolean;
+  average_time_seconds?: number;
 }
 
 export interface StageExecution {
   id: number;
   order_id: number;
   order_number?: string;
+  client_name?: string;
+  product_type?: string;
   stage_id: number;
   stage_name?: string;
   user_id: number;
@@ -100,6 +103,7 @@ export interface StageExecution {
   status: 'Em andamento' | 'Pausado' | 'Finalizado';
   accumulated_pause_seconds?: number;
   is_paused?: boolean;
+  average_time_seconds?: number;
 }
 
 export interface DeliveryReportData {

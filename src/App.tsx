@@ -167,8 +167,202 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
   );
 };
 
+const TaskMonitor = () => {
+  const [monitorData, setMonitorData] = useState<StageExecution[]>([]);
+  const [monitorSearch, setMonitorSearch] = useState('');
+  const [monitorStageFilter, setMonitorStageFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const fetchMonitorData = async () => {
+    try {
+      const res = await fetch('/api/executions/monitor', {
+        headers: { 'x-user-role': 'Admin' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMonitorData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching monitor data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMonitorData();
+    const interval = setInterval(fetchMonitorData, 10000); // 10s refresh
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredData = monitorData.filter(e => {
+    const searchMatch = (e.order_number?.toLowerCase().includes(monitorSearch.toLowerCase()) || 
+                         e.client_name?.toLowerCase().includes(monitorSearch.toLowerCase()));
+    const stageMatch = !monitorStageFilter || e.stage_id.toString() === monitorStageFilter;
+    return searchMatch && stageMatch;
+  });
+
+  const getStatusColor = (current: number, avg: number) => {
+    if (!avg || avg === 0) return 'text-zinc-600 bg-zinc-100';
+    const ratio = current / avg;
+    if (ratio <= 0.8) return 'text-emerald-700 bg-emerald-100 border-emerald-200';
+    if (ratio <= 1.0) return 'text-amber-700 bg-amber-100 border-amber-200';
+    return 'text-rose-700 bg-rose-100 border-rose-200';
+  };
+
+  const getStatusLabel = (current: number, avg: number) => {
+    if (!avg || avg === 0) return 'Normal';
+    const ratio = current / avg;
+    if (ratio <= 0.8) return 'Eficiente';
+    if (ratio <= 1.0) return 'Atenção';
+    return 'Atrasado';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+              <Activity size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Tarefas Ativas</p>
+              <h3 className="text-2xl font-bold">{monitorData.length}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Eficientes</p>
+              <h3 className="text-2xl font-bold">{monitorData.filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) <= 0.8).length}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
+              <AlertCircle size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Atenção</p>
+              <h3 className="text-2xl font-bold">{monitorData.filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 0.8 && (e.total_time_seconds / e.average_time_seconds) <= 1.0).length}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Fora do Prazo</p>
+              <h3 className="text-2xl font-bold">{monitorData.filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 1.0).length}</h3>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-4 bg-zinc-50 border-zinc-200">
+        <div className="flex flex-col md:flex-row items-center gap-4">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input
+              type="text"
+              placeholder="Buscar por Pedido ou Cliente..."
+              value={monitorSearch}
+              onChange={(e) => setMonitorSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+             <Filter size={16} className="text-zinc-400" />
+             <select
+               value={monitorStageFilter}
+               onChange={(e) => setMonitorStageFilter(e.target.value)}
+               className="bg-white border border-zinc-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-zinc-400 min-w-[200px]"
+             >
+               <option value="">Todas as Etapas</option>
+               {Array.from(new Map(monitorData.map(e => [e.stage_id, e.stage_name])).entries()).map(([id, name]) => (
+                 <option key={id} value={id}>{name as string}</option>
+               ))}
+             </select>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-100">
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente / Produto</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Responsável</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Execution Time</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Expected (Avg)</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {loading ? (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400 animate-pulse">Carregando monitor...</td></tr>
+              ) : filteredData.length === 0 ? (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400">Nenhuma tarefa ativa no momento.</td></tr>
+              ) : filteredData.map(exec => (
+                <tr key={exec.id} className="hover:bg-zinc-50 transition-colors">
+                  <td className="px-6 py-4 text-sm font-mono font-bold text-zinc-900">{exec.order_number}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-zinc-800">{exec.client_name}</span>
+                      <span className="text-[10px] text-zinc-500">{exec.product_type}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
+                      {exec.is_paused ? <Pause size={10} className="text-amber-500" /> : <Play size={10} className="text-emerald-500" />}
+                      {exec.stage_name}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-zinc-600 font-medium">
+                    {exec.user_name}
+                  </td>
+                  <td className="px-6 py-4">
+                     <span className={cn(
+                       "font-mono text-sm font-bold",
+                       exec.average_time_seconds && exec.total_time_seconds > exec.average_time_seconds ? "text-rose-600" : "text-zinc-900"
+                     )}>
+                       {formatSeconds(exec.total_time_seconds)}
+                     </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-zinc-400 font-mono">
+                    {exec.average_time_seconds ? formatSeconds(exec.average_time_seconds) : "-"}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={cn(
+                      "inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border",
+                      getStatusColor(exec.total_time_seconds, exec.average_time_seconds || 0)
+                    )}>
+                      {getStatusLabel(exec.total_time_seconds, exec.average_time_seconds || 0)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -197,12 +391,14 @@ export default function App() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [newStageName, setNewStageName] = useState('');
+  const [newStageTime, setNewStageTime] = useState<number>(0);
   const [isUploadingArt, setIsUploadingArt] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [editingStageName, setEditingStageName] = useState('');
+  const [editingStageTime, setEditingStageTime] = useState<number>(0);
   const [simOperadores, setSimOperadores] = useState<number>(0);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1085,6 +1281,14 @@ export default function App() {
           />
           {currentUser?.role === 'Admin' && (
             <SidebarItem
+              icon={Activity}
+              label="Monitor"
+              active={activeTab === 'monitor'}
+              onClick={() => { setActiveTab('monitor'); setIsMobileMenuOpen(false); }}
+            />
+          )}
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
               icon={DollarSign}
               label="Custos"
               active={activeTab === 'costs'}
@@ -1162,6 +1366,7 @@ export default function App() {
                 {activeTab === 'reports' && 'Relatórios'}
                 {activeTab === 'costs' && 'Análise de Custos'}
                 {activeTab === 'settings' && 'Configurações do Sistema'}
+                {activeTab === 'monitor' && 'Monitor de Tarefas (Tempo Real)'}
               </h2>
               <p className="text-zinc-500 text-xs lg:text-sm">
                 {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
@@ -2775,6 +2980,16 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'monitor' && currentUser?.role === 'Admin' && (
+          <div className="max-w-7xl mx-auto pb-12">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
+              <p className="text-zinc-500">Acompanhamento em tempo real da produção e tempos de execução</p>
+            </div>
+            <TaskMonitor />
+          </div>
+        )}
+
         {activeTab === 'settings' && (
           <div className="max-w-2xl space-y-8 pb-12">
             <Card className="p-8">
@@ -2973,6 +3188,14 @@ export default function App() {
                   placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
                   className="flex-1 p-2 border border-zinc-200 rounded-lg text-sm"
                 />
+                <input
+                  type="number"
+                  value={newStageTime}
+                  onChange={(e) => setNewStageTime(Number(e.target.value))}
+                  placeholder="Tempo (s)"
+                  title="Tempo médio esperado em segundos"
+                  className="w-28 p-2 border border-zinc-200 rounded-lg text-sm"
+                />
                 <button
                   onClick={async () => {
                     if (!newStageName) return;
@@ -2982,9 +3205,10 @@ export default function App() {
                         'Content-Type': 'application/json',
                         'x-user-role': currentUser?.role || ''
                       },
-                      body: JSON.stringify({ name: newStageName })
+                      body: JSON.stringify({ name: newStageName, average_time_seconds: newStageTime })
                     });
                     setNewStageName('');
+                    setNewStageTime(0);
                     fetchData();
                   }}
                   className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
@@ -2999,43 +3223,58 @@ export default function App() {
                     <div className="flex items-center gap-4 flex-1">
                       <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
                       {editingStageId === stage.id ? (
-                        <input
-                          type="text"
-                          autoFocus
-                          value={editingStageName}
-                          onChange={(e) => setEditingStageName(e.target.value)}
-                          onBlur={async () => {
-                            if (editingStageName && editingStageName !== stage.name) {
-                              await fetch(`/api/stages/${stage.id}`, {
-                                method: 'PATCH',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  'x-user-role': currentUser?.role || ''
-                                },
-                                body: JSON.stringify({ name: editingStageName })
-                              });
-                              fetchData();
-                            }
-                            setEditingStageId(null);
-                          }}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter') {
-                              if (editingStageName && editingStageName !== stage.name) {
+                        <div className="flex flex-1 gap-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingStageName}
+                            onChange={(e) => setEditingStageName(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Escape') setEditingStageId(null);
+                            }}
+                            className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          />
+                          <input
+                            type="number"
+                            value={editingStageTime}
+                            onChange={(e) => setEditingStageTime(Number(e.target.value))}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Escape') setEditingStageId(null);
+                            }}
+                            title="Tempo médio em segundos"
+                            className="w-24 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          />
+                          <button
+                            onClick={async () => {
+                              if (editingStageName) {
                                 await fetch(`/api/stages/${stage.id}`, {
                                   method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ name: editingStageName })
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'x-user-role': currentUser?.role || ''
+                                  },
+                                  body: JSON.stringify({ name: editingStageName, average_time_seconds: editingStageTime })
                                 });
                                 fetchData();
                               }
                               setEditingStageId(null);
-                            }
-                            if (e.key === 'Escape') setEditingStageId(null);
-                          }}
-                          className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
-                        />
+                            }}
+                            className="px-3 py-1 bg-zinc-900 text-white rounded text-xs font-bold hover:bg-zinc-800 transition-colors"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            onClick={() => setEditingStageId(null)}
+                            className="px-3 py-1 bg-zinc-100 text-zinc-600 rounded text-xs font-bold hover:bg-zinc-200 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
                       ) : (
-                        <span className="text-sm font-medium">{stage.name}</span>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{stage.name}</span>
+                          {stage.average_time_seconds ? <span className="text-[10px] text-zinc-500 font-mono">Méd: {formatSeconds(stage.average_time_seconds)}</span> : null}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -3062,6 +3301,7 @@ export default function App() {
                           onClick={() => {
                             setEditingStageId(stage.id);
                             setEditingStageName(stage.name);
+                            setEditingStageTime(stage.average_time_seconds || 0);
                           }}
                           className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
                         >
