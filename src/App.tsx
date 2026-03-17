@@ -45,7 +45,8 @@ import {
   Download,
   DownloadCloud,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -1750,6 +1751,11 @@ export default function App() {
                               <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
                                 <FileText size={40} />
                                 <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{order.art_url.split('.').pop()}</span>
+                              </div>
+                            )}
+                            {order.art_urls && order.art_urls.length > 1 && (
+                              <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-white text-[10px] font-bold shadow-sm">
+                                +{order.art_urls.length - 1} foto{order.art_urls.length - 1 !== 1 ? 's' : ''}
                               </div>
                             )}
                           </div>
@@ -4166,7 +4172,18 @@ export default function App() {
         {/* Photo Lightbox */}
         <AnimatePresence>
           {
-            selectedFullImage && (
+            selectedFullImage && (() => {
+              const currentList = editOrderForm?.art_urls?.includes(selectedFullImage)
+                ? editOrderForm.art_urls
+                : selectedOrder?.art_urls?.includes(selectedFullImage)
+                  ? selectedOrder.art_urls
+                  : [selectedFullImage];
+
+              const currentIndex = currentList ? currentList.indexOf(selectedFullImage) : -1;
+              const hasPrevious = currentIndex > 0;
+              const hasNext = currentList && currentIndex < currentList.length - 1;
+
+              return (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -4174,10 +4191,44 @@ export default function App() {
                 className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
                 onClick={() => setSelectedFullImage(null)}
               >
+                {currentList && currentList.length > 1 && (
+                  <div className="absolute top-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full text-white text-xs font-bold tracking-widest z-[110] shadow-xl border border-white/20">
+                    {currentIndex + 1} / {currentList.length}
+                  </div>
+                )}
+
+                {hasPrevious && (
+                  <motion.button
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 z-[110] shadow-xl border border-white/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (currentList) setSelectedFullImage(currentList[currentIndex - 1]);
+                    }}
+                  >
+                    <ChevronLeft size={24} />
+                  </motion.button>
+                )}
+
+                {hasNext && (
+                  <motion.button
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 z-[110] shadow-xl border border-white/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (currentList) setSelectedFullImage(currentList[currentIndex + 1]);
+                    }}
+                  >
+                    <ChevronRight size={24} />
+                  </motion.button>
+                )}
+
                 <motion.button
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors z-[110]"
+                  className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 z-[110] shadow-xl border border-white/10"
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedFullImage(null);
@@ -4190,6 +4241,7 @@ export default function App() {
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
+                  key={selectedFullImage}
                   className="relative w-full h-full flex items-center justify-center"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -4220,7 +4272,8 @@ export default function App() {
                   )}
                 </motion.div>
               </motion.div>
-            )
+              );
+            })()
           }
         </AnimatePresence >
 
