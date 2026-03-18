@@ -46,7 +46,9 @@ import {
   DownloadCloud,
   ArrowUp,
   ArrowDown,
-  ChevronLeft
+  ChevronLeft,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -448,6 +450,8 @@ export default function App() {
   const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
   const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
+  const [autoPauseTimeWeekend, setAutoPauseTimeWeekend] = useState<string>('13:00');
+  const [showCompletedOrders, setShowCompletedOrders] = useState(false);
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -2097,12 +2101,27 @@ export default function App() {
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <Card className="p-4 bg-zinc-50 border-zinc-200">
-              <div className="flex items-center gap-3 text-zinc-500 text-xs italic">
-                <Search size={14} />
-                Use a barra de busca no topo para localizar OPs por número ou nome do cliente.
-              </div>
-            </Card>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <Card className="flex-grow p-4 bg-zinc-50 border-zinc-200">
+                <div className="flex items-center gap-3 text-zinc-500 text-xs italic">
+                  <Search size={14} />
+                  Use a barra de busca no topo para localizar OPs por número ou nome do cliente.
+                </div>
+              </Card>
+
+              <button
+                onClick={() => setShowCompletedOrders(!showCompletedOrders)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all border shadow-sm whitespace-nowrap",
+                  showCompletedOrders 
+                    ? "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800" 
+                    : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
+                )}
+              >
+                {showCompletedOrders ? <Eye size={16} /> : <EyeOff size={16} />}
+                {showCompletedOrders ? 'Ocultar Entregues' : 'Mostrar Entregues'}
+              </button>
+            </div>
 
             <Card>
             <table className="w-full text-left">
@@ -2119,8 +2138,13 @@ export default function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200">
-                {(orders || []).map(order => {
-                  const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
+                {(orders || [])
+                  .filter(order => {
+                    if (showCompletedOrders) return true;
+                    return order.status !== 'Entregue' && order.status !== 'Cancelado';
+                  })
+                  .map(order => {
+                    const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
                   return (
                     <tr
                       key={order.id}
