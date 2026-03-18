@@ -111,6 +111,51 @@ const Badge = ({ children, variant = 'default', className }: { children: React.R
   );
 };
 
+const InfoModal = ({ isOpen, onClose, title, description }: { isOpen: boolean, onClose: () => void, title: string, description: string }) => (
+  <AnimatePresence>
+    {isOpen && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        />
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-zinc-200"
+        >
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-zinc-900 border-b-2 border-zinc-900 pb-1">
+                <AlertCircle size={20} />
+                <h3 className="font-bold text-lg tracking-tight">{title}</h3>
+              </div>
+              <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-400">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bg-zinc-50 rounded-xl p-4 border border-zinc-100">
+              <p className="text-zinc-600 text-sm leading-relaxed font-medium">
+                {description}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-full mt-6 bg-zinc-900 text-white font-bold py-3 rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-[0.98]"
+            >
+              Entendido
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+);
+
 const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecution, onNavigate: () => void }) => {
   const [elapsed, setElapsed] = useState(0);
 
@@ -167,7 +212,7 @@ const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecutio
   );
 };
 
-const TaskMonitor = () => {
+const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string) => void }) => {
   const [monitorData, setMonitorData] = useState<StageExecution[]>([]);
   const [monitorSearch, setMonitorSearch] = useState('');
   const [monitorStageFilter, setMonitorStageFilter] = useState('');
@@ -221,7 +266,7 @@ const TaskMonitor = () => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6">
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Tarefas Ativas', 'Número de tarefas (etapas de uma OP) que estão com o \'Play\' acionado no exato momento.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
               <Activity size={24} />
@@ -232,7 +277,7 @@ const TaskMonitor = () => {
             </div>
           </div>
         </Card>
-        <Card className="p-6">
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Eficientes', 'Tarefas em andamento cujo tempo atual é inferior a 80% do tempo médio histórico esperado para a etapa.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
               <CheckCircle2 size={24} />
@@ -243,7 +288,7 @@ const TaskMonitor = () => {
             </div>
           </div>
         </Card>
-        <Card className="p-6">
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Atenção', 'Tarefas em andamento onde o tempo atual atingiu entre 80% e 100% do tempo médio histórico.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
               <AlertCircle size={24} />
@@ -254,7 +299,7 @@ const TaskMonitor = () => {
             </div>
           </div>
         </Card>
-        <Card className="p-6">
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Fora do Prazo', 'Tarefas cujo tempo atual de execução já excedeu o tempo médio histórico.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
               <AlertTriangle size={24} />
@@ -362,6 +407,7 @@ const TaskMonitor = () => {
 };
 
 export default function App() {
+  const [infoModal, setInfoModal] = useState<{ title: string, description: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -1690,7 +1736,7 @@ export default function App() {
           <div className="space-y-8">
             {/* Top KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Ativos', description: 'Total de pedidos que estão atualmente no sistema e ainda não foram finalizados ou cancelados.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Package size={24} />
@@ -1702,7 +1748,7 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Peças em Produção', description: 'Soma total de todas as quantidades de itens dos pedidos que estão com status ativo.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
                     <Layers size={24} />
@@ -1714,7 +1760,7 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Atrasados', description: 'Contagem de pedidos ativos cuja data de entrega (prazo) é anterior à data de hoje.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className={cn("p-3 rounded-xl", (stats.metrics?.overdueOrders || 0) > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}>
                     <AlertCircle size={24} />
@@ -1726,7 +1772,7 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Produção Hoje', description: 'Quantidade de peças que passaram por alguma etapa de finalização no dia atual.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
                     <CheckCircle2 size={24} />
@@ -1738,7 +1784,7 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio', description: 'Média de tempo (em dias) que um pedido leva para ser concluído, desde a criação até a última etapa.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
                     <Clock size={24} />
@@ -2176,7 +2222,7 @@ export default function App() {
             {/* Delivery & Performance KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {/* Entregues Hoje */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Entregues Hoje', description: 'Total de pedidos marcados como concluídos na data de hoje.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
                     <CheckCircle size={24} />
@@ -2189,7 +2235,7 @@ export default function App() {
               </Card>
 
               {/* Entregues no Período */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Período', description: 'Total de pedidos concluídos dentro do intervalo de datas selecionado no filtro.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
                     <Archive size={24} />
@@ -2202,7 +2248,7 @@ export default function App() {
               </Card>
 
               {/* Pedidos no Prazo (%) */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Prazo (%)', description: 'Percentual de pedidos entregues cuja data de finalização foi igual ou anterior ao prazo prometido.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
                     <TrendingUp size={24} />
@@ -2215,7 +2261,7 @@ export default function App() {
               </Card>
 
               {/* Lead Time Médio */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Lead Time Médio', description: 'Média de dias decorridos entre a data de criação do pedido e a sua data de finalização.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
                     <Clock size={24} />
@@ -2231,7 +2277,7 @@ export default function App() {
               </Card>
 
               {/* Cumprimento de Meta (%) */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Cumprimento Meta', description: 'Percentual de atingimento da meta de produção diária (peças produzidas vs meta configurada).' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
                     <Target size={24} />
@@ -2244,7 +2290,7 @@ export default function App() {
               </Card>
 
               {/* Total de Pedidos */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Total Pedidos', description: 'Volume total de pedidos processados ou registrados no sistema durante o período.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Package size={24} />
@@ -2257,7 +2303,7 @@ export default function App() {
               </Card>
 
               {/* Etapas Finalizadas */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Etapas Finalizadas', description: 'Contagem total de etapas individuais concluídas no período.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <CheckSquare size={24} />
@@ -2270,7 +2316,7 @@ export default function App() {
               </Card>
 
               {/* Tempo Médio por Etapa */}
-              <Card className="p-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio/Etapa', description: 'Média de tempo real gasto em cada etapa produtiva, comparada ao tempo esperado.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Timer size={24} />
@@ -2986,7 +3032,7 @@ export default function App() {
               <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
               <p className="text-zinc-500">Acompanhamento em tempo real da produção e tempos de execução</p>
             </div>
-            <TaskMonitor />
+            <TaskMonitor onShowInfo={(t, d) => setInfoModal({ title: t, description: d })} />
           </div>
         )}
 
@@ -4883,6 +4929,13 @@ export default function App() {
             )}
         </AnimatePresence>
       </main >
+
+      <InfoModal
+        isOpen={!!infoModal}
+        onClose={() => setInfoModal(null)}
+        title={infoModal?.title || ''}
+        description={infoModal?.description || ''}
+      />
     </div >
   );
 }
