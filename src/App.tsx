@@ -240,10 +240,10 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
     return () => clearInterval(interval);
   }, []);
 
-  const filteredData = monitorData.filter(e => {
+  const filteredData = (monitorData || []).filter(e => {
     const searchMatch = (e.order_number?.toLowerCase().includes(monitorSearch.toLowerCase()) || 
                          e.client_name?.toLowerCase().includes(monitorSearch.toLowerCase()));
-    const stageMatch = !monitorStageFilter || e.stage_id.toString() === monitorStageFilter;
+    const stageMatch = !monitorStageFilter || e.stage_id?.toString() === monitorStageFilter;
     return searchMatch && stageMatch;
   });
 
@@ -273,7 +273,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Tarefas Ativas</p>
-              <h3 className="text-2xl font-bold">{monitorData.length}</h3>
+              <h3 className="text-2xl font-bold">{monitorData?.length || 0}</h3>
             </div>
           </div>
         </Card>
@@ -284,7 +284,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Eficientes</p>
-              <h3 className="text-2xl font-bold">{monitorData.filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) <= 0.8).length}</h3>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) <= 0.8).length}</h3>
             </div>
           </div>
         </Card>
@@ -295,7 +295,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Atenção</p>
-              <h3 className="text-2xl font-bold">{monitorData.filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 0.8 && (e.total_time_seconds / e.average_time_seconds) <= 1.0).length}</h3>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 0.8 && (e.total_time_seconds / e.average_time_seconds) <= 1.0).length}</h3>
             </div>
           </div>
         </Card>
@@ -306,7 +306,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Fora do Prazo</p>
-              <h3 className="text-2xl font-bold">{monitorData.filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 1.0).length}</h3>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 1.0).length}</h3>
             </div>
           </div>
         </Card>
@@ -332,9 +332,9 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                className="bg-white border border-zinc-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-zinc-400 min-w-[200px]"
              >
                <option value="">Todas as Etapas</option>
-               {Array.from(new Map(monitorData.map(e => [e.stage_id, e.stage_name])).entries()).map(([id, name]) => (
-                 <option key={id} value={id}>{name as string}</option>
-               ))}
+                {Array.from(new Map((monitorData || []).map(e => [e.stage_id, e.stage_name])).entries()).map(([id, name]) => (
+                  <option key={id} value={id}>{name as string}</option>
+                ))}
              </select>
           </div>
         </div>
@@ -2216,7 +2216,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'reports' && reportData && (
+        {activeTab === 'reports' && (
           <div className="space-y-8">
 
             {/* Delivery & Performance KPIs */}
@@ -2339,7 +2339,7 @@ export default function App() {
                   </h3>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={deliveryReportData.grafico}>
+                      <BarChart data={deliveryReportData?.grafico || []}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
                         <XAxis dataKey="data" fontSize={10} axisLine={false} tickLine={false} />
                         <YAxis fontSize={10} axisLine={false} tickLine={false} />
@@ -2347,7 +2347,7 @@ export default function App() {
                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                         />
                         <Bar dataKey="pedidos" name="Pedidos Entregues" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                        {deliveryReportData.grafico[0]?.meta_pedidos > 0 && (
+                        {(deliveryReportData?.grafico?.[0]?.meta_pedidos || 0) > 0 && (
                           <ReferenceLine y={deliveryReportData.grafico[0].meta_pedidos} stroke="#f59e0b" strokeDasharray="3 3" label={{ position: 'top', value: 'Meta Pedidos', fill: '#f59e0b', fontSize: 10 }} />
                         )}
                       </BarChart>
@@ -2401,7 +2401,7 @@ export default function App() {
                 </h3>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.volume}>
+                    <BarChart data={reportData?.volume || []}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
                       <XAxis dataKey="label" fontSize={10} axisLine={false} tickLine={false} />
                       <YAxis fontSize={10} axisLine={false} tickLine={false} />
@@ -2438,7 +2438,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-zinc-50">
-                            {operationalReportData.producao_dia.map((step, i) => (
+                            {(operationalReportData?.producao_dia || []).map((step, i) => (
                               <tr key={i} className="hover:bg-zinc-50 transition-colors">
                                 <td className="px-3 py-2 text-[10px] text-zinc-500">{step.hora}</td>
                                 <td className="px-3 py-2 text-xs font-medium">{step.user_name}</td>
@@ -2471,7 +2471,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-zinc-50">
-                            {operationalReportData.progresso_pedidos.map((order, i) => (
+                            {(operationalReportData?.progresso_pedidos || []).map((order, i) => (
                               <tr key={i} className="hover:bg-zinc-50 transition-colors">
                                 <td className="px-3 py-2">
                                   <p className="text-xs font-bold">{order.order_number}</p>
@@ -2525,7 +2525,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-emerald-50">
-                            {operationalReportData.pedidos_concluidos.map((order, i) => (
+                            {(operationalReportData?.pedidos_concluidos || []).map((order, i) => (
                               <tr key={i} className="hover:bg-emerald-50 transition-colors">
                                 <td className="px-3 py-2 text-[10px] text-zinc-500">{format(parseISO(order.completed_at), 'dd/MM HH:mm')}</td>
                                 <td className="px-3 py-2">
@@ -2556,7 +2556,7 @@ export default function App() {
                         Produtividade por Colaborador
                       </h3>
                       <div className="space-y-4">
-                        {operationalReportData.produtividade_colaboradores.map((user, i) => (
+                        {(operationalReportData?.produtividade_colaboradores || []).map((user, i) => (
                           <div key={user.user_id} className="flex flex-col gap-1.5">
                             <div className="flex justify-between items-end">
                               <div>
@@ -2594,7 +2594,7 @@ export default function App() {
                 </h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.avgTimePerStage} layout="vertical">
+                    <BarChart data={reportData?.avgTimePerStage || []} layout="vertical">
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" fontSize={10} width={100} axisLine={false} tickLine={false} />
                       <Tooltip
@@ -2671,7 +2671,7 @@ export default function App() {
         )
         }
 
-        {activeTab === 'costs' && currentUser?.role === 'Admin' && reportData && (
+        {activeTab === 'costs' && currentUser?.role === 'Admin' && (
           <div className="space-y-8 pb-12">
             {/* Filters Bar */}
             <Card className="p-4 bg-zinc-900 border-none shadow-2xl">
@@ -2979,7 +2979,7 @@ export default function App() {
                   <div className="flex-grow overflow-y-auto max-h-[700px] pr-2 custom-scrollbar">
                     <div className="grid grid-cols-1 gap-4">
                       {operationalReportData?.pedidos_concluidos?.length ? (
-                        operationalReportData.pedidos_concluidos.map((p: any, i: number) => {
+                        (operationalReportData.pedidos_concluidos || []).map((p: any, i: number) => {
                           const costPerPiece = (p.lead_time_horas || 0) > 0 ? ((p.lead_time_horas || 0) * 15) / (p.pecas || 1) : 0;
                           const isEfficient = metaCustoPeca > 0 ? costPerPiece <= metaCustoPeca : true;
                           return (
@@ -2996,7 +2996,7 @@ export default function App() {
                                 </div>
                                 <div className="hidden md:block">
                                   <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Tempo Total</span>
-                                  <span className="text-sm font-black text-zinc-900">{p.lead_time_horas.toFixed(1)}h</span>
+                                  <span className="text-sm font-black text-zinc-900">{(p.lead_time_horas || 0).toFixed(1)}h</span>
                                 </div>
                                 <div className="text-right">
                                   <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Custo Peça</span>
