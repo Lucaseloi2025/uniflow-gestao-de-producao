@@ -2761,7 +2761,7 @@ export default function App() {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative">
+              <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Custo Total M.O.', description: 'Soma do custo de mão de obra de todos os colaboradores para as etapas finalizadas no período selecionado.' })}>
                 <div className="absolute top-0 right-0 p-8 opacity-5">
                   <DollarSign size={80} />
                 </div>
@@ -2776,12 +2776,15 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className={cn(
-                "p-6 shadow-sm border-none bg-white relative overflow-hidden",
-                metaCustoPeca > 0 && ((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) > metaCustoPeca
-                  ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-rose-500"
-                  : metaCustoPeca > 0 ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-emerald-500" : ""
-              )}>
+              <Card 
+                className={cn(
+                  "p-6 shadow-sm border-none bg-white relative overflow-hidden cursor-help hover:border-zinc-300 transition-colors",
+                  metaCustoPeca > 0 && ((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) > metaCustoPeca
+                    ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-rose-500"
+                    : metaCustoPeca > 0 ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-emerald-500" : ""
+                )}
+                onClick={() => setInfoModal({ title: 'Custo Médio / Peça', description: 'Valor médio investido em mão de obra para cada peça produzida. Calculado dividindo o Custo Total M.O. pelo Volume Produzido.' })}
+              >
                 <div className="flex items-center gap-4">
                   <div className={cn(
                     "p-3 rounded-2xl shadow-inner",
@@ -2811,7 +2814,7 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative">
+              <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Volume Produzido', description: 'Quantidade total de peças físicas que foram finalizadas em todas as suas etapas obrigatórias no período.' })}>
                 <div className="absolute top-0 right-0 p-8 opacity-5">
                   <Package size={80} />
                 </div>
@@ -2826,7 +2829,7 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6 border-none shadow-sm bg-zinc-900 overflow-hidden relative">
+              <Card className="p-6 border-none shadow-sm bg-zinc-900 overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Total Gasto', description: 'Soma de todas as horas trabalhadas pelos colaboradores nas etapas de produção finalizadas no período.' })}>
                 <div className="absolute top-0 right-0 p-8 opacity-10 text-white">
                   <Clock size={80} />
                 </div>
