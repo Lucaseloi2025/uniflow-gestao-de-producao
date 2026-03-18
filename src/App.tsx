@@ -156,6 +156,26 @@ const InfoModal = ({ isOpen, onClose, title, description }: { isOpen: boolean, o
   </AnimatePresence>
 );
 
+const safeDate = (dateStr: any) => {
+  try {
+    if (!dateStr) return null;
+    const d = parseISO(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
+
+const safeFormat = (dateStr: any, formatStr: string) => {
+  const d = safeDate(dateStr);
+  if (!d) return '-';
+  try {
+    return format(d, formatStr);
+  } catch {
+    return '-';
+  }
+};
+
 const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecution, onNavigate: () => void }) => {
   const [elapsed, setElapsed] = useState(0);
 
@@ -682,7 +702,7 @@ export default function App() {
     const delaysData = await safeFetch(`/api/reports/delays?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
     if (delaysData) setDelaysReportData(delaysData);
 
-    const profileData = await safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
+    const profileData = await safeFetch(`/api/reports/profiles?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
     if (profileData) setProfileReport(profileData || []);
 
     fetchOperationalReport();
@@ -1067,7 +1087,7 @@ export default function App() {
   useEffect(() => {
     if (activeTab === 'reports' || activeTab === 'costs') {
       fetchReports();
-      safeFetch(`/api/reports/profile?startDate=${reportStartDate}&endDate=${reportEndDate}${reportUser ? `&user_id=${reportUser}` : ''}`).then(data => {
+      safeFetch(`/api/reports/profiles?startDate=${reportStartDate}&endDate=${reportEndDate}${reportUser ? `&user_id=${reportUser}` : ''}`).then(data => {
         if (data) setProfileReport(data);
       });
     }
@@ -1836,7 +1856,7 @@ export default function App() {
                               <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{order.quantity}</td>
                               <td className="px-4 py-3 text-center">
                                 <span className={cn("text-xs font-bold", riskColors[risk])}>
-                                  {format(parseISO(order.deadline), 'dd/MM/yyyy')}
+                                  {safeFormat(order.deadline, 'dd/MM/yyyy')}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-center">
@@ -1914,7 +1934,7 @@ export default function App() {
                         <div>
                           <p className="text-xs font-mono font-bold text-rose-700">{risk.order_number}</p>
                           <p className="text-sm font-medium text-zinc-800 truncate max-w-[120px]">{risk.client_name}</p>
-                          <p className="text-[10px] text-zinc-500">{format(parseISO(risk.deadline), 'dd/MM/yyyy')}</p>
+                          <p className="text-[10px] text-zinc-500">{safeFormat(risk.deadline, 'dd/MM/yyyy')}</p>
                         </div>
                         <Badge variant="error" className="py-1">{risk.urgency === 'Atrasado' ? 'ATR' : 'RSC'}</Badge>
                       </div>
@@ -2015,7 +2035,7 @@ export default function App() {
                           <div className="flex justify-between items-start mb-3">
                             <span className="text-[10px] font-mono text-zinc-400">{order.order_number}</span>
                             <Badge variant={isOverdue ? 'danger' : (differenceInDays(parseISO(order.deadline), new Date()) < 2 ? 'warning' : 'default')}>
-                              {format(parseISO(order.deadline), 'dd/MM')}
+                              {safeFormat(order.deadline, 'dd/MM')}
                             </Badge>
                           </div>
                           <h4 className="font-bold text-sm mb-1 group-hover:text-zinc-900">{order.client_name}</h4>
@@ -2150,7 +2170,7 @@ export default function App() {
                             className="bg-transparent border-none focus:ring-0 text-sm p-0 cursor-pointer hover:underline"
                           />
                         ) : (
-                          format(parseISO(order.deadline), 'dd/MM/yyyy')
+                          safeFormat(order.deadline, 'dd/MM/yyyy')
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
@@ -2446,7 +2466,7 @@ export default function App() {
                                 <td className="px-3 py-2 text-right font-mono text-[10px] font-bold">{formatSeconds(step.duration_seconds)}</td>
                               </tr>
                             ))}
-                            {operationalReportData.producao_dia.length === 0 && (
+                            {(operationalReportData?.producao_dia || []).length === 0 && (
                               <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-400 italic text-xs">Sem etapas registradas.</td></tr>
                             )}
                           </tbody>
@@ -2482,7 +2502,7 @@ export default function App() {
                                     <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
                                       <div
                                         className="h-full bg-blue-500 transition-all"
-                                        style={{ width: `${(order.etapas_concluidas / order.total_etapas) * 100}%` }}
+                                        style={{ width: `${(order.etapas_concluidas / (order.total_etapas || 1)) * 100}%` }}
                                       />
                                     </div>
                                     <span className="text-[9px] font-bold text-zinc-600">{order.etapas_concluidas}/{order.total_etapas}</span>
@@ -2496,11 +2516,14 @@ export default function App() {
                                     "text-[10px] font-bold",
                                     isPast(endOfDay(parseISO(order.deadline))) ? "text-rose-600" : "text-zinc-500"
                                   )}>
-                                    {format(parseISO(order.deadline), 'dd/MM')}
+                                    {safeFormat(order.deadline, 'dd/MM')}
                                   </span>
                                 </td>
                               </tr>
                             ))}
+                            {(operationalReportData?.progresso_pedidos || []).length === 0 && (
+                              <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-400 italic text-xs">Sem pedidos em andamento.</td></tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -2527,7 +2550,7 @@ export default function App() {
                           <tbody className="divide-y divide-emerald-50">
                             {(operationalReportData?.pedidos_concluidos || []).map((order, i) => (
                               <tr key={i} className="hover:bg-emerald-50 transition-colors">
-                                <td className="px-3 py-2 text-[10px] text-zinc-500">{order.completed_at ? format(parseISO(order.completed_at), 'dd/MM HH:mm') : '-'}</td>
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{safeFormat(order.completed_at, 'dd/MM HH:mm')}</td>
                                 <td className="px-3 py-2">
                                   <p className="text-xs font-bold text-zinc-800">{order.order_number}</p>
                                   <p className="text-[9px] text-zinc-500">{order.client_name}</p>
@@ -2571,10 +2594,10 @@ export default function App() {
                                 <p className="text-[9px] text-zinc-400 font-bold uppercase">{user.etapas} etapas</p>
                               </div>
                             </div>
-                            <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden">
+                            <div className="h-1 bg-zinc-50 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-indigo-500 rounded-full"
-                                style={{ width: `${Math.min(100, (user.pecas / 50) * 100)}%` }} // Exemplo: meta de 50 peças
+                                className="h-full bg-indigo-500 transition-all"
+                                style={{ width: `${Math.min(100, (user.pecas / 150) * 100)}%` }}
                               />
                             </div>
                           </div>
@@ -3564,7 +3587,7 @@ export default function App() {
                                   className="text-base font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
                                 />
                               ) : (
-                                <p className="text-base font-bold">{format(parseISO(selectedOrder.deadline), 'dd/MM/yyyy')}</p>
+                                <p className="text-base font-bold">{safeFormat(selectedOrder.deadline, 'dd/MM/yyyy')}</p>
                               )}
                             </div>
                           </div>
