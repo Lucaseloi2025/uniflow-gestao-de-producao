@@ -2099,7 +2099,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200">
-                {orders.map(order => {
+                {(orders || []).map(order => {
                   const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
                   return (
                     <tr
@@ -2374,7 +2374,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-200">
-                        {delaysReportData.map(order => (
+                        {(delaysReportData || []).map(order => (
                           <tr key={order.id} className="hover:bg-rose-50 transition-colors">
                             <td className="px-4 py-3 font-mono text-xs font-bold">{order.order_number}</td>
                             <td className="px-4 py-3 text-sm font-medium">{order.client_name}</td>
@@ -2527,13 +2527,13 @@ export default function App() {
                           <tbody className="divide-y divide-emerald-50">
                             {(operationalReportData?.pedidos_concluidos || []).map((order, i) => (
                               <tr key={i} className="hover:bg-emerald-50 transition-colors">
-                                <td className="px-3 py-2 text-[10px] text-zinc-500">{format(parseISO(order.completed_at), 'dd/MM HH:mm')}</td>
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{order.completed_at ? format(parseISO(order.completed_at), 'dd/MM HH:mm') : '-'}</td>
                                 <td className="px-3 py-2">
                                   <p className="text-xs font-bold text-zinc-800">{order.order_number}</p>
                                   <p className="text-[9px] text-zinc-500">{order.client_name}</p>
                                 </td>
                                 <td className="px-3 py-2 text-[10px] font-mono font-bold text-zinc-600">
-                                  {order.lead_time_horas.toFixed(1)}h
+                                  {(order.lead_time_horas || 0).toFixed(1)}h
                                 </td>
                                 <td className="px-3 py-2 text-center text-[9px] font-black italic uppercase">
                                   {order.no_prazo ? (
@@ -2598,7 +2598,7 @@ export default function App() {
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" fontSize={10} width={100} axisLine={false} tickLine={false} />
                       <Tooltip
-                        formatter={(value: number) => [`${(value / 60).toFixed(1)} min`, 'Tempo Médio']}
+                        formatter={(value: any) => [`${(Number(value || 0) / 60).toFixed(1)} min`, 'Tempo Médio']}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                       />
                       <Bar dataKey="avg_time" fill="#f59e0b" radius={[0, 4, 4, 0]} />
@@ -2627,7 +2627,7 @@ export default function App() {
                   </thead>
                   <tbody className="divide-y divide-zinc-50">
                     {profileReport.length > 0 ? (
-                      profileReport.map((p, i) => (
+                      (profileReport || []).map((p, i) => (
                         <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
                           <td className="py-4">
                             <div className="flex flex-col">
