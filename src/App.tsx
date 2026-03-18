@@ -2297,7 +2297,7 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-xs text-zinc-500 font-medium">Total Pedidos</p>
-                    <h3 className="text-2xl font-bold">{reportData.summary.total_orders}</h3>
+                    <h3 className="text-2xl font-bold">{reportData?.summary?.total_orders || 0}</h3>
                   </div>
                 </div>
               </Card>
@@ -2310,7 +2310,7 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-xs text-zinc-500 font-medium">Etapas Finalizadas</p>
-                    <h3 className="text-2xl font-bold">{reportData.summary.total_stages}</h3>
+                    <h3 className="text-2xl font-bold">{reportData?.summary?.total_stages || 0}</h3>
                   </div>
                 </div>
               </Card>
@@ -2323,7 +2323,7 @@ export default function App() {
                   </div>
                   <div>
                     <p className="text-xs text-zinc-500 font-medium">Tempo Médio/Etapa</p>
-                    <h3 className="text-2xl font-bold">{formatSeconds(reportData.summary.avg_stage_time)}</h3>
+                    <h3 className="text-2xl font-bold">{formatSeconds(reportData?.summary?.avg_stage_time || 0)}</h3>
                   </div>
                 </div>
               </Card>
@@ -2393,26 +2393,28 @@ export default function App() {
               )}
             </div>
 
-            <Card className="p-8">
-              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                <BarChart3 size={20} />
-                Volume de Produção por {reportPeriod === 'day' ? 'Dia' : reportPeriod === 'week' ? 'Semana' : 'Mês'}
-              </h3>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.volume}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
-                    <XAxis dataKey="label" fontSize={10} axisLine={false} tickLine={false} />
-                    <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Bar dataKey="orders" name="Pedidos" fill="#18181b" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="pieces" name="Peças" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
+            {reportData?.volume && (
+              <Card className="p-8">
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <BarChart3 size={20} />
+                  Volume de Produção por {reportPeriod === 'day' ? 'Dia' : reportPeriod === 'week' ? 'Semana' : 'Mês'}
+                </h3>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.volume}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                      <XAxis dataKey="label" fontSize={10} axisLine={false} tickLine={false} />
+                      <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      />
+                      <Bar dataKey="orders" name="Pedidos" fill="#18181b" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="pieces" name="Peças" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
 
             {/* Drill-Down Operacional */}
             {
@@ -2788,7 +2790,7 @@ export default function App() {
                 <div className="flex items-center gap-4">
                   <div className={cn(
                     "p-3 rounded-2xl shadow-inner",
-                    (reportData.summary.total_labor_cost / (reportData.summary.total_parts || 1)) <= metaCustoPeca || metaCustoPeca === 0
+                    ((reportData?.summary?.total_labor_cost || 0) / (reportData?.summary?.total_parts || 1)) <= metaCustoPeca || metaCustoPeca === 0
                       ? "bg-emerald-50 text-emerald-600"
                       : "bg-rose-50 text-rose-600"
                   )}>
