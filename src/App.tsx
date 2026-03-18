@@ -2885,7 +2885,7 @@ export default function App() {
                           <Tooltip
                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)', padding: '12px' }}
                             itemStyle={{ fontWeight: '800', fontSize: '12px' }}
-                            formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Investimento']}
+                            formatter={(value: any) => [`R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Investimento']}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -2948,7 +2948,7 @@ export default function App() {
                               <div className="h-1.5 w-full bg-zinc-800/50 rounded-full overflow-hidden shadow-inner">
                                 <motion.div
                                   initial={{ width: 0 }}
-                                  animate={{ width: `${Math.min(100, (costPerPiece / (metaCustoPeca || costPerPiece * 1.5)) * 100)}%` }}
+                                  animate={{ width: `${(metaCustoPeca || costPerPiece) ? Math.min(100, (costPerPiece / (metaCustoPeca || costPerPiece * 1.5)) * 100) : 0}%` }}
                                   className={cn("h-full shadow-lg", isEfficient ? "bg-emerald-400" : "bg-rose-400")}
                                 />
                               </div>

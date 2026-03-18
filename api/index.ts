@@ -1602,7 +1602,7 @@ app.get("/api/reports/operational", async (req, res) => {
 });
 
 // ── Production Profile Report ─────────────────────────────────────────────
-app.get("/api/reports/profile", async (req, res) => {
+app.get("/api/reports/profiles", async (req, res) => {
     const { startDate, endDate } = req.query;
 
     let query = supabase
