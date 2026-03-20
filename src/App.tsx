@@ -698,6 +698,12 @@ export default function App() {
     if (selectedStageFilter) {
       ordersUrl += `&stage_id=${selectedStageFilter}&stage_status=${selectedStageStatus}`;
     }
+    if (productTypeFilter) {
+      ordersUrl += `&product_type=${encodeURIComponent(productTypeFilter)}`;
+    }
+    if (printTypeFilter) {
+      ordersUrl += `&print_type=${encodeURIComponent(printTypeFilter)}`;
+    }
 
     const [ordersData, stagesData, statsData, templatesData] = await Promise.all([
       safeFetch(ordersUrl),
@@ -1902,7 +1908,11 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-50">
-                        {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').map(order => {
+                        {orders
+                          .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                          .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                          .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                          .map(order => {
                           const risk = getOrderRisk(order.id);
                           const riskColors = {
                             danger: "text-rose-600",
@@ -1934,7 +1944,11 @@ export default function App() {
                             </tr>
                           );
                         })}
-                        {orders.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').length === 0 && (
+                        {orders
+                          .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                          .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                          .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                          .length === 0 && (
                           <tr>
                             <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produção.</td>
                           </tr>
@@ -2051,7 +2065,11 @@ export default function App() {
                   </span>
                 </div>
                 <div className="flex-1 bg-zinc-100/50 rounded-xl p-3 flex flex-col gap-3 overflow-y-auto border border-zinc-200/50">
-                  {orders.filter(o => o.status === status).map(order => {
+                  {orders
+                    .filter(o => o.status === status)
+                    .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                    .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                    .map(order => {
                     const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
                     return (
                       <motion.div
@@ -2201,6 +2219,8 @@ export default function App() {
                     if (showCompletedOrders) return true;
                     return order.status !== 'Entregue' && order.status !== 'Cancelado';
                   })
+                  .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                  .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                   .map(order => {
                     const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
                   return (

@@ -374,11 +374,13 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
 
 // ── Orders ────────────────────────────────────────────────────────────────
 app.get("/api/orders", async (req, res) => {
-    const { search, stage_id, stage_status } = req.query;
+    const { search, stage_id, stage_status, product_type, print_type } = req.query;
     const { data, error } = await supabase.rpc("get_orders_with_stages", {
         p_search: search || null,
         p_stage_id: stage_id ? Number(stage_id) : null,
         p_stage_status: stage_status || null,
+        p_product_type: product_type || null,
+        p_print_type: print_type || null,
     });
     if (checkError(error, res, "Erro ao buscar pedidos")) return;
 
