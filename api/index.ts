@@ -116,13 +116,14 @@ app.patch("/api/config", isAdmin, async (req, res) => {
 
 // ── Reports ───────────────────────────────────────────────────────────────
 app.get("/api/reports", async (req, res) => {
-    const { period, user_id, stage_id, startDate, endDate } = req.query;
+    const { period, user_id, stage_id, startDate, endDate, print_type } = req.query;
     const { data, error } = await supabase.rpc("get_reports", {
         p_period: period || "day",
         p_user_id: user_id ? Number(user_id) : null,
         p_stage_id: stage_id ? Number(stage_id) : null,
         p_start_date: startDate || null,
-        p_end_date: endDate || null
+        p_end_date: endDate || null,
+        p_print_type: print_type || null
     });
 
     if (checkError(error, res, "Erro nos relatórios")) return;
@@ -1655,7 +1656,7 @@ app.get("/api/reports/operational", async (req, res) => {
 
 // ── Production Profile Report ─────────────────────────────────────────────
 app.get("/api/reports/profiles", async (req, res) => {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, print_type } = req.query;
 
     let query = supabase
         .from("orders")
@@ -1663,6 +1664,10 @@ app.get("/api/reports/profiles", async (req, res) => {
         .eq("status", "Entregue")
         .is("deleted_at", null)
         .gt("total_time_seconds", 0);
+
+    if (print_type) {
+        query = query.eq("print_type", print_type as string);
+    }
 
     if (startDate && endDate) {
         // Ensure endDate includes the full day
