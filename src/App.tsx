@@ -1561,6 +1561,29 @@ export default function App() {
                     </select>
                   )}
                 </div>
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 rounded-lg p-1">
+                  <select
+                    value={productTypeFilter}
+                    onChange={(e) => setProductTypeFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
+                  >
+                    <option value="">Produtos</option>
+                    <option value="Dry Fit">Dry Fit</option>
+                    <option value="Algodão">Algodão</option>
+                    <option value="Poliamida">Poliamida</option>
+                  </select>
+                  <div className="w-px h-4 bg-zinc-200 mx-1" />
+                  <select
+                    value={printTypeFilter}
+                    onChange={(e) => setPrintTypeFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
+                  >
+                    <option value="">Estampas</option>
+                    <option value="Silk">Silk</option>
+                    <option value="DTF">DTF</option>
+                    <option value="Sublimação">Sublimação</option>
+                  </select>
+                </div>
               </div>
             )}
             {activeTab === 'collaborators' && (
@@ -1608,9 +1631,9 @@ export default function App() {
                   <select
                     value={productTypeFilter}
                     onChange={(e) => setProductTypeFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none"
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
                   >
-                    <option value="">Todos Produtos</option>
+                    <option value="">Produtos</option>
                     <option value="Dry Fit">Dry Fit</option>
                     <option value="Algodão">Algodão</option>
                     <option value="Poliamida">Poliamida</option>
@@ -1619,9 +1642,9 @@ export default function App() {
                   <select
                     value={printTypeFilter}
                     onChange={(e) => setPrintTypeFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none"
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
                   >
-                    <option value="">Todas Estampas</option>
+                    <option value="">Estampas</option>
                     <option value="Silk">Silk</option>
                     <option value="DTF">DTF</option>
                     <option value="Sublimação">Sublimação</option>
