@@ -780,7 +780,8 @@ export default function App() {
 
   // Agendador de pausa automática: verifica o horário a cada minuto
   useEffect(() => {
-    if (currentUser?.role !== 'Admin') return; // Só Admin dispara o pause-all
+    if (!currentUser) return; // Qualquer usuário logado pode disparar a verificação
+    
     const check = () => {
       const now = new Date();
       const dayOfWeek = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sab
@@ -789,6 +790,8 @@ export default function App() {
       const checkTime = (target: string) => {
         if (!target) return false;
         const [hh, mm] = target.split(':').map(Number);
+        // No frontend, mantemos a verificação do exato minuto para disparar apenas uma vez
+        // O backend possui uma janela de ±3 min como margem de segurança
         return now.getHours() === hh && now.getMinutes() === mm;
       };
 
@@ -796,16 +799,21 @@ export default function App() {
       const isEndOfDay = checkTime(dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday);
 
       if (isLunch || isEndOfDay) {
-        safeFetch('/api/executions/pause-all', { method: 'POST' })
+        // Chamamos o novo endpoint robusto que valida o horário no server-side
+        safeFetch('/api/executions/auto-pause', { method: 'POST' })
           .then((r) => {
             if (r?.paused > 0) {
-              const reason = isLunch ? 'almoço' : 'fim de expediente';
+              const reason = r.reason === 'almoço' ? 'almoço' : 'fim de expediente';
               console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) - ${reason}.`);
+              fetchData(); // Atualiza a UI para refletir as pausas
             }
           })
           .catch(console.error);
       }
     };
+    
+    // Verifica imediatamente ao montar e depois a cada minuto
+    check();
     const interval = setInterval(check, 60000);
     return () => clearInterval(interval);
   }, [currentUser, autoPauseTimeWeekday, autoPauseTimeFriday, autoPauseTimeLunch]);

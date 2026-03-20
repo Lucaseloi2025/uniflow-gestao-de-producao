@@ -1155,11 +1155,61 @@ app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
                 .insert({ execution_id: exec.id, start_pause: now.toISOString() });
         }
 
-        console.log(`[API] Pause-all: ${activeExecs.length} execução(ões) pausada(s) no fim de expediente.`);
+        console.log(`[API] Pause-all: ${activeExecs.length} execução(ões) pausada(s) por comando direto.`);
         return res.json({ success: true, paused: activeExecs.length });
     } catch (err: any) {
         console.error("[API] Erro no pause-all:", err);
         return res.status(500).json({ error: "Erro ao pausar todas as execuções" });
+    }
+});
+
+// ── Auto-Pause: pausa automática baseado no horário agendado ────────
+app.post("/api/executions/auto-pause", async (req, res) => {
+    try {
+        const { data: config, error: configErr } = await supabaseAdmin.from("config_producao").select("*").eq("id", 1).single();
+        if (configErr) throw configErr;
+
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ success: true, message: "Fim de semana, pulando pausa automática." });
+
+        const checkTime = (target: string) => {
+            if (!target) return false;
+            const [hh, mm] = target.split(':').map(Number);
+            
+            // Janela de ±3 minutos para garantir que o trigger funcione mesmo com pequenas variações de tempo/intervalo
+            const targetMin = hh * 60 + mm;
+            const currentMin = now.getHours() * 60 + now.getMinutes();
+            return Math.abs(currentMin - targetMin) <= 3;
+        };
+
+        const isLunch = checkTime(config.auto_pause_time_lunch);
+        const isEndOfDay = checkTime(dayOfWeek === 5 ? config.auto_pause_time_friday : config.auto_pause_time_weekday);
+
+        if (!isLunch && !isEndOfDay) {
+            return res.json({ success: true, message: "Fora do horário de pausa automática.", current_time: now.toLocaleTimeString('pt-BR') });
+        }
+
+        const { data: activeExecs, error: fetchErr } = await supabaseAdmin
+            .from("stage_executions")
+            .select("id")
+            .eq("status", "Em andamento");
+
+        if (fetchErr) throw fetchErr;
+        if (!activeExecs || activeExecs.length === 0) {
+            return res.json({ success: true, message: "Nenhuma tarefa ativa para pausar.", paused: 0 });
+        }
+
+        for (const exec of activeExecs) {
+            await supabaseAdmin.from("stage_executions").update({ status: "Pausado" }).eq("id", exec.id);
+            await supabaseAdmin.from("pauses").insert({ execution_id: exec.id, start_pause: now.toISOString() });
+        }
+
+        console.log(`[AutoPause] ${activeExecs.length} execução(ões) pausadas automaticamente por ${isLunch ? 'almoço' : 'fim de expediente'}.`);
+        return res.json({ success: true, paused: activeExecs.length, reason: isLunch ? 'almoço' : 'fim de expediente' });
+    } catch (err: any) {
+        console.error("[AutoPause] Erro:", err);
+        return res.status(500).json({ error: "Erro interno no auto-pause" });
     }
 });
 
