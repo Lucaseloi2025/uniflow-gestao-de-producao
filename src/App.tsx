@@ -2481,6 +2481,59 @@ export default function App() {
                 </div>
               </Card>
             </div>
+            
+            {/* Detalhamento dos Pedidos do Período */}
+            {reportData?.orders_list && reportData.orders_list.length > 0 && (
+              <Card className="p-6 border-zinc-200 shadow-sm mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold flex items-center gap-2 text-zinc-700 uppercase tracking-wider">
+                    <ClipboardList size={16} className="text-zinc-400" />
+                    Detalhamento dos {reportData.summary?.total_orders || reportData.orders_list.length} Pedidos Vincunlados
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-400 font-medium">Clique no card para abrir detalhes do pedido</span>
+                    <Badge variant="default" className="text-[10px] font-mono">
+                      {reportData.orders_list.length} registros
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[280px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-200">
+                  {reportData.orders_list.map((order: any, idx: number) => (
+                    <motion.div 
+                      key={idx}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.02 }}
+                      onClick={() => {
+                        const found = orders.find(o => o.id === order.order_id);
+                        if (found) {
+                          setSelectedOrder(found);
+                          fetchExecutions(found.id);
+                        }
+                      }}
+                      className="flex items-center justify-between p-3 bg-zinc-50 border border-zinc-100 rounded-xl hover:bg-white hover:border-zinc-300 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-[10px] font-black font-mono text-zinc-400 group-hover:text-zinc-900 transition-colors">#{order.order_number}</p>
+                          <span className={cn(
+                            "text-[8px] font-black px-1 py-0.5 rounded uppercase",
+                            order.status === 'Entregue' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                          )}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-zinc-700 truncate line-clamp-1">{order.client_name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-black text-zinc-900">{order.quantity}</p>
+                        <p className="text-[8px] text-zinc-400 font-bold uppercase">Peças</p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </Card>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Delivery Chart */}
