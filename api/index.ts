@@ -1164,7 +1164,10 @@ app.post("/api/executions/auto-pause", async (req, res) => {
         if (configErr) throw configErr;
 
         const now = new Date();
-        const dayOfWeek = now.getDay();
+        const spSpnowStr = now.toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" }).replace(" ", "T");
+        const spSpnow = new Date(spSpnowStr + "Z");
+        
+        const dayOfWeek = spSpnow.getUTCDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ success: true, message: "Fim de semana, pulando pausa automática." });
 
         const checkTime = (target: string) => {
@@ -1173,7 +1176,7 @@ app.post("/api/executions/auto-pause", async (req, res) => {
             
             // Janela de ±3 minutos para garantir que o trigger funcione mesmo com pequenas variações de tempo/intervalo
             const targetMin = hh * 60 + mm;
-            const currentMin = now.getHours() * 60 + now.getMinutes();
+            const currentMin = spSpnow.getUTCHours() * 60 + spSpnow.getUTCMinutes();
             return Math.abs(currentMin - targetMin) <= 3;
         };
 
