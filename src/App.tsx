@@ -312,15 +312,16 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
     return searchMatch && stageMatch;
   });
 
-  const getBaseTimeInfo = (exec: StageExecution) => {
+  const getBaseTimeInfo = (exec: StageExecution & { quantity?: number }) => {
     const ideal = exec.ideal_time || exec.average_time_seconds || 0;
     const count = exec.execution_count || 0;
     const real = exec.real_average_time || 0;
+    const qty = exec.quantity || 1;
     
     if (count >= 10 && real > 0) {
-      return { baseTime: real, type: 'Real' };
+      return { baseTime: real * qty, type: 'Real' };
     }
-    return { baseTime: ideal, type: 'Ideal' };
+    return { baseTime: ideal * qty, type: 'Ideal' };
   };
 
   const getStatusColor = (current: number, avg: number) => {
@@ -437,12 +438,13 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400">Nenhuma tarefa ativa no momento.</td></tr>
               ) : filteredData.map(exec => {
                 const baseInfo = getBaseTimeInfo(exec);
-                const idealTime = exec.ideal_time || exec.average_time_seconds || 0;
+                // The efficiency calculation must take into account the base time WHICH ALREADY multiplies by quantity!
+                const idealTimeScaled = (exec.ideal_time || exec.average_time_seconds || 0) * (exec.quantity || 1);
                 let efficiency = '';
                 let efficiencyColor = 'text-zinc-500';
                 
-                if (idealTime > 0) {
-                  const pct = Math.round((exec.total_time_seconds / idealTime) * 100);
+                if (idealTimeScaled > 0) {
+                  const pct = Math.round((exec.total_time_seconds / idealTimeScaled) * 100);
                   efficiency = `${pct}% do tempo ideal`;
                   if (pct <= 80) efficiencyColor = 'text-emerald-600';
                   else if (pct <= 100) efficiencyColor = 'text-amber-600';
@@ -487,8 +489,8 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                           <Badge variant={baseInfo.type === 'Real' ? 'info' : 'default'} className="md:px-2 md:py-0 md:text-[8px]">{baseInfo.type}</Badge>
                         </div>
                         <div className="text-[9px] text-zinc-500 flex flex-col">
-                          {idealTime > 0 ? <span>Ideal: {formatSeconds(idealTime)}</span> : null} 
-                          {exec.real_average_time && exec.real_average_time > 0 ? <span>Real: {formatSeconds(exec.real_average_time)}</span> : null}
+                          {idealTimeScaled > 0 ? <span>Ideal: {formatSeconds(idealTimeScaled)}</span> : null} 
+                          {exec.real_average_time && exec.real_average_time > 0 ? <span>Real: {formatSeconds(exec.real_average_time * (exec.quantity || 1))}</span> : null}
                         </div>
                       </div>
                     </td>
@@ -3491,11 +3493,12 @@ export default function App() {
                 />
                 <input
                   type="number"
-                  value={newStageTime}
+                  step="0.01"
+                  value={newStageTime || ''}
                   onChange={(e) => setNewStageTime(Number(e.target.value))}
-                  placeholder="Tempo Ideal (min)"
-                  title="Tempo ideal da etapa em minutos"
-                  className="w-32 p-2 border border-zinc-200 rounded-lg text-sm"
+                  placeholder="Tempo Ideal (min/peça)"
+                  title="Tempo ideal da etapa em minutos por peça"
+                  className="p-2 border border-zinc-200 rounded-lg text-sm w-36 focus:outline-none focus:border-zinc-400"
                 />
                 <button
                   onClick={async () => {
@@ -3539,13 +3542,11 @@ export default function App() {
                           />
                           <input
                             type="number"
-                            value={editingStageTime}
+                            step="0.01"
+                            value={editingStageTime === 0 ? '' : editingStageTime}
                             onChange={(e) => setEditingStageTime(Number(e.target.value))}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Escape') setEditingStageId(null);
-                            }}
-                            title="Tempo ideal em minutos"
-                            className="w-24 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                            className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
+                            title="Tempo ideal por peça em minutos"
                           />
                           <button
                             onClick={async () => {
@@ -4367,6 +4368,42 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Preview do Tempo de Produção */}
+                    {(() => {
+                      const qty = Number(newOrderForm.quantity) || 0;
+                      let totalTimeSec = 0;
+                      if (qty > 0 && newOrderRequiredStages.length > 0) {
+                        newOrderRequiredStages.forEach(id => {
+                          const s = stages.find(st => st.id === id);
+                          if (s) totalTimeSec += (s.ideal_time || s.average_time_seconds || 0);
+                        });
+                        totalTimeSec *= qty;
+                      }
+                      
+                      const hours = Math.floor(totalTimeSec / 3600);
+                      const minutes = Math.floor((totalTimeSec % 3600) / 60);
+
+                      if (totalTimeSec > 0) {
+                        return (
+                          <div className="mb-6 flex items-center justify-between p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                             <div className="flex items-center gap-3">
+                               <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                                 <Clock size={20} />
+                               </div>
+                               <div>
+                                 <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">Previsão Tempo de Produção</p>
+                                 <p className="text-sm font-medium text-emerald-800">Custo de tempo com base em {qty} peça(s)</p>
+                               </div>
+                             </div>
+                             <div className="text-right">
+                               <p className="text-xl font-black text-emerald-600">{hours}h {minutes}m</p>
+                             </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     <button
                       type="submit"

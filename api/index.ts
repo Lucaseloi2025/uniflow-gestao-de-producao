@@ -287,7 +287,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
             let maxQueueDays = -1;
 
             for (const stage of orderStages) {
-                const baseSecs = timeByStage[stage.id] ?? 2 * 60;
+                const baseSecs = (timeByStage[stage.id] ?? 2 * 60) * (order.quantity || 1);
                 const totalMinutes = baseSecs / 60;
                 const execDays = totalMinutes / dailyCapacityMinutes; // working days
 
@@ -780,7 +780,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                 ),
                 users ( name ),
                 stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count ),
-                orders ( order_number, client_name, product_type )
+                orders ( order_number, client_name, product_type, quantity )
             `)
             .eq("status", "Em andamento");
 
@@ -825,7 +825,8 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                 execution_count: exec.stages?.execution_count,
                 order_number: exec.orders?.order_number,
                 client_name: exec.orders?.client_name,
-                product_type: exec.orders?.product_type
+                product_type: exec.orders?.product_type,
+                quantity: exec.orders?.quantity
             };
         });
 
@@ -1361,15 +1362,18 @@ app.post("/api/executions/:id/finish", async (req, res) => {
     try {
         const { data: recentExecs } = await supabaseAdmin
             .from("stage_executions")
-            .select("total_time_seconds")
+            .select("total_time_seconds, orders(quantity)")
             .eq("stage_id", execution.stage_id)
             .eq("status", "Finalizado")
             .order("end_time", { ascending: false })
             .limit(20);
 
         if (recentExecs && recentExecs.length > 0) {
-            const sumTime = recentExecs.reduce((sum: number, e: any) => sum + (e.total_time_seconds || 0), 0);
-            const avg = Math.round(sumTime / recentExecs.length);
+            const sumTimePerPiece = recentExecs.reduce((sum: number, e: any) => {
+                const qty = e.orders?.quantity || 1;
+                return sum + ((e.total_time_seconds || 0) / qty);
+            }, 0);
+            const avg = Math.round(sumTimePerPiece / recentExecs.length);
 
             const { count } = await supabaseAdmin
                 .from("stage_executions")
