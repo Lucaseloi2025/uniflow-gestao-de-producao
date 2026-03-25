@@ -4277,27 +4277,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Number of Colors - shown only for Silk and Sublimação */}
-                    {(newOrderForm.print_type === 'Silk' || newOrderForm.print_type === 'Sublimação') && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-                          🎨 Número de Cores da Estampa
-                          <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">afeta estimativa de tempo</span>
-                        </label>
-                        <select
-                          name="num_colors"
-                          defaultValue={1}
-                          className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white focus:border-emerald-400 outline-none"
-                        >
-                          <option value={1}>1 Cor</option>
-                          <option value={2}>2 Cores</option>
-                          <option value={3}>3 Cores</option>
-                          <option value={4}>4 Cores</option>
-                          <option value={5}>5+ Cores</option>
-                        </select>
-                      </div>
-                    )}
-
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
@@ -4384,20 +4363,34 @@ export default function App() {
                       const hours = Math.floor(totalTimeSec / 3600);
                       const minutes = Math.floor((totalTimeSec % 3600) / 60);
 
-                      if (totalTimeSec > 0) {
+                      if (qty > 0 && newOrderRequiredStages.length > 0) {
                         return (
-                          <div className="mb-6 flex items-center justify-between p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                          <div className={cn(
+                            "mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-xl gap-4",
+                            totalTimeSec > 0 ? "bg-emerald-50 border-emerald-100" : "bg-amber-50 border-amber-100"
+                          )}>
                              <div className="flex items-center gap-3">
-                               <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                               <div className={cn("p-2 rounded-lg", totalTimeSec > 0 ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600")}>
                                  <Clock size={20} />
                                </div>
                                <div>
-                                 <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">Previsão Tempo de Produção</p>
-                                 <p className="text-sm font-medium text-emerald-800">Custo de tempo com base em {qty} peça(s)</p>
+                                 <p className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5", totalTimeSec > 0 ? "text-emerald-600" : "text-amber-600")}>
+                                   Previsão Tempo de Produção
+                                 </p>
+                                 <p className={cn("text-sm font-medium", totalTimeSec > 0 ? "text-emerald-800" : "text-amber-800")}>
+                                   Custo de tempo com base em {qty} peça(s)
+                                 </p>
+                                 {totalTimeSec === 0 && (
+                                   <p className="text-[10px] text-amber-700 mt-1 font-semibold leading-tight max-w-[250px]">
+                                     ⚠️ Estas etapas ainda não possuem o "Tempo Ideal" configurado no painel da Engrenagem.
+                                   </p>
+                                 )}
                                </div>
                              </div>
-                             <div className="text-right">
-                               <p className="text-xl font-black text-emerald-600">{hours}h {minutes}m</p>
+                             <div className="text-right whitespace-nowrap">
+                               <p className={cn("text-xl font-black", totalTimeSec > 0 ? "text-emerald-600" : "text-amber-600")}>
+                                 {hours}h {minutes}m
+                               </p>
                              </div>
                           </div>
                         );
