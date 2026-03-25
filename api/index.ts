@@ -200,7 +200,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         // 2. All stages sorted
         const { data: allStages, error: stagesErr } = await supabase
             .from("stages")
-            .select("id, name, sort_order")
+            .select("id, name, sort_order, ideal_time, real_average_time, execution_count")
             .eq("active", 1)
             .order("sort_order", { ascending: true });
 
@@ -216,27 +216,9 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         // Minutes available per day per sector (shared pool)
         const dailyCapacityMinutes = config.jornada_horas * 60 * config.operadores_ativos * config.eficiencia_percentual;
 
-        // 4. Avg seconds per piece per stage (last 30 days, fallback all-time)
-        let recentAvg: any[] | null = null;
-        let allTimeAvg: any[] | null = null;
-        try {
-            const { data: r30 } = await supabase.rpc("get_stage_avg_times", { p_days: 30 });
-            recentAvg = r30;
-        } catch (_) { /* no data yet */ }
-        try {
-            const { data: rAll } = await supabase.rpc("get_stage_avg_times", { p_days: 3650 });
-            allTimeAvg = rAll;
-        } catch (_) { /* no data yet */ }
+        // 4. Build lookup: stageId → baseTimeSeconds (Ideal vs Real)
+        const timeByStage: Record<number, number> = {};
 
-        // Build lookup: stageId → avgSecPerPiece
-        const avgByStage: Record<number, number> = {};
-
-        // Default fallback per print_type (seconds per piece)
-        const printDefaults: Record<string, number> = {
-            "Silk": 5 * 60,        // 5 min
-            "DTF": 4 * 60,         // 4 min
-            "Sublimação": 3 * 60,  // 3 min
-        };
         const stageDefaults: Record<string, number> = {
             "Ficha de aprovação": 1.5 * 60,
             "Separação / Corte": 2 * 60,
@@ -250,20 +232,19 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         };
 
         for (const stage of (allStages || [])) {
-            // Try recent avg first
-            const recent = (recentAvg as any[])?.find((r: any) => r.stage_id === stage.id);
-            if (recent?.avg_sec_per_piece > 0) {
-                avgByStage[stage.id] = recent.avg_sec_per_piece;
-                continue;
+            let baseSecs = 0;
+            const executionCount = stage.execution_count || 0;
+            
+            // Regra: se < 10 registros, usa tempo ideal. Se >= 10, usa tempo medio real.
+            if (executionCount >= 10 && stage.real_average_time > 0) {
+                baseSecs = stage.real_average_time;
+            } else if (stage.ideal_time > 0) {
+                baseSecs = stage.ideal_time;
+            } else {
+                baseSecs = stageDefaults[stage.name] ?? 2 * 60;
             }
-            // Then all-time
-            const atAll = (allTimeAvg as any[])?.find((r: any) => r.stage_id === stage.id);
-            if (atAll?.avg_sec_per_piece > 0) {
-                avgByStage[stage.id] = atAll.avg_sec_per_piece;
-                continue;
-            }
-            // Default by stage name
-            avgByStage[stage.id] = stageDefaults[stage.name] ?? 2 * 60;
+            // Multiplicador default? Não, agora tempo_base equivale ao tempo total da etapa
+            timeByStage[stage.id] = baseSecs;
         }
 
         // 5. Simulate queue — orders already sorted by deadline (most urgent first)
@@ -306,8 +287,8 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
             let maxQueueDays = -1;
 
             for (const stage of orderStages) {
-                const avgSecPerPiece = avgByStage[stage.id] ?? 2 * 60;
-                const totalMinutes = (order.quantity * avgSecPerPiece) / 60;
+                const baseSecs = timeByStage[stage.id] ?? 2 * 60;
+                const totalMinutes = baseSecs / 60;
                 const execDays = totalMinutes / dailyCapacityMinutes; // working days
 
                 const sectorAvail = sectorAvailableAt[stage.id] ?? now.getTime();
@@ -733,7 +714,7 @@ app.get("/api/stages", async (_req, res) => {
 });
 
 app.post("/api/stages", async (req, res) => {
-    const { name, average_time_seconds } = req.body;
+    const { name, average_time_seconds, ideal_time } = req.body;
     const { data: maxData } = await supabase
         .from("stages")
         .select("sort_order")
@@ -744,7 +725,12 @@ app.post("/api/stages", async (req, res) => {
 
     const { data, error } = await supabase
         .from("stages")
-        .insert({ name, sort_order, average_time_seconds: Number(average_time_seconds) || 0 })
+        .insert({ 
+            name, 
+            sort_order, 
+            average_time_seconds: Number(average_time_seconds) || 0,
+            ideal_time: Number(ideal_time) || Number(average_time_seconds) || 0
+        })
         .select()
         .single();
     if (checkError(error, res)) return;
@@ -752,12 +738,13 @@ app.post("/api/stages", async (req, res) => {
 });
 
 app.patch("/api/stages/:id", async (req, res) => {
-    const { name, active, sort_order, average_time_seconds } = req.body;
+    const { name, active, sort_order, average_time_seconds, ideal_time } = req.body;
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (active !== undefined) updates.active = active;
     if (sort_order !== undefined) updates.sort_order = sort_order;
     if (average_time_seconds !== undefined) updates.average_time_seconds = Number(average_time_seconds);
+    if (ideal_time !== undefined) updates.ideal_time = Number(ideal_time);
 
     const { error } = await supabase
         .from("stages")
@@ -792,7 +779,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                     end_pause
                 ),
                 users ( name ),
-                stages ( name, average_time_seconds ),
+                stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count ),
                 orders ( order_number, client_name, product_type )
             `)
             .eq("status", "Em andamento");
@@ -833,6 +820,9 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                 user_name: exec.users?.name,
                 stage_name: exec.stages?.name,
                 average_time_seconds: exec.stages?.average_time_seconds,
+                ideal_time: exec.stages?.ideal_time,
+                real_average_time: exec.stages?.real_average_time,
+                execution_count: exec.stages?.execution_count,
                 order_number: exec.orders?.order_number,
                 client_name: exec.orders?.client_name,
                 product_type: exec.orders?.product_type
@@ -957,7 +947,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
         .from("stage_executions")
         .select(`
           *,
-          stages ( name, average_time_seconds ),
+          stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count ),
           users ( name ),
           orders ( order_number, client_name, product_type )
         `)
@@ -995,6 +985,9 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
             client_name: e.orders?.client_name,
             product_type: e.orders?.product_type,
             average_time_seconds: e.stages?.average_time_seconds || 0,
+            ideal_time: e.stages?.ideal_time || 0,
+            real_average_time: e.stages?.real_average_time || 0,
+            execution_count: e.stages?.execution_count || 0,
             accumulated_pause_seconds: accumulatedPauseSeconds,
             total_time_seconds: calculatedTotalSeconds,
             is_paused: is_paused,
@@ -1359,6 +1352,39 @@ app.post("/api/executions/:id/finish", async (req, res) => {
             })
             .eq("id", execution.order_id);
         console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Conferência.`);
+    }
+
+    // 8. Update real average time for the stage
+    try {
+        const { data: recentExecs } = await supabaseAdmin
+            .from("stage_executions")
+            .select("total_time_seconds")
+            .eq("stage_id", execution.stage_id)
+            .eq("status", "Finalizado")
+            .order("end_time", { ascending: false })
+            .limit(20);
+
+        if (recentExecs && recentExecs.length > 0) {
+            const sumTime = recentExecs.reduce((sum: number, e: any) => sum + (e.total_time_seconds || 0), 0);
+            const avg = Math.round(sumTime / recentExecs.length);
+
+            const { count } = await supabaseAdmin
+                .from("stage_executions")
+                .select("*", { count: "exact", head: true })
+                .eq("stage_id", execution.stage_id)
+                .eq("status", "Finalizado");
+
+            await supabaseAdmin
+                .from("stages")
+                .update({
+                    real_average_time: avg,
+                    execution_count: count || recentExecs.length
+                })
+                .eq("id", execution.stage_id);
+        }
+    } catch (metricError) {
+        console.error("[API] Erro ao recalcular métricas de tempo da etapa:", metricError);
+        // Não falha a requisição se falhar ao atualizar a métrica
     }
 
     return res.json({ success: true, total_time: totalExecutionSeconds });

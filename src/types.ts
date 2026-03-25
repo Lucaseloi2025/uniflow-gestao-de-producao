@@ -85,6 +85,9 @@ export interface Stage {
   sort_order: number;
   active: boolean;
   average_time_seconds?: number;
+  ideal_time?: number;
+  real_average_time?: number;
+  execution_count?: number;
 }
 
 export interface StageExecution {
@@ -104,6 +107,9 @@ export interface StageExecution {
   accumulated_pause_seconds?: number;
   is_paused?: boolean;
   average_time_seconds?: number;
+  ideal_time?: number;
+  real_average_time?: number;
+  execution_count?: number;
 }
 
 export interface DeliveryReportData {

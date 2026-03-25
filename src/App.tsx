@@ -312,6 +312,17 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
     return searchMatch && stageMatch;
   });
 
+  const getBaseTimeInfo = (exec: StageExecution) => {
+    const ideal = exec.ideal_time || exec.average_time_seconds || 0;
+    const count = exec.execution_count || 0;
+    const real = exec.real_average_time || 0;
+    
+    if (count >= 10 && real > 0) {
+      return { baseTime: real, type: 'Real' };
+    }
+    return { baseTime: ideal, type: 'Ideal' };
+  };
+
   const getStatusColor = (current: number, avg: number) => {
     if (!avg || avg === 0) return 'text-zinc-600 bg-zinc-100';
     const ratio = current / avg;
@@ -349,29 +360,29 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Eficientes</p>
-              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) <= 0.8).length}</h3>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) <= 0.8; }).length}</h3>
             </div>
           </div>
         </Card>
-        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Atenção', 'Tarefas em andamento onde o tempo atual atingiu entre 80% e 100% do tempo médio histórico.')}>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Atenção', 'Tarefas em andamento onde o tempo atual atingiu entre 80% e 100% do tempo base (ideal ou real) esperado para a etapa.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
               <AlertCircle size={24} />
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Atenção</p>
-              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 0.8 && (e.total_time_seconds / e.average_time_seconds) <= 1.0).length}</h3>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) > 0.8 && (e.total_time_seconds / baseTime) <= 1.0; }).length}</h3>
             </div>
           </div>
         </Card>
-        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Fora do Prazo', 'Tarefas cujo tempo atual de execução já excedeu o tempo médio histórico.')}>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Fora do Prazo', 'Tarefas cujo tempo atual de execução já excedeu o tempo base esperado.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
               <AlertTriangle size={24} />
             </div>
             <div>
               <p className="text-xs text-zinc-500 font-medium">Fora do Prazo</p>
-              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => e.average_time_seconds && (e.total_time_seconds / e.average_time_seconds) > 1.0).length}</h3>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) > 1.0; }).length}</h3>
             </div>
           </div>
         </Card>
@@ -414,8 +425,8 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente / Produto</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Responsável</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Execution Time</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Expected (Avg)</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Tempo Decorrido</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Tempo Base</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-center">Status</th>
               </tr>
             </thead>
@@ -424,45 +435,74 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400 animate-pulse">Carregando monitor...</td></tr>
               ) : filteredData.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400">Nenhuma tarefa ativa no momento.</td></tr>
-              ) : filteredData.map(exec => (
-                <tr key={exec.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-6 py-4 text-sm font-mono font-bold text-zinc-900">{exec.order_number}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-zinc-800">{exec.client_name}</span>
-                      <span className="text-[10px] text-zinc-500">{exec.product_type}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
-                      {exec.is_paused ? <Pause size={10} className="text-amber-500" /> : <Play size={10} className="text-emerald-500" />}
-                      {exec.stage_name}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-zinc-600 font-medium">
-                    {exec.user_name}
-                  </td>
-                  <td className="px-6 py-4">
-                     <span className={cn(
-                       "font-mono text-sm font-bold",
-                       exec.average_time_seconds && exec.total_time_seconds > exec.average_time_seconds ? "text-rose-600" : "text-zinc-900"
-                     )}>
-                       {formatSeconds(exec.total_time_seconds)}
-                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-zinc-400 font-mono">
-                    {exec.average_time_seconds ? formatSeconds(exec.average_time_seconds) : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={cn(
-                      "inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border",
-                      getStatusColor(exec.total_time_seconds, exec.average_time_seconds || 0)
-                    )}>
-                      {getStatusLabel(exec.total_time_seconds, exec.average_time_seconds || 0)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              ) : filteredData.map(exec => {
+                const baseInfo = getBaseTimeInfo(exec);
+                const idealTime = exec.ideal_time || exec.average_time_seconds || 0;
+                let efficiency = '';
+                let efficiencyColor = 'text-zinc-500';
+                
+                if (idealTime > 0) {
+                  const pct = Math.round((exec.total_time_seconds / idealTime) * 100);
+                  efficiency = `${pct}% do tempo ideal`;
+                  if (pct <= 80) efficiencyColor = 'text-emerald-600';
+                  else if (pct <= 100) efficiencyColor = 'text-amber-600';
+                  else efficiencyColor = 'text-rose-600 font-bold';
+                }
+
+                return (
+                  <tr key={exec.id} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-mono font-bold text-zinc-900">{exec.order_number}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-zinc-800">{exec.client_name}</span>
+                        <span className="text-[10px] text-zinc-500">{exec.product_type}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
+                        {exec.is_paused ? <Pause size={10} className="text-amber-500" /> : <Play size={10} className="text-emerald-500" />}
+                        {exec.stage_name}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-600 font-medium">
+                      {exec.user_name}
+                    </td>
+                    <td className="px-6 py-4">
+                       <span className={cn(
+                         "font-mono text-sm font-bold block",
+                         baseInfo.baseTime && exec.total_time_seconds > baseInfo.baseTime ? "text-rose-600" : "text-zinc-900"
+                       )}>
+                         {formatSeconds(exec.total_time_seconds)}
+                       </span>
+                       {efficiency && (
+                         <div className={`text-[10px] mt-0.5 ${efficiencyColor}`}>
+                           {efficiency}
+                         </div>
+                       )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-400 font-mono">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-900 font-medium">{baseInfo.baseTime ? formatSeconds(baseInfo.baseTime) : "-"}</span>
+                          <Badge variant={baseInfo.type === 'Real' ? 'info' : 'default'} className="md:px-2 md:py-0 md:text-[8px]">{baseInfo.type}</Badge>
+                        </div>
+                        <div className="text-[9px] text-zinc-500 flex flex-col">
+                          {idealTime > 0 ? <span>Ideal: {formatSeconds(idealTime)}</span> : null} 
+                          {exec.real_average_time && exec.real_average_time > 0 ? <span>Real: {formatSeconds(exec.real_average_time)}</span> : null}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={cn(
+                        "inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border",
+                        getStatusColor(exec.total_time_seconds, baseInfo.baseTime || 0)
+                      )}>
+                        {getStatusLabel(exec.total_time_seconds, baseInfo.baseTime || 0)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -3453,9 +3493,9 @@ export default function App() {
                   type="number"
                   value={newStageTime}
                   onChange={(e) => setNewStageTime(Number(e.target.value))}
-                  placeholder="Tempo (s)"
-                  title="Tempo médio esperado em segundos"
-                  className="w-28 p-2 border border-zinc-200 rounded-lg text-sm"
+                  placeholder="Tempo Ideal (min)"
+                  title="Tempo ideal da etapa em minutos"
+                  className="w-32 p-2 border border-zinc-200 rounded-lg text-sm"
                 />
                 <button
                   onClick={async () => {
@@ -3466,7 +3506,7 @@ export default function App() {
                         'Content-Type': 'application/json',
                         'x-user-role': currentUser?.role || ''
                       },
-                      body: JSON.stringify({ name: newStageName, average_time_seconds: newStageTime })
+                      body: JSON.stringify({ name: newStageName, ideal_time: newStageTime * 60 })
                     });
                     setNewStageName('');
                     setNewStageTime(0);
@@ -3479,7 +3519,9 @@ export default function App() {
               </div>
 
               <div className="space-y-3">
-                {stages.map((stage, index) => (
+                {stages.map((stage, index) => {
+                  const idealTimeDisplay = stage.ideal_time || stage.average_time_seconds || 0;
+                  return (
                   <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
                     <div className="flex items-center gap-4 flex-1">
                       <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
@@ -3502,7 +3544,7 @@ export default function App() {
                             onKeyDown={async (e) => {
                               if (e.key === 'Escape') setEditingStageId(null);
                             }}
-                            title="Tempo médio em segundos"
+                            title="Tempo ideal em minutos"
                             className="w-24 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
                           />
                           <button
@@ -3514,7 +3556,7 @@ export default function App() {
                                     'Content-Type': 'application/json',
                                     'x-user-role': currentUser?.role || ''
                                   },
-                                  body: JSON.stringify({ name: editingStageName, average_time_seconds: editingStageTime })
+                                  body: JSON.stringify({ name: editingStageName, ideal_time: editingStageTime * 60 })
                                 });
                                 fetchData();
                               }
@@ -3534,7 +3576,14 @@ export default function App() {
                       ) : (
                         <div className="flex flex-col">
                           <span className="text-sm font-medium">{stage.name}</span>
-                          {stage.average_time_seconds ? <span className="text-[10px] text-zinc-500 font-mono">Méd: {formatSeconds(stage.average_time_seconds)}</span> : null}
+                          <div className="flex items-center gap-3 mt-0.5">
+                            {idealTimeDisplay > 0 ? <span className="text-[10px] text-zinc-500 font-mono bg-white px-1.5 py-0.5 rounded border border-zinc-200">Ideal: {formatSeconds(idealTimeDisplay)}</span> : null}
+                            {stage.real_average_time && stage.real_average_time > 0 ? (
+                               <span className="text-[10px] text-blue-600 font-mono bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                 Real: {formatSeconds(stage.real_average_time)} ({stage.execution_count} rec)
+                               </span>
+                            ) : null}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3562,7 +3611,7 @@ export default function App() {
                           onClick={() => {
                             setEditingStageId(stage.id);
                             setEditingStageName(stage.name);
-                            setEditingStageTime(stage.average_time_seconds || 0);
+                            setEditingStageTime(Math.round((stage.ideal_time || stage.average_time_seconds || 0) / 60));
                           }}
                           className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
                         >
@@ -3585,7 +3634,8 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </Card>
 
