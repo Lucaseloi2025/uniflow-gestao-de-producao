@@ -723,7 +723,7 @@ app.get("/api/stages", async (_req, res) => {
 });
 
 app.post("/api/stages", async (req, res) => {
-    const { name, average_time_seconds, ideal_time } = req.body;
+    const { name, average_time_seconds, ideal_time, calculation_type } = req.body;
     const { data: maxData } = await supabase
         .from("stages")
         .select("sort_order")
@@ -738,7 +738,8 @@ app.post("/api/stages", async (req, res) => {
             name, 
             sort_order, 
             average_time_seconds: Number(average_time_seconds) || 0,
-            ideal_time: Number(ideal_time) || Number(average_time_seconds) || 0
+            ideal_time: Number(ideal_time) || Number(average_time_seconds) || 0,
+            calculation_type: calculation_type || 'por_peca'
         })
         .select()
         .single();
@@ -747,13 +748,14 @@ app.post("/api/stages", async (req, res) => {
 });
 
 app.patch("/api/stages/:id", async (req, res) => {
-    const { name, active, sort_order, average_time_seconds, ideal_time } = req.body;
+    const { name, active, sort_order, average_time_seconds, ideal_time, calculation_type } = req.body;
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (active !== undefined) updates.active = active;
     if (sort_order !== undefined) updates.sort_order = sort_order;
     if (average_time_seconds !== undefined) updates.average_time_seconds = Number(average_time_seconds);
     if (ideal_time !== undefined) updates.ideal_time = Number(ideal_time);
+    if (calculation_type !== undefined) updates.calculation_type = calculation_type;
 
     const { error } = await supabase
         .from("stages")
