@@ -317,11 +317,23 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
     const count = exec.execution_count || 0;
     const real = exec.real_average_time || 0;
     const qty = exec.quantity || 1;
-    
+    const calcType = exec.calculation_type || 'por_peca';
+
+    let baseTime = 0;
     if (count >= 10 && real > 0) {
-      return { baseTime: real * qty, type: 'Real' };
+      baseTime = real;
+    } else {
+      baseTime = ideal;
     }
-    return { baseTime: ideal * qty, type: 'Ideal' };
+
+    if (calcType === 'por_peca') {
+      baseTime *= qty;
+    } else if (calcType === 'por_lote') {
+      // Opcional: implementar lógica de lote se necessário
+      baseTime *= Math.ceil(qty / 10); // Exemplo: lote de 10
+    }
+
+    return { baseTime, type: count >= 10 && real > 0 ? 'Real' : 'Ideal', calcType };
   };
 
   const getStatusColor = (current: number, avg: number) => {
@@ -438,14 +450,13 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400">Nenhuma tarefa ativa no momento.</td></tr>
               ) : filteredData.map(exec => {
                 const baseInfo = getBaseTimeInfo(exec);
-                // The efficiency calculation must take into account the base time WHICH ALREADY multiplies by quantity!
-                const idealTimeScaled = (exec.ideal_time || exec.average_time_seconds || 0) * (exec.quantity || 1);
+                const baseTime = baseInfo.baseTime;
                 let efficiency = '';
                 let efficiencyColor = 'text-zinc-500';
                 
-                if (idealTimeScaled > 0) {
-                  const pct = Math.round((exec.total_time_seconds / idealTimeScaled) * 100);
-                  efficiency = `${pct}% do tempo ideal`;
+                if (baseTime > 0) {
+                  const pct = Math.round((exec.total_time_seconds / baseTime) * 100);
+                  efficiency = `${pct}% do tempo ${baseInfo.type.toLowerCase()}`;
                   if (pct <= 80) efficiencyColor = 'text-emerald-600';
                   else if (pct <= 100) efficiencyColor = 'text-amber-600';
                   else efficiencyColor = 'text-rose-600 font-bold';
@@ -461,10 +472,29 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
-                        {exec.is_paused ? <Pause size={10} className="text-amber-500" /> : <Play size={10} className="text-emerald-500" />}
-                        {exec.stage_name}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
+                          {exec.is_paused ? <Pause size={10} className="text-amber-500" /> : <Play size={10} className="text-emerald-500" />}
+                          {exec.stage_name}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {exec.calculation_type === 'por_pedido' && (
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Pedido">
+                              📄 por pedido
+                            </span>
+                          )}
+                          {exec.calculation_type === 'por_peca' && (
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Peça">
+                              👕 por peça
+                            </span>
+                          )}
+                          {exec.calculation_type === 'por_lote' && (
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Lote">
+                              📦 por lote
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-zinc-600 font-medium">
                       {exec.user_name}
@@ -489,8 +519,12 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                           <Badge variant={baseInfo.type === 'Real' ? 'info' : 'default'} className="md:px-2 md:py-0 md:text-[8px]">{baseInfo.type}</Badge>
                         </div>
                         <div className="text-[9px] text-zinc-500 flex flex-col">
-                          {idealTimeScaled > 0 ? <span>Ideal: {formatSeconds(idealTimeScaled)}</span> : null} 
-                          {exec.real_average_time && exec.real_average_time > 0 ? <span>Real: {formatSeconds(exec.real_average_time * (exec.quantity || 1))}</span> : null}
+                          {(exec.ideal_time || 0) > 0 && (
+                            <span>Ideal: {formatSeconds(exec.calculation_type === 'por_peca' ? (exec.ideal_time || 0) * (exec.quantity || 1) : (exec.ideal_time || 0))}</span>
+                          )} 
+                          {(exec.real_average_time || 0) > 0 && (
+                            <span>Real: {formatSeconds(exec.calculation_type === 'por_peca' ? (exec.real_average_time || 0) * (exec.quantity || 1) : (exec.real_average_time || 0))}</span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -547,6 +581,7 @@ export default function App() {
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [newStageName, setNewStageName] = useState('');
   const [newStageTime, setNewStageTime] = useState<number>(0);
+  const [newStageCalculationType, setNewStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
   const [isUploadingArt, setIsUploadingArt] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -554,6 +589,7 @@ export default function App() {
   const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [editingStageName, setEditingStageName] = useState('');
   const [editingStageTime, setEditingStageTime] = useState<number>(0);
+  const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
   const [simOperadores, setSimOperadores] = useState<number>(0);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -3500,6 +3536,15 @@ export default function App() {
                   title="Tempo ideal da etapa em minutos por peça"
                   className="p-2 border border-zinc-200 rounded-lg text-sm w-36 focus:outline-none focus:border-zinc-400"
                 />
+                <select
+                  value={newStageCalculationType}
+                  onChange={(e) => setNewStageCalculationType(e.target.value as any)}
+                  className="p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
+                >
+                  <option value="por_pedido">📄 Por pedido</option>
+                  <option value="por_peca">👕 Por peça</option>
+                  <option value="por_lote">📦 Por lote</option>
+                </select>
                 <button
                   onClick={async () => {
                     if (!newStageName) return;
@@ -3509,10 +3554,15 @@ export default function App() {
                         'Content-Type': 'application/json',
                         'x-user-role': currentUser?.role || ''
                       },
-                      body: JSON.stringify({ name: newStageName, ideal_time: newStageTime * 60 })
+                      body: JSON.stringify({ 
+                        name: newStageName, 
+                        ideal_time: newStageTime * 60,
+                        calculation_type: newStageCalculationType
+                      })
                     });
                     setNewStageName('');
                     setNewStageTime(0);
+                    setNewStageCalculationType('por_peca');
                     fetchData();
                   }}
                   className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
@@ -3548,6 +3598,15 @@ export default function App() {
                             className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
                             title="Tempo ideal por peça em minutos"
                           />
+                          <select
+                            value={editingStageCalculationType}
+                            onChange={(e) => setEditingStageCalculationType(e.target.value as any)}
+                            className="p-1 border border-zinc-300 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          >
+                            <option value="por_pedido">📄 Por pedido</option>
+                            <option value="por_peca">👕 Por peça</option>
+                            <option value="por_lote">📦 Por lote</option>
+                          </select>
                           <button
                             onClick={async () => {
                               if (editingStageName) {
@@ -3557,7 +3616,11 @@ export default function App() {
                                     'Content-Type': 'application/json',
                                     'x-user-role': currentUser?.role || ''
                                   },
-                                  body: JSON.stringify({ name: editingStageName, ideal_time: editingStageTime * 60 })
+                                  body: JSON.stringify({ 
+                                    name: editingStageName, 
+                                    ideal_time: editingStageTime * 60,
+                                    calculation_type: editingStageCalculationType
+                                  })
                                 });
                                 fetchData();
                               }
@@ -3576,9 +3639,16 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium">{stage.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{stage.name}</span>
+                            {stage.calculation_type === 'por_pedido' && <Badge variant="info" className="lowercase italic opacity-70">por pedido</Badge>}
+                            {stage.calculation_type === 'por_peca' && <Badge variant="success" className="lowercase italic opacity-70">por peça</Badge>}
+                            {stage.calculation_type === 'por_lote' && <Badge variant="warning" className="lowercase italic opacity-70">por lote</Badge>}
+                          </div>
                           <div className="flex items-center gap-3 mt-0.5">
-                            {idealTimeDisplay > 0 ? <span className="text-[10px] text-zinc-500 font-mono bg-white px-1.5 py-0.5 rounded border border-zinc-200">Ideal: {formatSeconds(idealTimeDisplay)}</span> : null}
+                            {idealTimeDisplay > 0 ? <span className="text-[10px] text-zinc-500 font-mono bg-white px-1.5 py-0.5 rounded border border-zinc-200">
+                              Ideal: {formatSeconds(idealTimeDisplay)} {stage.calculation_type === 'por_peca' ? '/pc' : ''}
+                            </span> : null}
                             {stage.real_average_time && stage.real_average_time > 0 ? (
                                <span className="text-[10px] text-blue-600 font-mono bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
                                  Real: {formatSeconds(stage.real_average_time)} ({stage.execution_count} rec)
@@ -3613,6 +3683,7 @@ export default function App() {
                             setEditingStageId(stage.id);
                             setEditingStageName(stage.name);
                             setEditingStageTime(Math.round((stage.ideal_time || stage.average_time_seconds || 0) / 60));
+                            setEditingStageCalculationType(stage.calculation_type || 'por_peca');
                           }}
                           className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
                         >
@@ -4356,9 +4427,18 @@ export default function App() {
                       if (qty > 0 && newOrderRequiredStages.length > 0) {
                         newOrderRequiredStages.forEach(id => {
                           const s = stages.find(st => st.id === id);
-                          if (s) totalTimeSec += (s.ideal_time || s.average_time_seconds || 0);
+                          if (s) {
+                            const base = (s.ideal_time || s.average_time_seconds || 0);
+                            if (s.calculation_type === 'por_peca') {
+                              totalTimeSec += base * qty;
+                            } else if (s.calculation_type === 'por_lote') {
+                              totalTimeSec += base * Math.ceil(qty / 10);
+                            } else {
+                              // por_pedido ou default
+                              totalTimeSec += base;
+                            }
+                          }
                         });
-                        totalTimeSec *= qty;
                       }
                       
                       const hours = Math.floor(totalTimeSec / 3600);

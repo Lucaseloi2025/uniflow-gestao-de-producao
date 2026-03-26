@@ -88,6 +88,7 @@ export interface Stage {
   ideal_time?: number;
   real_average_time?: number;
   execution_count?: number;
+  calculation_type: 'por_pedido' | 'por_peca' | 'por_lote';
 }
 
 export interface StageExecution {
@@ -110,6 +111,7 @@ export interface StageExecution {
   ideal_time?: number;
   real_average_time?: number;
   execution_count?: number;
+  calculation_type?: 'por_pedido' | 'por_peca' | 'por_lote';
 }
 
 export interface DeliveryReportData {

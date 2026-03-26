@@ -200,7 +200,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         // 2. All stages sorted
         const { data: allStages, error: stagesErr } = await supabase
             .from("stages")
-            .select("id, name, sort_order, ideal_time, real_average_time, execution_count")
+            .select("id, name, sort_order, ideal_time, real_average_time, execution_count, calculation_type")
             .eq("active", 1)
             .order("sort_order", { ascending: true });
 
@@ -245,6 +245,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
             }
             // Multiplicador default? Não, agora tempo_base equivale ao tempo total da etapa
             timeByStage[stage.id] = baseSecs;
+            (timeByStage as any)[`${stage.id}_type`] = stage.calculation_type || 'por_peca';
         }
 
         // 5. Simulate queue — orders already sorted by deadline (most urgent first)
@@ -287,7 +288,15 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
             let maxQueueDays = -1;
 
             for (const stage of orderStages) {
-                const baseSecs = (timeByStage[stage.id] ?? 2 * 60) * (order.quantity || 1);
+                const calcType = (timeByStage as any)[`${stage.id}_type`];
+                let baseSecs = (timeByStage[stage.id] ?? 2 * 60);
+                
+                if (calcType === 'por_peca') {
+                    baseSecs *= (order.quantity || 1);
+                } else if (calcType === 'por_lote') {
+                    baseSecs *= Math.ceil((order.quantity || 1) / 10);
+                }
+                
                 const totalMinutes = baseSecs / 60;
                 const execDays = totalMinutes / dailyCapacityMinutes; // working days
 
@@ -779,7 +788,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                     end_pause
                 ),
                 users ( name ),
-                stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count ),
+                stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count, calculation_type ),
                 orders ( order_number, client_name, product_type, quantity )
             `)
             .eq("status", "Em andamento");
@@ -823,6 +832,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                 ideal_time: exec.stages?.ideal_time,
                 real_average_time: exec.stages?.real_average_time,
                 execution_count: exec.stages?.execution_count,
+                calculation_type: exec.stages?.calculation_type,
                 order_number: exec.orders?.order_number,
                 client_name: exec.orders?.client_name,
                 product_type: exec.orders?.product_type,
@@ -948,9 +958,9 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
         .from("stage_executions")
         .select(`
           *,
-          stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count ),
+          stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count, calculation_type ),
           users ( name ),
-          orders ( order_number, client_name, product_type )
+          orders ( order_number, client_name, product_type, quantity )
         `)
         .eq("status", "Em andamento");
 
@@ -989,6 +999,8 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
             ideal_time: e.stages?.ideal_time || 0,
             real_average_time: e.stages?.real_average_time || 0,
             execution_count: e.stages?.execution_count || 0,
+            calculation_type: e.stages?.calculation_type || 'por_peca',
+            quantity: e.orders?.quantity || 1,
             accumulated_pause_seconds: accumulatedPauseSeconds,
             total_time_seconds: calculatedTotalSeconds,
             is_paused: is_paused,
@@ -1360,6 +1372,12 @@ app.post("/api/executions/:id/finish", async (req, res) => {
 
     // 8. Update real average time for the stage
     try {
+        const { data: stageInfo } = await supabaseAdmin
+            .from("stages")
+            .select("calculation_type")
+            .eq("id", execution.stage_id)
+            .single();
+
         const { data: recentExecs } = await supabaseAdmin
             .from("stage_executions")
             .select("total_time_seconds, orders(quantity)")
@@ -1369,11 +1387,19 @@ app.post("/api/executions/:id/finish", async (req, res) => {
             .limit(20);
 
         if (recentExecs && recentExecs.length > 0) {
-            const sumTimePerPiece = recentExecs.reduce((sum: number, e: any) => {
+            const calcType = stageInfo?.calculation_type || 'por_peca';
+            const sumNormalizedTime = recentExecs.reduce((sum: number, e: any) => {
                 const qty = e.orders?.quantity || 1;
-                return sum + ((e.total_time_seconds || 0) / qty);
+                const time = e.total_time_seconds || 0;
+                
+                if (calcType === 'por_peca') {
+                    return sum + (time / qty);
+                } else if (calcType === 'por_lote') {
+                    return sum + (time / Math.ceil(qty / 10));
+                }
+                return sum + time; // por_pedido
             }, 0);
-            const avg = Math.round(sumTimePerPiece / recentExecs.length);
+            const avg = Math.round(sumNormalizedTime / recentExecs.length);
 
             const { count } = await supabaseAdmin
                 .from("stage_executions")
