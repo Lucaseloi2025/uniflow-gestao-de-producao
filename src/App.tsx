@@ -4093,56 +4093,6 @@ export default function App() {
                     <button onClick={() => setShowNewOrderModal(false)}><X size={20} /></button>
                   </div>
 
-                  {/* Templates Section */}
-                  <div className="mb-6">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
-                      {currentUser?.role === 'Admin' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingTemplate(null);
-                            setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
-                            setIsTemplateEditorOpen(true);
-                          }}
-                          className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
-                        >
-                          <Settings size={10} />
-                          Gerenciar
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {templates.map(template => (
-                        <button
-                          key={template.id}
-                          type="button"
-                          onClick={() => applyTemplate(template)}
-                          className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
-                        >
-                          {template.name}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-                        }}
-                        className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
-                      >
-                        Marcar Todas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewOrderRequiredStages([]);
-                        }}
-                        className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
-                      >
-                        Limpar Todas
-                      </button>
-                    </div>
-                  </div>
 
                   <form className="space-y-4" onSubmit={async (e) => {
                     e.preventDefault();
@@ -4309,6 +4259,57 @@ export default function App() {
                         onChange={(e) => setNewOrderForm({ ...newOrderForm, observations: e.target.value })}
                         className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
                       ></textarea>
+                    </div>
+
+                    {/* Templates Section Relocated */}
+                    <div className="mt-4 mb-2">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
+                        {currentUser?.role === 'Admin' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTemplate(null);
+                              setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                              setIsTemplateEditorOpen(true);
+                            }}
+                            className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                          >
+                            <Settings size={10} />
+                            Gerenciar
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {templates.map(template => (
+                          <button
+                            key={template.id}
+                            type="button"
+                            onClick={() => applyTemplate(template)}
+                            className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
+                          >
+                            {template.name}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+                          }}
+                          className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
+                        >
+                          Marcar Todas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderRequiredStages([]);
+                          }}
+                          className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
+                        >
+                          Limpar Todas
+                        </button>
+                      </div>
                     </div>
 
                     {/* Step Selection */}
