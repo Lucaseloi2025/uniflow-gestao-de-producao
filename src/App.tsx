@@ -221,7 +221,13 @@ const safeFormat = (dateStr: any, formatStr: string) => {
   }
 };
 
-const RunningTaskBanner = ({ execution, onNavigate }: { execution: StageExecution, onNavigate: () => void }) => {
+type RunningTaskBannerProps = {
+  execution: StageExecution;
+  onNavigate: () => void | Promise<void>;
+  key?: any;
+};
+
+const RunningTaskBanner = ({ execution, onNavigate }: RunningTaskBannerProps) => {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -630,7 +636,7 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [now, setNow] = useState(new Date());
-  const [activeExecution, setActiveExecution] = useState<StageExecution | null>(null);
+  const [activeExecutions, setActiveExecutions] = useState<StageExecution[]>([]);
   const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
 
@@ -757,7 +763,7 @@ export default function App() {
   const fetchActiveExecution = async () => {
     if (!currentUser || currentUser.id === 0) return;
     const data = await safeFetch(`/api/executions/active/${currentUser.id}`);
-    setActiveExecution(data);
+    setActiveExecutions(data || []);
   };
 
   const fetchData = async () => {
@@ -1558,21 +1564,32 @@ export default function App() {
         </div>
 
         <AnimatePresence>
-          {activeExecution && (
-            <RunningTaskBanner
-              execution={activeExecution}
-              onNavigate={async () => {
-                const orderData = await safeFetch(`/api/orders?search=${activeExecution.order_number}`);
-                if (orderData && orderData.length > 0) {
-                  const order = orderData.find((o: Order) => o.id === activeExecution.order_id);
-                  if (order) {
-                    setSelectedOrder(order);
-                    fetchExecutions(order.id);
-                    setActiveTab('kanban');
-                  }
-                }
-              }}
-            />
+          {activeExecutions.length > 0 && (
+            <div className="flex flex-col gap-3 mb-6">
+              {activeExecutions.length > 1 && (
+                <div className="flex items-center gap-2 px-1">
+                  <Activity size={16} className="text-zinc-400" />
+                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Tarefas em Andamento ({activeExecutions.length})</span>
+                </div>
+              )}
+              {activeExecutions.map((exec) => (
+                <RunningTaskBanner
+                  key={exec.id}
+                  execution={exec}
+                  onNavigate={async () => {
+                    const orderData = await safeFetch(`/api/orders?search=${exec.order_number}`);
+                    if (orderData && orderData.length > 0) {
+                      const order = orderData.find((o: Order) => o.id === exec.order_id);
+                      if (order) {
+                        setSelectedOrder(order);
+                        fetchExecutions(order.id);
+                        setActiveTab('kanban');
+                      }
+                    }
+                  }}
+                />
+              ))}
+            </div>
           )}
         </AnimatePresence>
         <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">

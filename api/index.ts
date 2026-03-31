@@ -852,7 +852,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
 });
 
 app.get("/api/executions/active/:userId", async (req, res) => {
-    const { data, error } = await supabase
+    const { data: executions, error } = await supabase
         .from("stage_executions")
         .select(`
             *,
@@ -861,48 +861,49 @@ app.get("/api/executions/active/:userId", async (req, res) => {
         `)
         .eq("user_id", Number(req.params.userId))
         .eq("status", "Em andamento")
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .single();
+        .order("start_time", { ascending: false });
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 is 'No rows found'
+    if (error) {
         return res.status(500).json({ error: error.message });
     }
 
-    if (!data) return res.json(null);
+    if (!executions || executions.length === 0) return res.json([]);
 
-    // Calculate total pause time so far
+    // Fetch all pauses for these executions to calculate accumulated time
+    const executionIds = executions.map(e => e.id);
     const { data: pauses } = await supabase
         .from("pauses")
-        .select("duration_seconds, start_pause, end_pause")
-        .eq("execution_id", data.id);
-
-    const is_paused = (pauses || []).some(p => p.end_pause === null);
-
-    const accumulatedPauseSeconds = (pauses || []).reduce((sum, p) => {
-        if (p.duration_seconds !== null) return sum + p.duration_seconds;
-        if (p.end_pause === null) {
-            const pauseStart = new Date(p.start_pause).getTime();
-            const now = new Date().getTime();
-            return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
-        }
-        return sum;
-    }, 0);
+        .select("*")
+        .in("execution_id", executionIds);
 
     const nowMs = new Date().getTime();
-    const startMs = new Date(data.start_time).getTime();
-    const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+    const formatted = executions.map((e: any) => {
+        const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
+        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
+            if (p.duration_seconds !== null) return sum + p.duration_seconds;
+            if (p.end_pause === null) {
+                const pauseStart = new Date(p.start_pause).getTime();
+                const now = new Date().getTime();
+                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
+            }
+            return sum;
+        }, 0);
+        const is_paused = itemPauses.some(p => p.end_pause === null);
 
-    const formatted = {
-        ...data,
-        stage_name: data.stages?.name,
-        order_number: data.orders?.order_number,
-        accumulated_pause_seconds: accumulatedPauseSeconds,
-        total_time_seconds: data.status === 'Finalizado' ? data.total_time_seconds : calculatedTotalSeconds,
-        is_paused: is_paused,
-        stages: undefined,
-        orders: undefined,
-    };
+        const startMs = new Date(e.start_time).getTime();
+        const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+
+        return {
+            ...e,
+            stage_name: e.stages?.name,
+            order_number: e.orders?.order_number,
+            accumulated_pause_seconds: accumulatedPauseSeconds,
+            total_time_seconds: e.status === 'Finalizado' ? e.total_time_seconds : calculatedTotalSeconds,
+            is_paused: is_paused,
+            stages: undefined,
+            orders: undefined,
+        };
+    });
     return res.json(formatted);
 });
 
@@ -1038,32 +1039,7 @@ app.post("/api/executions/start", async (req, res) => {
         return res.status(400).json({ error: "Usuário não identificado. Por favor, saia e entre novamente." });
     }
 
-    // ── AUTO-PAUSA: pausar qualquer tarefa ativa do mesmo usuário ──────────
-    try {
-        const { data: activeExecs } = await supabaseAdmin
-            .from("stage_executions")
-            .select("id")
-            .eq("user_id", Number(user_id))
-            .eq("status", "Em andamento");
-
-        if (activeExecs && activeExecs.length > 0) {
-            const now = new Date();
-            for (const exec of activeExecs) {
-                await supabaseAdmin
-                    .from("stage_executions")
-                    .update({ status: "Pausado" })
-                    .eq("id", exec.id);
-                await supabaseAdmin
-                    .from("pauses")
-                    .insert({ execution_id: exec.id, start_pause: now.toISOString() });
-                console.log(`[API] Auto-pausa: execução ${exec.id} pausada para o usuário ${user_id} ao iniciar nova tarefa.`);
-            }
-        }
-    } catch (autoPauseErr) {
-        console.error("[API] Erro na auto-pausa:", autoPauseErr);
-        // Não bloquear o início da tarefa se o auto-pause falhar
-    }
-
+    // No auto-pause anymore as per user requested multiple tasks support
     const { data, error } = await supabaseAdmin
         .from("stage_executions")
         .insert({
