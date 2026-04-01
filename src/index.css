@@ -20,13 +20,16 @@
   }
   
   /* Esconde todos os elementos normais durante a impressão */
-  body > div > *:not(.print-container) {
-    display: none !important;
+  body * {
+    visibility: hidden;
   }
   
-  /* Exibe a container de impressão que por debaixo dos panos era hidden */
+  /* Exibe a container de impressão e todo seu conteúdo */
+  .print-container, .print-container * {
+    visibility: visible;
+  }
+  
   .print-container {
-    display: block !important;
     position: absolute;
     left: 0;
     top: 0;
