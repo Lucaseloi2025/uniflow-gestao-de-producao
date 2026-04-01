@@ -11,3 +11,32 @@
     @apply font-sans antialiased;
   }
 }
+
+@media print {
+  /* Prevent background colors/images from disappearing */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Esconde todos os elementos normais durante a impressão */
+  body > div > *:not(.print-container) {
+    display: none !important;
+  }
+  
+  /* Exibe a container de impressão que por debaixo dos panos era hidden */
+  .print-container {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+  }
+  
+  /* Quebra de página para evitar tabelas fatiadas bizarramente */
+  tr {
+    page-break-inside: avoid;
+  }
+}
+
