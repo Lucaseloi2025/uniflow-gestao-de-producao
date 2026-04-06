@@ -1476,6 +1476,16 @@ export default function App() {
               .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
               .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
               .filter(o => {
+                  if (!searchTerm) return true;
+                  const search = searchTerm.toLowerCase();
+                  return (
+                    o.order_number.toLowerCase().includes(search) ||
+                    o.client_name.toLowerCase().includes(search) ||
+                    o.product_type.toLowerCase().includes(search) ||
+                    (o.print_type || '').toLowerCase().includes(search)
+                  );
+              })
+              .filter(o => {
                   if (!selectedStageFilter) return true;
                   const st = o.stages_status.find(s => s.id.toString() === selectedStageFilter);
                   if (!st) return false;
@@ -2256,6 +2266,16 @@ export default function App() {
                 <div className="flex-1 bg-zinc-100/50 rounded-xl p-3 flex flex-col gap-3 overflow-y-auto border border-zinc-200/50">
                   {orders
                     .filter(o => o.status === status)
+                    .filter(o => {
+                      if (!searchTerm) return true;
+                      const search = searchTerm.toLowerCase();
+                      return (
+                        o.order_number.toLowerCase().includes(search) ||
+                        o.client_name.toLowerCase().includes(search) ||
+                        o.product_type.toLowerCase().includes(search) ||
+                        (o.print_type || '').toLowerCase().includes(search)
+                      );
+                    })
                     .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
                     .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                     .map(order => {
@@ -2407,6 +2427,16 @@ export default function App() {
                   .filter(order => {
                     if (showCompletedOrders) return true;
                     return order.status !== 'Entregue' && order.status !== 'Cancelado';
+                  })
+                  .filter(o => {
+                    if (!searchTerm) return true;
+                    const search = searchTerm.toLowerCase();
+                    return (
+                      o.order_number.toLowerCase().includes(search) ||
+                      o.client_name.toLowerCase().includes(search) ||
+                      o.product_type.toLowerCase().includes(search) ||
+                      (o.print_type || '').toLowerCase().includes(search)
+                    );
                   })
                   .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
                   .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
