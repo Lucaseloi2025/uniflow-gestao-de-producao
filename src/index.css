@@ -19,25 +19,32 @@
     print-color-adjust: exact !important;
   }
   
-  /* Esconde todos os elementos normais durante a impressão */
-  body > * {
+  /* Esconde elementos de navegação e UI que não devem ser impressos */
+  aside, main, header, .no-print {
     display: none !important;
   }
   
-  /* Exibe a container de impressão e todo seu conteúdo */
+  /* Garante que o container de impressão apareça e sobrescreva o 'hidden' do Tailwind */
   .print-container {
     display: block !important;
     visibility: visible !important;
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    background: white;
-    z-index: 9999;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    background: white !important;
   }
 
+  /* Garante que os filhos do container também sejam visíveis */
   .print-container * {
     visibility: visible !important;
+  }
+
+  /* Sobrescreve restrições de layout do App que podem cortar o conteúdo na impressão */
+  .flex, .h-screen, .overflow-hidden {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
   }
   
   /* Quebra de página para evitar tabelas fatiadas bizarramente */
