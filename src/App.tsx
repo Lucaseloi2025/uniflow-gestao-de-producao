@@ -1482,6 +1482,7 @@ export default function App() {
                   if (selectedStageStatus === 'Finished') return st.finished;
                   return !st.finished;
               })
+              .sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''))
               .map((o, idx) => (
                 <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
                   <td className="p-2 border-b border-zinc-200 border-r py-3 font-mono font-bold">{o.order_number}</td>

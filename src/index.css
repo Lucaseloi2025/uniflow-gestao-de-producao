@@ -20,21 +20,24 @@
   }
   
   /* Esconde todos os elementos normais durante a impressão */
-  body * {
-    visibility: hidden;
+  body > * {
+    display: none !important;
   }
   
   /* Exibe a container de impressão e todo seu conteúdo */
-  .print-container, .print-container * {
-    visibility: visible;
-  }
-  
   .print-container {
+    display: block !important;
+    visibility: visible !important;
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     background: white;
+    z-index: 9999;
+  }
+
+  .print-container * {
+    visibility: visible !important;
   }
   
   /* Quebra de página para evitar tabelas fatiadas bizarramente */
