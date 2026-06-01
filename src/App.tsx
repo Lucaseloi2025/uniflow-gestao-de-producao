@@ -70,7 +70,7 @@ import {
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity } from './types';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod } from './types';
 
 // Helpers
 const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url);
@@ -572,6 +572,7 @@ export default function App() {
   const [reportPrintType, setReportPrintType] = useState<string>('');
   const [profileReport, setProfileReport] = useState<any[]>([]);
   const [operationalReportData, setOperationalReportData] = useState<OperationalReportData | null>(null);
+  const [goalsProductivityData, setGoalsProductivityData] = useState<GoalsProductivityResponse | null>(null);
   const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
@@ -842,6 +843,9 @@ export default function App() {
 
     const profileData = await safeFetch(`/api/reports/profiles?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
     if (profileData) setProfileReport(profileData || []);
+
+    const goalsData = await safeFetch('/api/reports/goals-productivity');
+    if (goalsData) setGoalsProductivityData(goalsData);
 
     fetchOperationalReport();
   };
@@ -2806,6 +2810,207 @@ export default function App() {
                       <Bar dataKey="pieces" name="Peças" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
+
+            {/* Painel de Metas & Produtividade (Peças por Período) */}
+            {goalsProductivityData && (
+              <Card className="p-8 border-zinc-200 shadow-lg bg-white relative overflow-hidden">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800 uppercase tracking-wider">
+                      <Target size={20} className="text-zinc-600" />
+                      Painel de Metas e Produtividade (Peças Processadas)
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Acompanhamento em tempo real das peças produzidas por setor e colaborador nos períodos (Dia, Semana, Mês).
+                    </p>
+                  </div>
+                  
+                  {/* Totais Gerais do Período */}
+                  <div className="flex flex-wrap items-center gap-3 bg-zinc-50 p-2 rounded-xl border border-zinc-100">
+                    <div className="px-3 py-1 bg-white rounded-lg border border-zinc-200/50 shadow-sm text-center">
+                      <p className="text-[9px] text-zinc-400 font-bold uppercase">Hoje</p>
+                      <p className="text-sm font-black text-emerald-600">
+                        {goalsProductivityData.collaborators.reduce((sum, c) => sum + c.today, 0)}
+                      </p>
+                    </div>
+                    <div className="px-3 py-1 bg-white rounded-lg border border-zinc-200/50 shadow-sm text-center">
+                      <p className="text-[9px] text-zinc-400 font-bold uppercase">Esta Semana</p>
+                      <p className="text-sm font-black text-blue-600">
+                        {goalsProductivityData.collaborators.reduce((sum, c) => sum + c.week, 0)}
+                      </p>
+                    </div>
+                    <div className="px-3 py-1 bg-white rounded-lg border border-zinc-200/50 shadow-sm text-center">
+                      <p className="text-[9px] text-zinc-400 font-bold uppercase">Este Mês</p>
+                      <p className="text-sm font-black text-indigo-600">
+                        {goalsProductivityData.collaborators.reduce((sum, c) => sum + c.month, 0)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Colaboradores Table */}
+                  <div>
+                    <h4 className="text-sm font-bold text-zinc-700 mb-3 flex items-center gap-1.5 uppercase tracking-wide">
+                      <Users size={16} className="text-zinc-400" />
+                      Produção por Colaborador
+                    </h4>
+                    <div className="overflow-x-auto border border-zinc-100 rounded-xl">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-zinc-50 border-b border-zinc-100">
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500">Colaborador</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Hoje</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Semana</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-right">% Mês</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {goalsProductivityData.collaborators
+                            .sort((a, b) => b.month - a.month)
+                            .map((colab, i) => {
+                              const totalMonth = goalsProductivityData.collaborators.reduce((sum, c) => sum + c.month, 0) || 1;
+                              const pct = Math.round((colab.month / totalMonth) * 100);
+                              const isTop = i === 0 && colab.month > 0;
+                              
+                              return (
+                                <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                                  <td className="px-4 py-3 text-sm font-bold text-zinc-800 flex items-center gap-1.5">
+                                    {isTop && <span title="Destaque do Mês">👑</span>}
+                                    {colab.name}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
+                                      colab.today > 0 ? "bg-emerald-50 text-emerald-700" : "text-zinc-400"
+                                    )}>
+                                      {colab.today}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
+                                      colab.week > 0 ? "bg-blue-50 text-blue-700" : "text-zinc-400"
+                                    )}>
+                                      {colab.week}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
+                                      colab.month > 0 ? "bg-indigo-50 text-indigo-700" : "text-zinc-400"
+                                    )}>
+                                      {colab.month}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <span className="text-xs font-mono font-bold text-zinc-600">{pct}%</span>
+                                      <div className="w-12 h-1.5 bg-zinc-100 rounded-full overflow-hidden hidden sm:block">
+                                        <div 
+                                          className="h-full bg-indigo-500 rounded-full" 
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          {goalsProductivityData.collaborators.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-8 text-center text-zinc-400 italic text-xs">
+                                Sem dados de colaboradores no período.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Sectors Table */}
+                  <div>
+                    <h4 className="text-sm font-bold text-zinc-700 mb-3 flex items-center gap-1.5 uppercase tracking-wide">
+                      <Layers size={16} className="text-zinc-400" />
+                      Produção por Setor (Etapa)
+                    </h4>
+                    <div className="overflow-x-auto border border-zinc-100 rounded-xl">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-zinc-50 border-b border-zinc-100">
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500">Setor / Etapa</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Hoje</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Semana</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-right">% Mês</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {goalsProductivityData.sectors
+                            .sort((a, b) => b.month - a.month)
+                            .map((sector, i) => {
+                              const totalMonth = goalsProductivityData.sectors.reduce((sum, s) => sum + s.month, 0) || 1;
+                              const pct = Math.round((sector.month / totalMonth) * 100);
+                              
+                              return (
+                                <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                                  <td className="px-4 py-3 text-sm font-bold text-zinc-800">
+                                    {sector.name}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
+                                      sector.today > 0 ? "bg-emerald-50 text-emerald-700" : "text-zinc-400"
+                                    )}>
+                                      {sector.today}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
+                                      sector.week > 0 ? "bg-blue-50 text-blue-700" : "text-zinc-400"
+                                    )}>
+                                      {sector.week}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
+                                      sector.month > 0 ? "bg-indigo-50 text-indigo-700" : "text-zinc-400"
+                                    )}>
+                                      {sector.month}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <span className="text-xs font-mono font-bold text-zinc-600">{pct}%</span>
+                                      <div className="w-12 h-1.5 bg-zinc-100 rounded-full overflow-hidden hidden sm:block">
+                                        <div 
+                                          className="h-full bg-indigo-500 rounded-full" 
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          {goalsProductivityData.sectors.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-8 text-center text-zinc-400 italic text-xs">
+                                Sem dados de setores no período.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </Card>
             )}

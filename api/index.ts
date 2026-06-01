@@ -1756,6 +1756,114 @@ app.get("/api/reports/profiles", async (req, res) => {
     return res.json(profiles);
 });
 
+// ── Goals & Productivity Report (Day, Week, Month) ────────────────────────
+app.get("/api/reports/goals-productivity", async (req, res) => {
+    // Current time in Brazil (UTC-3)
+    const now = new Date();
+    const brTimeMs = now.getTime() - (3 * 60 * 60 * 1000);
+    const brDate = new Date(brTimeMs);
+    
+    const year = brDate.getUTCFullYear();
+    const month = brDate.getUTCMonth(); // 0-indexed
+    const day = brDate.getUTCDate();
+    const dayOfWeek = brDate.getUTCDay(); // 0 = Sun, 1 = Mon...
+    
+    // Today Start in UTC (00:00:00 Brazil is 03:00:00 UTC)
+    const todayStartUTC = new Date(Date.UTC(year, month, day, 3, 0, 0, 0));
+    
+    // Week Start (Monday) in UTC
+    const dayDiff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const mondayBr = new Date(brDate.getTime() - (dayDiff * 24 * 60 * 60 * 1000));
+    const weekStartUTC = new Date(Date.UTC(mondayBr.getUTCFullYear(), mondayBr.getUTCMonth(), mondayBr.getUTCDate(), 3, 0, 0, 0));
+    
+    // Month Start (1st of current month) in UTC
+    const monthStartUTC = new Date(Date.UTC(year, month, 1, 3, 0, 0, 0));
+    
+    // The query start date is the earliest of the three boundaries
+    const queryStartDate = new Date(Math.min(todayStartUTC.getTime(), weekStartUTC.getTime(), monthStartUTC.getTime()));
+
+    try {
+        // Fetch completed stage executions since queryStartDate
+        const { data: executions, error } = await supabaseAdmin
+            .from("stage_executions")
+            .select(`
+                id,
+                end_time,
+                status,
+                user_id,
+                stage_id,
+                users ( name ),
+                stages ( name ),
+                orders ( quantity )
+            `)
+            .eq("status", "Finalizado")
+            .gte("end_time", queryStartDate.toISOString());
+
+        if (error) throw error;
+
+        // Fetch all active users and active stages to populate complete lists with zeros
+        const [usersRes, stagesRes] = await Promise.all([
+            supabaseAdmin.from("users").select("id, name").eq("active", true),
+            supabaseAdmin.from("stages").select("id, name").eq("active", 1)
+        ]);
+
+        const colabMap: Record<number, { name: string, today: number, week: number, month: number }> = {};
+        (usersRes.data || []).forEach(u => {
+            colabMap[u.id] = { name: u.name, today: 0, week: 0, month: 0 };
+        });
+
+        const sectorMap: Record<number, { name: string, today: number, week: number, month: number }> = {};
+        (stagesRes.data || []).forEach(s => {
+            sectorMap[s.id] = { name: s.name, today: 0, week: 0, month: 0 };
+        });
+
+        const todayMs = todayStartUTC.getTime();
+        const weekMs = weekStartUTC.getTime();
+        const monthMs = monthStartUTC.getTime();
+
+        (executions || []).forEach((exec: any) => {
+            if (!exec.end_time) return;
+            const endTimeMs = new Date(exec.end_time).getTime();
+            const quantity = Number(exec.orders?.quantity) || 0;
+            const userId = exec.user_id;
+            const stageId = exec.stage_id;
+            const userName = exec.users?.name || `Colaborador ${userId}`;
+            const stageName = exec.stages?.name || `Setor ${stageId}`;
+
+            // Make sure the entry exists in maps
+            if (!colabMap[userId]) {
+                colabMap[userId] = { name: userName, today: 0, week: 0, month: 0 };
+            }
+            if (!sectorMap[stageId]) {
+                sectorMap[stageId] = { name: stageName, today: 0, week: 0, month: 0 };
+            }
+
+            // Accumulate quantity into periods
+            if (endTimeMs >= todayMs) {
+                colabMap[userId].today += quantity;
+                sectorMap[stageId].today += quantity;
+            }
+            if (endTimeMs >= weekMs) {
+                colabMap[userId].week += quantity;
+                sectorMap[stageId].week += quantity;
+            }
+            if (endTimeMs >= monthMs) {
+                colabMap[userId].month += quantity;
+                sectorMap[stageId].month += quantity;
+            }
+        });
+
+        return res.json({
+            collaborators: Object.values(colabMap),
+            sectors: Object.values(sectorMap)
+        });
+
+    } catch (err: any) {
+        console.error("[GoalsProductivity] Error:", err);
+        return res.status(500).json({ error: "Erro ao carregar metas de produtividade" });
+    }
+});
+
 // ── 404 for API routes ────────────────────────────────────────────────────
 app.all("/api/*", (req, res) => {
     res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });

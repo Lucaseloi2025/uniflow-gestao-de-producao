@@ -210,3 +210,16 @@ export interface OperationalReportData {
   pedidos_concluidos: FinishedOrder[];
   produtividade_colaboradores: CollaboratorProductivity[];
 }
+
+export interface ProductivityPeriod {
+  name: string;
+  today: number;
+  week: number;
+  month: number;
+}
+
+export interface GoalsProductivityResponse {
+  collaborators: ProductivityPeriod[];
+  sectors: ProductivityPeriod[];
+}
+
