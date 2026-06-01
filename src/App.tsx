@@ -4096,6 +4096,63 @@ export default function App() {
                 ))}
               </div>
             </Card>
+
+            <Card className="p-8 border border-rose-100 bg-rose-50/10">
+              <h3 className="text-lg font-bold text-rose-900 mb-2 flex items-center gap-2">
+                <AlertTriangle size={20} className="text-rose-600" />
+                Zona de Perigo: Ações Críticas
+              </h3>
+              <p className="text-xs text-zinc-500 mb-6">
+                Estas ações são irreversíveis e afetam permanentemente os dados do sistema. Certifique-se do que está fazendo.
+              </p>
+              
+              <div className="p-5 bg-white border border-rose-200/50 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-sm transition-all duration-200">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-zinc-900">Zerar Relatórios & Histórico de Produção</h4>
+                  <p className="text-xs text-zinc-500 max-w-xl leading-relaxed">
+                    Apaga permanentemente todos os registros de tempos operacionais e pausas (<code className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded text-[10px] font-mono">stage_executions</code> e <code className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded text-[10px] font-mono">pauses</code>). 
+                    Os pedidos, clientes e configurações <strong>não serão excluídos</strong>, mas todas as métricas de relatórios e produtividade voltarão a zero.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const promptVal = prompt("⚠️ AVISO CRÍTICO: Isto irá zerar todas as estatísticas de relatórios operacionais e produtividade dos colaboradores permanentemente.\n\nPara prosseguir, digite \"CONFIRMAR\" abaixo:");
+                    if (promptVal !== "CONFIRMAR") {
+                      if (promptVal !== null) {
+                        alert("Operação cancelada. A confirmação não foi digitada corretamente.");
+                      }
+                      return;
+                    }
+
+                    try {
+                      const res = await fetch('/api/admin/reset-production', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || '',
+                          'x-user-name': currentUser?.name || 'Admin'
+                        }
+                      });
+
+                      const data = await res.json();
+                      if (res.ok && data.success) {
+                        alert("✅ " + data.message);
+                        fetchData(); // Recarrega todas as informações
+                      } else {
+                        alert("❌ Falha ao zerar relatórios: " + (data.error || "Erro desconhecido"));
+                      }
+                    } catch (err: any) {
+                      console.error("Erro ao resetar:", err);
+                      alert("❌ Erro de rede ou servidor ao realizar a limpeza.");
+                    }
+                  }}
+                  className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all duration-200 shadow-sm shadow-rose-100 hover:shadow active:scale-98 whitespace-nowrap self-start md:self-center pointer-events-auto"
+                >
+                  Zerar Relatórios e Tempos
+                </button>
+              </div>
+            </Card>
           </div>
         )
         }

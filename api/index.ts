@@ -1148,6 +1148,59 @@ app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
     }
 });
 
+// ── Reset-Production: zera todos os relatórios e tempos mantendo os pedidos (Opção B) ──
+app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
+    try {
+        console.log(`[API] Reset solicitado por ${req.headers["x-user-name"] || "Admin"}`);
+
+        // 1. Apagar todas as pausas
+        const { error: errPauses } = await supabaseAdmin
+            .from("pauses")
+            .delete()
+            .gt("id", 0);
+        if (errPauses) {
+            console.error("Erro ao deletar pausas:", errPauses);
+            return res.status(500).json({ error: "Erro ao limpar histórico de pausas: " + errPauses.message });
+        }
+
+        // 2. Apagar todas as execuções de etapas
+        const { error: errExecutions } = await supabaseAdmin
+            .from("stage_executions")
+            .delete()
+            .gt("id", 0);
+        if (errExecutions) {
+            console.error("Erro ao deletar execuções:", errExecutions);
+            return res.status(500).json({ error: "Erro ao limpar histórico de execuções: " + errExecutions.message });
+        }
+
+        // 3. Resetar o tempo acumulado dos pedidos para 0
+        const { error: errOrders } = await supabaseAdmin
+            .from("orders")
+            .update({ total_time_seconds: 0 })
+            .gt("id", 0);
+        if (errOrders) {
+            console.error("Erro ao resetar tempos dos pedidos:", errOrders);
+            return res.status(500).json({ error: "Erro ao resetar tempos dos pedidos: " + errOrders.message });
+        }
+
+        // 4. Resetar as médias de tempo calculadas nos estágios
+        const { error: errStages } = await supabaseAdmin
+            .from("stages")
+            .update({ real_average_time: 0, execution_count: 0 })
+            .gt("id", 0);
+        if (errStages) {
+            console.error("Erro ao resetar médias dos estágios:", errStages);
+            return res.status(500).json({ error: "Erro ao resetar médias dos estágios: " + errStages.message });
+        }
+
+        console.log("[API] Reset de produção concluído com sucesso!");
+        return res.json({ success: true, message: "Histórico de relatórios e tempos resetados com sucesso! Os pedidos foram preservados." });
+    } catch (err: any) {
+        console.error("[API] Erro ao resetar produção:", err);
+        return res.status(500).json({ error: "Erro interno ao processar reset de produção" });
+    }
+});
+
 // ── Auto-Pause: pausa automática baseado no horário agendado ────────
 app.post("/api/executions/auto-pause", async (req, res) => {
     try {
