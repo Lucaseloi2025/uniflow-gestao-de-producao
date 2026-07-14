@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
+import PrintableReport from './PrintableReport';
 import { Session } from '@supabase/supabase-js';
 import {
   BarChart,
@@ -557,6 +558,8 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
 export default function App() {
   const [infoModal, setInfoModal] = useState<{ title: string, description: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
+  const [printOpen, setPrintOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -1448,68 +1451,70 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#F8F9FA] font-sans text-zinc-900 overflow-hidden">
       {/* Print Container */}
-      <div className="print-container hidden text-black bg-white w-full p-8 font-sans">
-        <div className="mb-6 border-b border-zinc-300 pb-4 flex justify-between items-end">
-          <div>
-            <h1 className="text-2xl font-bold uppercase tracking-tight">Sequência de Produção</h1>
-            <p className="text-sm mt-1 text-zinc-500">
-              Emitido em: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
-            </p>
+      {(activeTab === 'kanban' || activeTab === 'orders') && (
+        <div className="print-container hidden text-black bg-white w-full p-8 font-sans">
+          <div className="mb-6 border-b border-zinc-300 pb-4 flex justify-between items-end">
+            <div>
+              <h1 className="text-2xl font-bold uppercase tracking-tight">Sequência de Produção</h1>
+              <p className="text-sm mt-1 text-zinc-500">
+                Emitido em: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+              </p>
+            </div>
+            <div className="text-right text-sm">
+              {selectedStageFilter && (
+                <p>Etapa: <strong>{stages.find(s => s.id.toString() === selectedStageFilter)?.name || selectedStageFilter}</strong></p>
+              )}
+              {printTypeFilter && <p>Estampa: <strong>{printTypeFilter}</strong></p>}
+            </div>
           </div>
-          <div className="text-right text-sm">
-            {selectedStageFilter && (
-              <p>Etapa: <strong>{stages.find(s => s.id.toString() === selectedStageFilter)?.name || selectedStageFilter}</strong></p>
-            )}
-            {printTypeFilter && <p>Estampa: <strong>{printTypeFilter}</strong></p>}
-          </div>
+          <table className="w-full border-collapse text-sm text-left">
+            <thead>
+              <tr className="bg-zinc-100 border-b-2 border-zinc-300 uppercase text-[10px] tracking-wider text-zinc-600">
+                <th className="p-2 border-r border-zinc-200">OP</th>
+                <th className="p-2 border-r border-zinc-200">Cliente</th>
+                <th className="p-2 border-r border-zinc-200 w-48">Produto</th>
+                <th className="p-2 border-r border-zinc-200 text-center">Qtde</th>
+                <th className="p-2 border-r border-zinc-200">Estampa</th>
+                <th className="p-2 text-center">Prazo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(orders || [])
+                .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                .filter(o => {
+                    if (!searchTerm) return true;
+                    const search = searchTerm.toLowerCase();
+                    return (
+                      o.order_number.toLowerCase().includes(search) ||
+                      o.client_name.toLowerCase().includes(search) ||
+                      o.product_type.toLowerCase().includes(search) ||
+                      (o.print_type || '').toLowerCase().includes(search)
+                    );
+                })
+                .filter(o => {
+                    if (!selectedStageFilter) return true;
+                    const st = o.stages_status.find(s => s.id.toString() === selectedStageFilter);
+                    if (!st) return false;
+                    if (selectedStageStatus === 'Finished') return st.finished;
+                    return !st.finished;
+                })
+                .sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''))
+                .map((o, idx) => (
+                  <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
+                    <td className="p-2 border-b border-zinc-200 border-r py-3 font-mono font-bold">{o.order_number}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[200px]">{o.client_name}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.product_type}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-center font-bold">{o.quantity}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.print_type || '-'}</td>
+                    <td className="p-2 border-b border-zinc-200 text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
+                  </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <table className="w-full border-collapse text-sm text-left">
-          <thead>
-            <tr className="bg-zinc-100 border-b-2 border-zinc-300 uppercase text-[10px] tracking-wider text-zinc-600">
-              <th className="p-2 border-r border-zinc-200">OP</th>
-              <th className="p-2 border-r border-zinc-200">Cliente</th>
-              <th className="p-2 border-r border-zinc-200 w-48">Produto</th>
-              <th className="p-2 border-r border-zinc-200 text-center">Qtde</th>
-              <th className="p-2 border-r border-zinc-200">Estampa</th>
-              <th className="p-2 text-center">Prazo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(orders || [])
-              .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
-              .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
-              .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
-              .filter(o => {
-                  if (!searchTerm) return true;
-                  const search = searchTerm.toLowerCase();
-                  return (
-                    o.order_number.toLowerCase().includes(search) ||
-                    o.client_name.toLowerCase().includes(search) ||
-                    o.product_type.toLowerCase().includes(search) ||
-                    (o.print_type || '').toLowerCase().includes(search)
-                  );
-              })
-              .filter(o => {
-                  if (!selectedStageFilter) return true;
-                  const st = o.stages_status.find(s => s.id.toString() === selectedStageFilter);
-                  if (!st) return false;
-                  if (selectedStageStatus === 'Finished') return st.finished;
-                  return !st.finished;
-              })
-              .sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''))
-              .map((o, idx) => (
-                <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
-                  <td className="p-2 border-b border-zinc-200 border-r py-3 font-mono font-bold">{o.order_number}</td>
-                  <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[200px]">{o.client_name}</td>
-                  <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.product_type}</td>
-                  <td className="p-2 border-b border-zinc-200 border-r text-center font-bold">{o.quantity}</td>
-                  <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.print_type || '-'}</td>
-                  <td className="p-2 border-b border-zinc-200 text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
-                </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
 
       {/* Mobile Overlay */}
       <AnimatePresence>
@@ -1937,6 +1942,15 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+
+                <button
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-[10px] font-bold hover:bg-zinc-800 transition-all shadow-sm active:scale-95 ml-auto sm:ml-0"
+                  title="Imprimir Relatório"
+                >
+                  <Printer size={12} />
+                  <span>Imprimir Relatório</span>
+                </button>
               </div>
             )}
             {activeTab === 'dashboard' ? (
@@ -5684,6 +5698,26 @@ export default function App() {
         title={infoModal?.title || ''}
         description={infoModal?.description || ''}
       />
+
+      <AnimatePresence>
+        {isPrintModalOpen && (
+          <PrintableReport
+            isOpen={isPrintModalOpen}
+            onClose={() => setIsPrintModalOpen(false)}
+            reportStartDate={reportStartDate}
+            reportEndDate={reportEndDate}
+            reportPeriod={reportPeriod}
+            reportUser={reportUser}
+            reportStage={reportStage}
+            reportPrintType={reportPrintType}
+            users={users}
+            stages={stages}
+            reportData={reportData}
+            operationalReportData={operationalReportData}
+            goalsProductivityData={goalsProductivityData}
+          />
+        )}
+      </AnimatePresence>
     </div >
   );
 }
