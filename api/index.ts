@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import { calculateExecutionTimes } from "../src/lib/timerUtils";
 
 dotenv.config();
 
@@ -800,24 +801,8 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
         const now = new Date().getTime();
 
         const monitorData = (executions || []).map((exec: any) => {
-            let totalPauseSeconds = 0;
-            let isPaused = false;
-
-            if (exec.pauses) {
-                for (const p of exec.pauses) {
-                    if (p.duration_seconds !== null) {
-                        totalPauseSeconds += p.duration_seconds;
-                    } else if (p.end_pause === null) {
-                        isPaused = true;
-                        const pauseStart = new Date(p.start_pause).getTime();
-                        totalPauseSeconds += Math.max(0, Math.floor((now - pauseStart) / 1000));
-                    }
-                }
-            }
-
-            const startTimeMs = new Date(exec.start_time).getTime();
-            const rawElapsedSeconds = Math.max(0, Math.floor((now - startTimeMs) / 1000));
-            const netElapsedSeconds = Math.max(0, rawElapsedSeconds - totalPauseSeconds);
+            const itemPauses = exec.pauses || [];
+            const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(exec, itemPauses, now);
 
             return {
                 id: exec.id,
@@ -827,7 +812,8 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                 start_time: exec.start_time,
                 status: exec.status,
                 is_paused: isPaused,
-                total_time_seconds: netElapsedSeconds,
+                total_time_seconds: totalAccumulatedSeconds,
+                current_session_seconds: currentSessionSeconds,
                 user_name: exec.users?.name,
                 stage_name: exec.stages?.name,
                 average_time_seconds: exec.stages?.average_time_seconds,
@@ -879,27 +865,16 @@ app.get("/api/executions/active/:userId", async (req, res) => {
     const nowMs = new Date().getTime();
     const formatted = executions.map((e: any) => {
         const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
-        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
-            if (p.duration_seconds !== null) return sum + p.duration_seconds;
-            if (p.end_pause === null) {
-                const pauseStart = new Date(p.start_pause).getTime();
-                const now = new Date().getTime();
-                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
-            }
-            return sum;
-        }, 0);
-        const is_paused = itemPauses.some(p => p.end_pause === null);
-
-        const startMs = new Date(e.start_time).getTime();
-        const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+        const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(e, itemPauses, nowMs);
 
         return {
             ...e,
             stage_name: e.stages?.name,
             order_number: e.orders?.order_number,
-            accumulated_pause_seconds: accumulatedPauseSeconds,
-            total_time_seconds: e.status === 'Finalizado' ? e.total_time_seconds : calculatedTotalSeconds,
-            is_paused: is_paused,
+            accumulated_pause_seconds: itemPauses.reduce((sum, p) => sum + (p.duration_seconds || 0), 0),
+            total_time_seconds: totalAccumulatedSeconds,
+            current_session_seconds: currentSessionSeconds,
+            is_paused: isPaused,
             stages: undefined,
             orders: undefined,
         };
@@ -928,27 +903,16 @@ app.get("/api/orders/:id/executions", async (req, res) => {
     const nowMs = new Date().getTime();
     const formatted = (data || []).map((e: any) => {
         const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
-        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
-            if (p.duration_seconds !== null) return sum + p.duration_seconds;
-            if (p.end_pause === null) {
-                const pauseStart = new Date(p.start_pause).getTime();
-                const now = new Date().getTime();
-                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
-            }
-            return sum;
-        }, 0);
-        const is_paused = itemPauses.some(p => p.end_pause === null);
-
-        const startMs = new Date(e.start_time).getTime();
-        const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+        const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(e, itemPauses, nowMs);
 
         return {
             ...e,
             stage_name: e.stages?.name,
             user_name: e.users?.name,
-            accumulated_pause_seconds: accumulatedPauseSeconds,
-            total_time_seconds: e.status === 'Finalizado' ? e.total_time_seconds : calculatedTotalSeconds,
-            is_paused: is_paused,
+            accumulated_pause_seconds: itemPauses.reduce((sum, p) => sum + (p.duration_seconds || 0), 0),
+            total_time_seconds: totalAccumulatedSeconds,
+            current_session_seconds: currentSessionSeconds,
+            is_paused: isPaused,
             stages: undefined,
             users: undefined,
         };
@@ -977,19 +941,7 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
     const nowMs = new Date().getTime();
     const formatted = (data || []).map((e: any) => {
         const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
-        const accumulatedPauseSeconds = itemPauses.reduce((sum, p) => {
-            if (p.duration_seconds !== null) return sum + p.duration_seconds;
-            if (p.end_pause === null) {
-                const pauseStart = new Date(p.start_pause).getTime();
-                const now = new Date().getTime();
-                return sum + Math.max(0, Math.floor((now - pauseStart) / 1000));
-            }
-            return sum;
-        }, 0);
-        const is_paused = itemPauses.some(p => p.end_pause === null);
-
-        const startMs = new Date(e.start_time).getTime();
-        const calculatedTotalSeconds = Math.max(0, Math.floor((nowMs - startMs - (accumulatedPauseSeconds * 1000)) / 1000));
+        const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(e, itemPauses, nowMs);
 
         return {
             ...e,
@@ -1004,9 +956,10 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
             execution_count: e.stages?.execution_count || 0,
             calculation_type: e.stages?.calculation_type || 'por_peca',
             quantity: e.orders?.quantity || 1,
-            accumulated_pause_seconds: accumulatedPauseSeconds,
-            total_time_seconds: calculatedTotalSeconds,
-            is_paused: is_paused,
+            accumulated_pause_seconds: itemPauses.reduce((sum, p) => sum + (p.duration_seconds || 0), 0),
+            total_time_seconds: totalAccumulatedSeconds,
+            current_session_seconds: currentSessionSeconds,
+            is_paused: isPaused,
             stages: undefined,
             users: undefined,
             orders: undefined

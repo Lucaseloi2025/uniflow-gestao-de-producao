@@ -104,9 +104,11 @@ export interface StageExecution {
   start_time: string;
   end_time?: string;
   total_time_seconds: number;
+  current_session_seconds?: number;
   status: 'Em andamento' | 'Pausado' | 'Finalizado';
   accumulated_pause_seconds?: number;
   is_paused?: boolean;
+  pauses?: any[];
   average_time_seconds?: number;
   ideal_time?: number;
   real_average_time?: number;

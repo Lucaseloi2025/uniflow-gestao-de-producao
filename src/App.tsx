@@ -71,6 +71,7 @@ import {
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
+import { calculateExecutionTimes } from './lib/timerUtils';
 import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod } from './types';
 
 // Helpers
@@ -230,26 +231,19 @@ type RunningTaskBannerProps = {
 };
 
 const RunningTaskBanner = ({ execution, onNavigate }: RunningTaskBannerProps) => {
-  const [elapsed, setElapsed] = useState(0);
+  const [times, setTimes] = useState({ totalAccumulatedSeconds: 0, currentSessionSeconds: 0, isPaused: false });
 
   useEffect(() => {
     if (!execution.start_time) return;
 
-    // Use parseISO for more reliable parsing across browsers/timezones
-    const start = parseISO(execution.start_time).getTime();
-    const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
-
     const updateTimer = () => {
-      if (execution.is_paused) return; // Stop updating if paused
-      const now = Date.now();
-      setElapsed(Math.max(0, Math.floor((now - start - pauseMs) / 1000)));
+      setTimes(calculateExecutionTimes(execution, execution.pauses || [], Date.now()));
     };
 
     updateTimer(); // Initial call
-
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
-  }, [execution.start_time, execution.accumulated_pause_seconds, execution.is_paused]);
+  }, [execution]);
 
   return (
     <motion.div
@@ -275,8 +269,13 @@ const RunningTaskBanner = ({ execution, onNavigate }: RunningTaskBannerProps) =>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tempo Decorrido</span>
-            <span className="text-xl font-mono font-bold tabular-nums">{formatSeconds(elapsed)}</span>
+            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Sessão Atual</span>
+            <span className="text-sm font-mono font-bold text-emerald-300">{formatSeconds(times.currentSessionSeconds)}</span>
+          </div>
+          <div className="h-6 w-px bg-zinc-700 mx-1" />
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Tempo Total</span>
+            <span className="text-xl font-mono font-bold tabular-nums">{formatSeconds(times.totalAccumulatedSeconds)}</span>
           </div>
           <ChevronRight size={20} className="text-zinc-600" />
         </div>
@@ -642,6 +641,16 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [now, setNow] = useState(new Date());
   const [activeExecutions, setActiveExecutions] = useState<StageExecution[]>([]);
+
+  const activeOrderTotalTime = useMemo(() => {
+    if (!selectedOrder) return 0;
+    if (!executions || executions.length === 0) return selectedOrder.total_time_seconds || 0;
+    const stageAcc = executions.reduce((sum, e) => {
+      const t = calculateExecutionTimes(e, e.pauses || [], now.getTime());
+      return sum + t.totalAccumulatedSeconds;
+    }, 0);
+    return Math.max(selectedOrder.total_time_seconds || 0, stageAcc);
+  }, [selectedOrder, executions, now]);
   const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
 
@@ -4242,7 +4251,7 @@ export default function App() {
                         </button>
                       )}
                       <Badge variant={
-                        selectedOrder.status === 'Entregue' ? 'success' :
+                      selectedOrder.status === 'Entregue' ? 'success' :
                           selectedOrder.status === 'Cancelado' ? 'error' : 'info'
                       } className="text-[9px] py-0.5 px-2">
                         {selectedOrder.status}
@@ -4254,200 +4263,203 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                     <div className="p-4 sm:p-5 lg:p-6 max-w-full mx-auto h-[calc(100vh-64px)] overflow-hidden">
+                  <div className="p-4 sm:p-5 lg:p-6 max-w-full mx-auto h-[calc(100vh-64px)] overflow-hidden">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 h-full">
-                      
-                      {/* Left Column: Order Information */}
-                      <div className="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
-                        <section>
-                          <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                            <Package size={14} /> INFORMAÇÕES GERAIS
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
-                              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
-                              <p className="text-base font-mono font-bold">{formatSeconds(selectedOrder.total_time_seconds)}</p>
-                            </div>
-                            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
-                              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
-                              <p className="text-base font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
-                            </div>
-                            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm col-span-2">
-                              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
-                              {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
-                                <input
-                                  type="date"
-                                  defaultValue={selectedOrder.deadline.split('T')[0]}
-                                  onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
-                                  className="text-base font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
-                                />
-                              ) : (
-                                <p className="text-base font-bold">{safeFormat(selectedOrder.deadline, 'dd/MM/yyyy')}</p>
-                              )}
-                            </div>
-                          </div>
-                        </section>
-                        <section className="p-4 sm:p-5 bg-white border border-zinc-200 rounded-2xl shadow-sm">
-                          <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">DETALHES DE PRODUÇÃO</h4>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Produto</span>
-                              <span className="text-xs font-bold text-zinc-900">{selectedOrder.product_type}</span>
-                            </div>
-                            <div>
-                              <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Quantidade</span>
-                              <span className="text-xs font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-zinc-500 font-medium text-[10px]">pçs</span></span>
-                            </div>
-                            <div className="col-span-2 pt-2 border-t border-zinc-50">
-                              <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-1">Estampa</span>
-                              <Badge variant="info" className="text-[10px] px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-100">
-                                {selectedOrder.print_type}
-                              </Badge>
-                            </div>
-                          </div>
-                        </section>
-
-                        {selectedOrder.observations && (
-                          <section>
-                            <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
-                              <ClipboardList size={12} /> OBSERVAÇÕES
-                            </h3>
-                            <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs font-medium text-amber-900 leading-relaxed italic">
-                              "{selectedOrder.observations}"
-                            </div>
-                          </section>
-                        )}
-                        
-                        {selectedOrder.total_time_seconds > selectedOrder.estimated_time_seconds * 1.2 && (
-                          <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-700">
-                            <AlertCircle size={16} />
-                            <p className="text-[9px] font-bold uppercase tracking-tight">ALERTA: Tempo real +20% acima do esperado.</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Middle Column: Stage Management */}
-                      <div className="space-y-4 flex flex-col h-full border-x lg:border-zinc-100 px-4">
-                        <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
-                          </div>
-                          <Badge variant="info" className="text-[8px] py-0 px-1.5">
-                            {selectedOrder.stages_status.filter(s => s.finished).length}/{selectedOrder.stages_status.length}
-                          </Badge>
-                        </h3>
-
-                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
-                          {(() => {
-                            const firstUnfinishedId = selectedOrder.stages_status.find(s => !s.finished)?.id;
-                            return selectedOrder.stages_status.map(orderStage => {
-                              const stage = stages.find(s => s.id === orderStage.id);
-                              if (!stage) return null;
-                              const execution = executions.find(e => e.stage_id === stage.id);
-                              const isSelected = selectedStageId === stage.id;
-                              const isNextToStart = !execution && stage.id === firstUnfinishedId;
-
-                              return (
-                                <div key={stage.id} 
-                                  onClick={() => setSelectedStageId(stage.id)}
-                                  className={cn(
-                                    "p-3 rounded-lg border transition-all duration-200 cursor-pointer",
-                                    isSelected ? "ring-2 ring-sky-500 bg-sky-50/20 border-sky-200" :
-                                    execution?.status === 'Em andamento' ? "bg-white border-zinc-900 shadow-md ring-1 ring-zinc-900" :
-                                    execution?.status === 'Pausado' ? "bg-amber-50/30 border-amber-100" :
-                                    orderStage.finished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
-                                  )}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2.5 overflow-hidden">
-                                      <div className={cn(
-                                        "w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors",
-                                        orderStage.finished ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"
-                                      )}>
-                                        {orderStage.finished ? <CheckCircle2 size={14} /> : stage.sort_order}
-                                      </div>
-                                      <div className="min-w-0">
-                                        <p className={cn(
-                                          "font-bold text-xs truncate",
-                                          orderStage.finished ? "text-zinc-500" : "text-zinc-900"
-                                        )}>
-                                          {stage.name}
-                                        </p>
-                                        {execution && (
-                                          <p className="text-[9px] text-zinc-400 truncate uppercase font-medium">
-                                            {execution.user_name} <span className="opacity-30">|</span> {formatSeconds(execution.total_time_seconds)}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    
-                                    {execution?.status === 'Em andamento' && (
-                                      <div className="shrink-0 py-0.5 px-1.5 border border-emerald-100 bg-emerald-50 rounded text-emerald-700 font-mono text-[10px] font-bold">
-                                        {(() => {
-                                          if (!execution.start_time) return "00:00:00";
-                                          const start = parseISO(execution.start_time).getTime();
-                                          const pauseMs = (execution.accumulated_pause_seconds || 0) * 1000;
-                                          const current = now.getTime();
-                                          const diffSeconds = Math.max(0, Math.floor((current - start - pauseMs) / 1000));
-                                          return formatSeconds(diffSeconds);
-                                        })()}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {!orderStage.finished && (
-                                    <div className="mt-2 flex items-center gap-1.5">
-                                      {!execution && (
-                                        <button
-                                          onClick={() => handleStartStage(stage.id)}
-                                          className={cn(
-                                            "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
-                                            isNextToStart 
-                                              ? "bg-zinc-900 text-white hover:bg-zinc-800" 
-                                              : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
-                                          )}
-                                        >
-                                          <Play size={12} fill="currentColor" />
-                                          INICIAR {isSelected && <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>}
-                                        </button>
-                                      )}
-
-                                      {execution?.status === 'Em andamento' && (
-                                        <>
-                                          <button
-                                            onClick={() => handlePauseStage(execution.id)}
-                                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
-                                          >
-                                            <Pause size={12} fill="currentColor" />
-                                            PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
-                                          </button>
-                                          <button
-                                            onClick={() => handleFinishStage(execution.id)}
-                                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
-                                          >
-                                            <CheckCircle size={12} />
-                                            FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
-                                          </button>
-                                        </>
-                                      )}
-
-                                      {execution?.status === 'Pausado' && (
-                                        <button
-                                          onClick={() => handleResumeStage(execution.id)}
-                                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
-                                        >
-                                          <Play size={12} fill="currentColor" />
-                                          RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
-                                        </button>
-                                      )}
-                                    </div>
+                          
+                          {/* Left Column: Order Information */}
+                          <div className="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
+                            <section>
+                              <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <Package size={14} /> INFORMAÇÕES GERAIS
+                              </h3>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
+                                  <p className="text-base font-mono font-bold">{formatSeconds(activeOrderTotalTime)}</p>
+                                </div>
+                                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
+                                  <p className="text-base font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
+                                </div>
+                                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm col-span-2">
+                                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
+                                  {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
+                                    <input
+                                      type="date"
+                                      defaultValue={selectedOrder.deadline.split('T')[0]}
+                                      onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
+                                      className="text-base font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
+                                    />
+                                  ) : (
+                                    <p className="text-base font-bold">{safeFormat(selectedOrder.deadline, 'dd/MM/yyyy')}</p>
                                   )}
                                 </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </div>
+                              </div>
+                            </section>
+                            <section className="p-4 sm:p-5 bg-white border border-zinc-200 rounded-2xl shadow-sm">
+                              <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">DETALHES DE PRODUÇÃO</h4>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Produto</span>
+                                  <span className="text-xs font-bold text-zinc-900">{selectedOrder.product_type}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Quantidade</span>
+                                  <span className="text-xs font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-zinc-500 font-medium text-[10px]">pçs</span></span>
+                                </div>
+                                <div className="col-span-2 pt-2 border-t border-zinc-50">
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-1">Estampa</span>
+                                  <Badge variant="info" className="text-[10px] px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-100">
+                                    {selectedOrder.print_type}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </section>
+
+                            {selectedOrder.observations && (
+                              <section>
+                                <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                                  <ClipboardList size={12} /> OBSERVAÇÕES
+                                </h3>
+                                <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs font-medium text-amber-900 leading-relaxed italic">
+                                  "{selectedOrder.observations}"
+                                </div>
+                              </section>
+                            )}
+                            
+                            {activeOrderTotalTime > selectedOrder.estimated_time_seconds * 1.2 && (
+                              <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-700">
+                                <AlertCircle size={16} />
+                                <p className="text-[9px] font-bold uppercase tracking-tight">ALERTA: Tempo real +20% acima do esperado.</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Middle Column: Stage Management */}
+                          <div className="space-y-4 flex flex-col h-full border-x lg:border-zinc-100 px-4">
+                            <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
+                              </div>
+                              <Badge variant="info" className="text-[8px] py-0 px-1.5">
+                                {selectedOrder.stages_status.filter(s => s.finished).length}/{selectedOrder.stages_status.length}
+                              </Badge>
+                            </h3>
+
+                            <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                              {(() => {
+                                const firstUnfinishedId = selectedOrder.stages_status.find(s => !s.finished)?.id;
+                                return selectedOrder.stages_status.map(orderStage => {
+                                  const stage = stages.find(s => s.id === orderStage.id);
+                                  if (!stage) return null;
+                                  const execution = executions.find(e => e.stage_id === stage.id);
+                                  const stageTimes = execution ? calculateExecutionTimes(execution, execution.pauses || [], now.getTime()) : null;
+                                  const isSelected = selectedStageId === stage.id;
+                                  const isNextToStart = !execution && stage.id === firstUnfinishedId;
+
+                                  return (
+                                    <div key={stage.id} 
+                                      onClick={() => setSelectedStageId(stage.id)}
+                                      className={cn(
+                                        "p-3 rounded-lg border transition-all duration-200 cursor-pointer",
+                                        isSelected ? "ring-2 ring-sky-500 bg-sky-50/20 border-sky-200" :
+                                        execution?.status === 'Em andamento' ? "bg-white border-zinc-900 shadow-md ring-1 ring-zinc-900" :
+                                        execution?.status === 'Pausado' ? "bg-amber-50/30 border-amber-100" :
+                                        orderStage.finished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2.5 overflow-hidden">
+                                          <div className={cn(
+                                            "w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors",
+                                            orderStage.finished ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"
+                                          )}>
+                                            {orderStage.finished ? <CheckCircle2 size={14} /> : stage.sort_order}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className={cn(
+                                              "font-bold text-xs truncate",
+                                              orderStage.finished ? "text-zinc-500" : "text-zinc-900"
+                                            )}>
+                                              {stage.name}
+                                            </p>
+                                            {execution && stageTimes && (
+                                              <p className="text-[9px] text-zinc-400 truncate font-medium">
+                                                <span className="uppercase font-bold text-zinc-600">{execution.user_name}</span>
+                                                <span className="opacity-30 mx-1">•</span>
+                                                <span className="font-mono text-zinc-500">Total: {formatSeconds(stageTimes.totalAccumulatedSeconds)}</span>
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        {execution?.status === 'Em andamento' && stageTimes && (
+                                          <div className="shrink-0 py-0.5 px-2 border border-emerald-200 bg-emerald-50 rounded-md text-emerald-700 font-mono text-[10px] font-bold flex items-center gap-1 shadow-xs">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                            <span>Sessão: {formatSeconds(stageTimes.currentSessionSeconds)}</span>
+                                          </div>
+                                        )}
+
+                                        {execution?.status === 'Pausado' && stageTimes && (
+                                          <div className="shrink-0 py-0.5 px-1.5 border border-amber-200 bg-amber-50 rounded-md text-amber-700 font-mono text-[10px] font-bold">
+                                            Pausado ({formatSeconds(stageTimes.totalAccumulatedSeconds)})
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {!orderStage.finished && (
+                                        <div className="mt-2 flex items-center gap-1.5">
+                                          {!execution && (
+                                            <button
+                                              onClick={() => handleStartStage(stage.id)}
+                                              className={cn(
+                                                "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
+                                                isNextToStart 
+                                                  ? "bg-zinc-900 text-white hover:bg-zinc-800" 
+                                                  : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
+                                              )}
+                                            >
+                                              <Play size={12} fill="currentColor" />
+                                              INICIAR {isSelected && <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>}
+                                            </button>
+                                          )}
+
+                                          {execution?.status === 'Em andamento' && (
+                                            <>
+                                              <button
+                                                onClick={() => handlePauseStage(execution.id)}
+                                                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
+                                              >
+                                                <Pause size={12} fill="currentColor" />
+                                                PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
+                                              </button>
+                                              <button
+                                                onClick={() => handleFinishStage(execution.id)}
+                                                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                              >
+                                                <CheckCircle size={12} />
+                                                FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
+                                              </button>
+                                            </>
+                                          )}
+
+                                          {execution?.status === 'Pausado' && (
+                                            <button
+                                              onClick={() => handleResumeStage(execution.id)}
+                                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
+                                            >
+                                              <Play size={12} fill="currentColor" />
+                                              RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
 
                       {/* Right Column: Files & Attachments */}
                       <div className="space-y-4 flex flex-col h-full">
@@ -4528,10 +4540,9 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                </motion.div>
-              </div>
-            )
-          }
+              </motion.div>
+            </div>
+          )}
         </AnimatePresence>
 
         {/* New Order Modal (Simplified for MVP) */}
