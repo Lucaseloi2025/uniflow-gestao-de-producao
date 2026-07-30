@@ -149,9 +149,13 @@ app.get("/api/dashboard/stats", async (req, res) => {
 });
 
 // ── Production Config & Goals ─────────────────────────────────────────────
-app.get("/api/config", async (_req, res) => {
+app.get("/api/config", async (req, res) => {
+    const isAdminUser = req.headers["x-user-role"] === "Admin";
     const { data, error } = await supabase.from("config_producao").select("*").single();
     if (checkError(error, res)) return;
+    if (!isAdminUser && data) {
+        delete data.meta_custo_por_peca;
+    }
     return res.json(data);
 });
 
@@ -180,6 +184,7 @@ app.patch("/api/config", isAdmin, async (req, res) => {
 
 // ── Reports ───────────────────────────────────────────────────────────────
 app.get("/api/reports", async (req, res) => {
+    const isAdminUser = req.headers["x-user-role"] === "Admin";
     const { period, user_id, stage_id, startDate, endDate, print_type } = req.query;
     const { data, error } = await supabase.rpc("get_reports", {
         p_period: period || "day",
@@ -191,6 +196,26 @@ app.get("/api/reports", async (req, res) => {
     });
 
     if (checkError(error, res, "Erro nos relatórios")) return;
+
+    if (!isAdminUser && data) {
+        if (data.summary) {
+            data.summary.total_labor_cost = 0;
+        }
+        if (Array.isArray(data.costsByCollaborator)) {
+            data.costsByCollaborator = data.costsByCollaborator.map((item: any) => ({
+                ...item,
+                hourly_cost: 0,
+                total_cost: 0,
+                cost_per_piece: 0,
+                totalCost: 0,
+                costPerPiece: 0
+            }));
+        }
+        if (data.costsByOrder) {
+            data.costsByOrder = [];
+        }
+    }
+
     return res.json(data);
 });
 
@@ -1534,6 +1559,7 @@ app.patch("/api/config/producao", isAdmin, async (req, res) => {
 
 // ── Users ─────────────────────────────────────────────────────────────────
 app.get("/api/users", async (req, res) => {
+    const isAdminUser = req.headers["x-user-role"] === "Admin";
     const { search } = req.query;
     let query = supabaseAdmin
         .from("users")
@@ -1547,7 +1573,11 @@ app.get("/api/users", async (req, res) => {
 
     const { data, error } = await query;
     if (checkError(error, res)) return;
-    return res.json(data);
+    const sanitized = (data || []).map((u: any) => ({
+        ...u,
+        hourly_cost: isAdminUser ? u.hourly_cost : 0
+    }));
+    return res.json(sanitized);
 });
 
 app.post("/api/users", isAdmin, async (req, res) => {

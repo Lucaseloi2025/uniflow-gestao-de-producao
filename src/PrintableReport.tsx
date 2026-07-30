@@ -339,15 +339,17 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                 </h3>
               </div>
 
-              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 print:border-zinc-300 print:bg-zinc-50/50">
-                <div className="flex items-center gap-2 text-zinc-400 mb-1">
-                  <DollarSign size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Custo Total M.O.</span>
+              {isAdmin && (
+                <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 print:border-zinc-300 print:bg-zinc-50/50">
+                  <div className="flex items-center gap-2 text-zinc-400 mb-1">
+                    <DollarSign size={14} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Custo Total M.O.</span>
+                  </div>
+                  <h3 className="text-lg font-black text-zinc-900">
+                    R$ {(Number(reportData?.summary?.total_labor_cost) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </h3>
                 </div>
-                <h3 className="text-lg font-black text-zinc-900">
-                  R$ {(Number(reportData?.summary?.total_labor_cost) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </h3>
-              </div>
+              )}
             </div>
 
             {/* COLLABORATORS SECTION */}
@@ -355,7 +357,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
               <div className="mb-10 print:break-after-page">
                 <div className="flex items-center gap-2 mb-4 border-b border-zinc-200 pb-2">
                   <Users size={18} className="text-zinc-800" />
-                  <h2 className="text-base font-black text-zinc-900 uppercase tracking-tight">Produtividade e Custos dos Colaboradores</h2>
+                  <h2 className="text-base font-black text-zinc-900 uppercase tracking-tight">Produtividade {isAdmin ? 'e Custos dos Colaboradores' : 'dos Colaboradores'}</h2>
                 </div>
 
                 {consolidatedCollaborators.length === 0 ? (
@@ -371,8 +373,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                             <th className="px-4 py-3 text-center">Pedidos / Etapas</th>
                             <th className="px-4 py-3 text-center">Peças Produzidas</th>
                             <th className="px-4 py-3 text-center">Tempo Total</th>
-                            <th className="px-4 py-3 text-right">Custo Total</th>
-                            <th className="px-4 py-3 text-right">Custo / Peça</th>
+                            {isAdmin && <th className="px-4 py-3 text-right">Custo Total</th>}
+                            {isAdmin && <th className="px-4 py-3 text-right">Custo / Peça</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-200">
@@ -382,12 +384,16 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                               <td className="px-4 py-3 text-center font-semibold text-zinc-700">{colab.ordersCount}</td>
                               <td className="px-4 py-3 text-center font-semibold text-zinc-700">{colab.piecesCount}</td>
                               <td className="px-4 py-3 text-center font-semibold text-zinc-700">{formatSeconds(colab.totalTimeSeconds)}</td>
-                              <td className="px-4 py-3 text-right font-semibold text-zinc-900">
-                                R$ {colab.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="px-4 py-3 text-right font-semibold text-zinc-900">
-                                R$ {colab.costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
+                              {isAdmin && (
+                                <td className="px-4 py-3 text-right font-semibold text-zinc-900">
+                                  R$ {colab.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </td>
+                              )}
+                              {isAdmin && (
+                                <td className="px-4 py-3 text-right font-semibold text-zinc-900">
+                                  R$ {colab.costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -403,9 +409,11 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                         >
                           <div className="flex justify-between items-start mb-3">
                             <h4 className="font-extrabold text-sm text-zinc-950">{colab.name}</h4>
-                            <span className="text-[10px] font-bold px-2 py-0.5 bg-zinc-100 border border-zinc-200 rounded text-zinc-600 print:bg-zinc-50 print:border-zinc-300">
-                              R$ {colab.costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / peça
-                            </span>
+                            {isAdmin && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 bg-zinc-100 border border-zinc-200 rounded text-zinc-600 print:bg-zinc-50 print:border-zinc-300">
+                                R$ {colab.costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / peça
+                              </span>
+                            )}
                           </div>
                           
                           <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-zinc-600">
@@ -421,10 +429,12 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                               <Clock size={12} className="text-zinc-400" />
                               <span>Tempo: <strong>{formatSeconds(colab.totalTimeSeconds)}</strong></span>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <DollarSign size={12} className="text-zinc-400" />
-                              <span>Total M.O.: <strong className="text-zinc-900">R$ {colab.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></span>
-                            </div>
+                            {isAdmin && (
+                              <div className="flex items-center gap-1.5">
+                                <DollarSign size={12} className="text-zinc-400" />
+                                <span>Total M.O.: <strong className="text-zinc-900">R$ {colab.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

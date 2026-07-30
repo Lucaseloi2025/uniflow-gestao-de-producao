@@ -606,7 +606,6 @@ export default function App() {
   const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
   const [expandedGoalStageId, setExpandedGoalStageId] = useState<number | null>(null);
   const [goalEditValues, setGoalEditValues] = useState<Record<string, string>>({}); // key: `${stageId}-${userId}`
-  const [goalsViewType, setGoalsViewType] = useState<'collaborator' | 'sector'>('collaborator');
   const [simOperadores, setSimOperadores] = useState<number>(0);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -5769,6 +5768,7 @@ export default function App() {
             reportData={reportData}
             operationalReportData={operationalReportData}
             goalsProductivityData={goalsProductivityData}
+            isAdmin={currentUser?.role === 'Admin'}
           />
         )}
       </AnimatePresence>
