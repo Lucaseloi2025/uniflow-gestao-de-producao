@@ -10,6 +10,14 @@
             "destination": "/index.html"
         }
     ],
+    "functions": {
+        "api/ping.ts": {
+            "maxDuration": 30
+        },
+        "api/index.ts": {
+            "maxDuration": 60
+        }
+    },
     "crons": [
         {
             "path": "/api/cron/cleanup-artworks",
