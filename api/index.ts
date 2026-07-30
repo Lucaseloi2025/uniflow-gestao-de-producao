@@ -2,10 +2,61 @@ import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import { calculateExecutionTimes } from "./lib/timerUtils";
-import { calculateWorkedDays, resolveGoal, getGoalStatus } from "./lib/goalsUtils";
 
 dotenv.config();
+
+// ── Inline: timerUtils ─────────────────────────────────────────────────────
+interface PauseRecord { id?: number; execution_id?: number; start_pause: string; end_pause?: string | null; duration_seconds?: number | null; }
+interface ExecutionRecord { id?: number; start_time: string; end_time?: string | null; status: 'Em andamento' | 'Pausado' | 'Finalizado'; total_time_seconds?: number; pauses?: PauseRecord[]; }
+interface CalculatedTimes { totalAccumulatedSeconds: number; currentSessionSeconds: number; isPaused: boolean; }
+
+function calculateExecutionTimes(execution: ExecutionRecord, pauses: PauseRecord[] = [], nowMs: number = Date.now()): CalculatedTimes {
+    if (!execution || !execution.start_time) return { totalAccumulatedSeconds: 0, currentSessionSeconds: 0, isPaused: false };
+    const startTimeMs = new Date(execution.start_time).getTime();
+    const allPauses = pauses && pauses.length > 0 ? pauses : (execution.pauses || []);
+    let completedPauseSeconds = 0; let openPause: PauseRecord | null = null; const completedEndPauseTimes: number[] = [];
+    for (const p of allPauses) {
+        if (p.duration_seconds !== null && p.duration_seconds !== undefined && p.end_pause) { completedPauseSeconds += Math.max(0, p.duration_seconds); completedEndPauseTimes.push(new Date(p.end_pause).getTime()); }
+        else if (p.end_pause === null || p.end_pause === undefined) { openPause = p; }
+        else if (p.start_pause && p.end_pause) { const dur = Math.max(0, Math.floor((new Date(p.end_pause).getTime() - new Date(p.start_pause).getTime()) / 1000)); completedPauseSeconds += dur; completedEndPauseTimes.push(new Date(p.end_pause).getTime()); }
+    }
+    const isPaused = execution.status === 'Pausado' || openPause !== null;
+    if (execution.status === 'Finalizado') { let ft = execution.total_time_seconds; if (ft === undefined || ft === null) { const endMs = execution.end_time ? new Date(execution.end_time).getTime() : nowMs; ft = Math.max(0, Math.floor((endMs - startTimeMs) / 1000) - completedPauseSeconds); } return { totalAccumulatedSeconds: Math.max(0, Math.floor(ft)), currentSessionSeconds: 0, isPaused: false }; }
+    if (isPaused) { const psMs = openPause && openPause.start_pause ? new Date(openPause.start_pause).getTime() : nowMs; const gross = Math.max(0, Math.floor((psMs - startTimeMs) / 1000)); return { totalAccumulatedSeconds: Math.max(0, gross - completedPauseSeconds), currentSessionSeconds: 0, isPaused: true }; }
+    const grossElapsed = Math.max(0, Math.floor((nowMs - startTimeMs) / 1000));
+    const totalAccumulatedSeconds = Math.max(0, grossElapsed - completedPauseSeconds);
+    let currentSessionStartMs = startTimeMs;
+    if (completedEndPauseTimes.length > 0) { const latestEndPauseMs = Math.max(...completedEndPauseTimes); if (latestEndPauseMs > startTimeMs) currentSessionStartMs = latestEndPauseMs; }
+    return { totalAccumulatedSeconds, currentSessionSeconds: Math.max(0, Math.floor((nowMs - currentSessionStartMs) / 1000)), isPaused: false };
+}
+
+// ── Inline: goalsUtils ─────────────────────────────────────────────────────
+interface ExecutionActivity { user_id: number; stage_id: number; end_time: string; quantity: number; }
+interface GoalConfig { stage_id: number; user_id?: number | null; meta_diaria: number | null; }
+const GOAL_THRESHOLDS = { GREEN: 1.0, YELLOW: 0.7 };
+
+function getGoalStatus(percentage: number | null): 'verde' | 'amarelo' | 'vermelho' | 'sem_meta' {
+    if (percentage === null || percentage === undefined || isNaN(percentage)) return 'sem_meta';
+    if (percentage >= GOAL_THRESHOLDS.GREEN) return 'verde';
+    if (percentage >= GOAL_THRESHOLDS.YELLOW) return 'amarelo';
+    return 'vermelho';
+}
+
+function calculateWorkedDays(activities: ExecutionActivity[], userId: number, startDateStr: string, endDateStr: string): number {
+    const start = new Date(startDateStr); const end = new Date(endDateStr);
+    const userActivities = activities.filter(act => { if (act.user_id !== userId) return false; const d = new Date(act.end_time); return d >= start && d <= end; });
+    if (userActivities.length === 0) return 1;
+    const activeDates = new Set<string>();
+    userActivities.forEach(act => { const d = new Date(act.end_time); activeDates.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); });
+    return activeDates.size;
+}
+
+function resolveGoal(stageGoalDefault: number | null | undefined, collaboratorOverrides: GoalConfig[], userId: number, stageId: number): number | null {
+    const override = collaboratorOverrides.find(g => g.user_id === userId && g.stage_id === stageId);
+    if (override && override.meta_diaria !== null && override.meta_diaria !== undefined) return override.meta_diaria;
+    return stageGoalDefault !== undefined ? stageGoalDefault : null;
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 const app = express();
 app.use(express.json());
