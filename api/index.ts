@@ -3,6 +3,7 @@ import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { calculateExecutionTimes } from "../src/lib/timerUtils";
+import { calculateWorkedDays, resolveGoal, getGoalStatus } from "../src/lib/goalsUtils";
 
 dotenv.config();
 
@@ -724,7 +725,7 @@ app.get("/api/stages", async (_req, res) => {
 });
 
 app.post("/api/stages", async (req, res) => {
-    const { name, average_time_seconds, ideal_time, calculation_type } = req.body;
+    const { name, average_time_seconds, ideal_time, calculation_type, meta_diaria } = req.body;
     const { data: maxData } = await supabase
         .from("stages")
         .select("sort_order")
@@ -740,7 +741,8 @@ app.post("/api/stages", async (req, res) => {
             sort_order, 
             average_time_seconds: Number(average_time_seconds) || 0,
             ideal_time: Number(ideal_time) || Number(average_time_seconds) || 0,
-            calculation_type: calculation_type || 'por_peca'
+            calculation_type: calculation_type || 'por_peca',
+            meta_diaria: meta_diaria !== undefined && meta_diaria !== null ? Number(meta_diaria) : null
         })
         .select()
         .single();
@@ -749,7 +751,7 @@ app.post("/api/stages", async (req, res) => {
 });
 
 app.patch("/api/stages/:id", async (req, res) => {
-    const { name, active, sort_order, average_time_seconds, ideal_time, calculation_type } = req.body;
+    const { name, active, sort_order, average_time_seconds, ideal_time, calculation_type, meta_diaria } = req.body;
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (active !== undefined) updates.active = active;
@@ -757,6 +759,7 @@ app.patch("/api/stages/:id", async (req, res) => {
     if (average_time_seconds !== undefined) updates.average_time_seconds = Number(average_time_seconds);
     if (ideal_time !== undefined) updates.ideal_time = Number(ideal_time);
     if (calculation_type !== undefined) updates.calculation_type = calculation_type;
+    if (meta_diaria !== undefined) updates.meta_diaria = meta_diaria !== null ? Number(meta_diaria) : null;
 
     const { error } = await supabase
         .from("stages")
@@ -770,6 +773,45 @@ app.delete("/api/stages/:id", async (req, res) => {
     const { error } = await supabase
         .from("stages")
         .update({ active: 0 })
+        .eq("id", Number(req.params.id));
+    if (checkError(error, res)) return;
+    return res.json({ success: true });
+});
+
+// ── Collaborator Stage Goals Overrides ─────────────────────────────────────
+app.get("/api/collaborator-goals", async (_req, res) => {
+    const { data, error } = await supabase
+        .from("collaborator_stage_goals")
+        .select("*, users(name), stages(name)");
+    if (checkError(error, res)) return;
+    const formatted = (data || []).map((item: any) => ({
+        ...item,
+        user_name: item.users?.name,
+        stage_name: item.stages?.name
+    }));
+    return res.json(formatted);
+});
+
+app.post("/api/collaborator-goals", async (req, res) => {
+    const { user_id, stage_id, meta_diaria } = req.body;
+    const { data, error } = await supabase
+        .from("collaborator_stage_goals")
+        .upsert({
+            user_id: Number(user_id),
+            stage_id: Number(stage_id),
+            meta_diaria: Number(meta_diaria),
+            updated_at: new Date().toISOString()
+        }, { onConflict: "user_id,stage_id" })
+        .select()
+        .single();
+    if (checkError(error, res)) return;
+    return res.json(data);
+});
+
+app.delete("/api/collaborator-goals/:id", async (req, res) => {
+    const { error } = await supabase
+        .from("collaborator_stage_goals")
+        .delete()
         .eq("id", Number(req.params.id));
     if (checkError(error, res)) return;
     return res.json({ success: true });
@@ -1788,6 +1830,10 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
     // The query start date is the earliest of the three boundaries
     const queryStartDate = new Date(Math.min(todayStartUTC.getTime(), weekStartUTC.getTime(), monthStartUTC.getTime()));
 
+    const todayMs = todayStartUTC.getTime();
+    const weekMs = weekStartUTC.getTime();
+    const monthMs = monthStartUTC.getTime();
+
     try {
         // Fetch completed stage executions since queryStartDate
         const { data: executions, error } = await supabaseAdmin
@@ -1799,7 +1845,7 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
                 user_id,
                 stage_id,
                 users ( name ),
-                stages ( name ),
+                stages ( name, calculation_type, meta_diaria ),
                 orders ( quantity )
             `)
             .eq("status", "Finalizado")
@@ -1807,61 +1853,177 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
 
         if (error) throw error;
 
-        // Fetch all active users and active stages to populate complete lists with zeros
+        // Fetch all active users and active stages to populate complete lists
         const [usersRes, stagesRes] = await Promise.all([
             supabaseAdmin.from("users").select("id, name").eq("active", true),
-            supabaseAdmin.from("stages").select("id, name").eq("active", 1)
+            supabaseAdmin.from("stages").select("id, name, calculation_type, meta_diaria").eq("active", 1)
         ]);
 
-        const colabMap: Record<number, { name: string, today: number, week: number, month: number }> = {};
-        (usersRes.data || []).forEach(u => {
-            colabMap[u.id] = { name: u.name, today: 0, week: 0, month: 0 };
+        let overrides: any[] = [];
+        try {
+            const { data: overridesData } = await supabaseAdmin.from("collaborator_stage_goals").select("*");
+            if (overridesData) overrides = overridesData;
+        } catch (dbErr) {
+            console.warn("Table collaborator_stage_goals does not exist yet, using empty array fallback.", dbErr);
+        }
+
+        const activeUsers = usersRes.data || [];
+        const activeStages = stagesRes.data || [];
+
+        // 1. Pre-calculate worked days (unique active dates) for each user in week and month periods
+        const userWorkedDaysMap: Record<number, { week: number, month: number }> = {};
+        activeUsers.forEach(u => {
+            const userExecs = (executions || []).filter(e => e.user_id === u.id);
+            
+            // Week worked days
+            const weekDates = new Set<string>();
+            userExecs.forEach(e => {
+                if (!e.end_time) return;
+                const t = new Date(e.end_time).getTime();
+                if (t >= weekMs) {
+                    const d = new Date(e.end_time);
+                    weekDates.add(`${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`);
+                }
+            });
+            const weekDays = weekDates.size > 0 ? weekDates.size : 1;
+
+            // Month worked days
+            const monthDates = new Set<string>();
+            userExecs.forEach(e => {
+                if (!e.end_time) return;
+                const t = new Date(e.end_time).getTime();
+                if (t >= monthMs) {
+                    const d = new Date(e.end_time);
+                    monthDates.add(`${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`);
+                }
+            });
+            const monthDays = monthDates.size > 0 ? monthDates.size : 1;
+
+            userWorkedDaysMap[u.id] = { week: weekDays, month: monthDays };
         });
 
-        const sectorMap: Record<number, { name: string, today: number, week: number, month: number }> = {};
-        (stagesRes.data || []).forEach(s => {
-            sectorMap[s.id] = { name: s.name, today: 0, week: 0, month: 0 };
+        // Helper to compute stats for a given slice of executions
+        const computePeriodStats = (
+            execs: any[],
+            dailyGoal: number | null,
+            workedDays: number
+        ) => {
+            const real = execs.reduce((sum, e) => sum + (Number(e.orders?.quantity) || 0), 0);
+            if (dailyGoal === null || dailyGoal === undefined) {
+                return { real, target: null, pct: null, status: 'sem_meta' };
+            }
+            const target = dailyGoal * workedDays;
+            const pct = target > 0 ? Math.round((real / target) * 100) : 0;
+            const status = getGoalStatus(target > 0 ? (real / target) : null);
+            return { real, target, pct, status };
+        };
+
+        // 2. Build detailed collaborator/sector grid rows
+        const colabRows: any[] = [];
+        const sectorAggregateMap: Record<number, { 
+            stage_id: number;
+            stage_name: string;
+            calculation_type: string;
+            meta_diaria: number | null;
+            today: { real: number, target: number | null },
+            week: { real: number, target: number | null },
+            month: { real: number, target: number | null }
+        }> = {};
+
+        activeStages.forEach(stage => {
+            sectorAggregateMap[stage.id] = {
+                stage_id: stage.id,
+                stage_name: stage.name,
+                calculation_type: stage.calculation_type,
+                meta_diaria: stage.meta_diaria || null,
+                today: { real: 0, target: null },
+                week: { real: 0, target: null },
+                month: { real: 0, target: null }
+            };
         });
 
-        const todayMs = todayStartUTC.getTime();
-        const weekMs = weekStartUTC.getTime();
-        const monthMs = monthStartUTC.getTime();
+        activeUsers.forEach(user => {
+            activeStages.forEach(stage => {
+                const userStageExecs = (executions || []).filter(e => e.user_id === user.id && e.stage_id === stage.id);
+                const hasOverride = overrides.some(o => o.user_id === user.id && o.stage_id === stage.id);
+                
+                // Only show this row if there is active production or an override is defined
+                if (userStageExecs.length === 0 && !hasOverride) {
+                    return;
+                }
 
-        (executions || []).forEach((exec: any) => {
-            if (!exec.end_time) return;
-            const endTimeMs = new Date(exec.end_time).getTime();
-            const quantity = Number(exec.orders?.quantity) || 0;
-            const userId = exec.user_id;
-            const stageId = exec.stage_id;
-            const userName = exec.users?.name || `Colaborador ${userId}`;
-            const stageName = exec.stages?.name || `Setor ${stageId}`;
+                const dailyGoal = resolveGoal(stage.meta_diaria, overrides, user.id, stage.id);
+                const userWorkedDays = userWorkedDaysMap[user.id] || { week: 1, month: 1 };
 
-            // Make sure the entry exists in maps
-            if (!colabMap[userId]) {
-                colabMap[userId] = { name: userName, today: 0, week: 0, month: 0 };
-            }
-            if (!sectorMap[stageId]) {
-                sectorMap[stageId] = { name: stageName, today: 0, week: 0, month: 0 };
-            }
+                // Today
+                const todayExecs = userStageExecs.filter(e => new Date(e.end_time).getTime() >= todayMs);
+                const todayStats = computePeriodStats(todayExecs, dailyGoal, 1);
 
-            // Accumulate quantity into periods
-            if (endTimeMs >= todayMs) {
-                colabMap[userId].today += quantity;
-                sectorMap[stageId].today += quantity;
-            }
-            if (endTimeMs >= weekMs) {
-                colabMap[userId].week += quantity;
-                sectorMap[stageId].week += quantity;
-            }
-            if (endTimeMs >= monthMs) {
-                colabMap[userId].month += quantity;
-                sectorMap[stageId].month += quantity;
-            }
+                // Week
+                const weekExecs = userStageExecs.filter(e => new Date(e.end_time).getTime() >= weekMs);
+                const weekStats = computePeriodStats(weekExecs, dailyGoal, userWorkedDays.week);
+
+                // Month
+                const monthExecs = userStageExecs.filter(e => new Date(e.end_time).getTime() >= monthMs);
+                const monthStats = computePeriodStats(monthExecs, dailyGoal, userWorkedDays.month);
+
+                colabRows.push({
+                    user_id: user.id,
+                    user_name: user.name,
+                    stage_id: stage.id,
+                    stage_name: stage.name,
+                    calculation_type: stage.calculation_type,
+                    meta_diaria: dailyGoal,
+                    is_custom: hasOverride,
+                    today: todayStats,
+                    week: weekStats,
+                    month: monthStats
+                });
+
+                // Aggregate into Sector
+                const agg = sectorAggregateMap[stage.id];
+                if (agg) {
+                    agg.today.real += todayStats.real;
+                    if (todayStats.target !== null) {
+                        agg.today.target = (agg.today.target || 0) + todayStats.target;
+                    }
+                    agg.week.real += weekStats.real;
+                    if (weekStats.target !== null) {
+                        agg.week.target = (agg.week.target || 0) + weekStats.target;
+                    }
+                    agg.month.real += monthStats.real;
+                    if (monthStats.target !== null) {
+                        agg.month.target = (agg.month.target || 0) + monthStats.target;
+                    }
+                }
+            });
+        });
+
+        // 3. Format sector aggregate results
+        const sectorRows = Object.values(sectorAggregateMap).map((agg: any) => {
+            const todayPct = agg.today.target !== null && agg.today.target > 0 ? Math.round((agg.today.real / agg.today.target) * 100) : null;
+            const todayStatus = agg.today.target !== null && agg.today.target > 0 ? getGoalStatus(agg.today.real / agg.today.target) : 'sem_meta';
+
+            const weekPct = agg.week.target !== null && agg.week.target > 0 ? Math.round((agg.week.real / agg.week.target) * 100) : null;
+            const weekStatus = agg.week.target !== null && agg.week.target > 0 ? getGoalStatus(agg.week.real / agg.week.target) : 'sem_meta';
+
+            const monthPct = agg.month.target !== null && agg.month.target > 0 ? Math.round((agg.month.real / agg.month.target) * 100) : null;
+            const monthStatus = agg.month.target !== null && agg.month.target > 0 ? getGoalStatus(agg.month.real / agg.month.target) : 'sem_meta';
+
+            return {
+                stage_id: agg.stage_id,
+                stage_name: agg.stage_name,
+                calculation_type: agg.calculation_type,
+                meta_diaria: agg.meta_diaria,
+                today: { real: agg.today.real, target: agg.today.target, pct: todayPct, status: todayStatus },
+                week: { real: agg.week.real, target: agg.week.target, pct: weekPct, status: weekStatus },
+                month: { real: agg.month.real, target: agg.month.target, pct: monthPct, status: monthStatus }
+            };
         });
 
         return res.json({
-            collaborators: Object.values(colabMap),
-            sectors: Object.values(sectorMap)
+            collaborators: colabRows,
+            sectors: sectorRows
         });
 
     } catch (err: any) {

@@ -575,6 +575,8 @@ export default function App() {
   const [profileReport, setProfileReport] = useState<any[]>([]);
   const [operationalReportData, setOperationalReportData] = useState<OperationalReportData | null>(null);
   const [goalsProductivityData, setGoalsProductivityData] = useState<GoalsProductivityResponse | null>(null);
+  const [collaboratorGoals, setCollaboratorGoals] = useState<CollaboratorStageGoal[]>([]);
+  const [goalsViewType, setGoalsViewType] = useState<'collaborator' | 'sector'>('collaborator');
   const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
@@ -592,6 +594,8 @@ export default function App() {
   const [newStageName, setNewStageName] = useState('');
   const [newStageTime, setNewStageTime] = useState<number>(0);
   const [newStageCalculationType, setNewStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
+  const [newStageMetaDiaria, setNewStageMetaDiaria] = useState<number | ''>('');
+  const [editingStageMetaDiaria, setEditingStageMetaDiaria] = useState<number | ''>('');
   const [isUploadingArt, setIsUploadingArt] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -822,10 +826,16 @@ export default function App() {
     if (stagesData) setStages(stagesData);
     if (statsData) setStats(statsData);
     if (templatesData) setTemplates(templatesData);
+    fetchCollaboratorGoals();
 
     // Always refresh forecast when data changes
     const forecastResult = await safeFetch('/api/orders/delivery-forecast');
     if (forecastResult) setForecastData(forecastResult);
+  };
+
+  const fetchCollaboratorGoals = async () => {
+    const data = await safeFetch('/api/collaborator-goals');
+    if (data) setCollaboratorGoals(data);
   };
 
   const fetchUsers = async () => {
@@ -3874,7 +3884,7 @@ export default function App() {
                   title="Tempo ideal da etapa em minutos por peça"
                   className="p-2 border border-zinc-200 rounded-lg text-sm w-36 focus:outline-none focus:border-zinc-400"
                 />
-                <select
+                 <select
                   value={newStageCalculationType}
                   onChange={(e) => setNewStageCalculationType(e.target.value as any)}
                   className="p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
@@ -3883,6 +3893,14 @@ export default function App() {
                   <option value="por_peca">👕 Por peça</option>
                   <option value="por_lote">📦 Por lote</option>
                 </select>
+                <input
+                  type="number"
+                  value={newStageMetaDiaria}
+                  onChange={(e) => setNewStageMetaDiaria(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Meta Diária"
+                  title="Meta de produção diária base para esta etapa"
+                  className="p-2 border border-zinc-200 rounded-lg text-sm w-28 focus:outline-none focus:border-zinc-400"
+                />
                 <button
                   onClick={async () => {
                     if (!newStageName) return;
@@ -3895,12 +3913,14 @@ export default function App() {
                       body: JSON.stringify({ 
                         name: newStageName, 
                         ideal_time: newStageTime * 60,
-                        calculation_type: newStageCalculationType
+                        calculation_type: newStageCalculationType,
+                        meta_diaria: newStageMetaDiaria !== '' ? newStageMetaDiaria : null
                       })
                     });
                     setNewStageName('');
                     setNewStageTime(0);
                     setNewStageCalculationType('por_peca');
+                    setNewStageMetaDiaria('');
                     fetchData();
                   }}
                   className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"

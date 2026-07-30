@@ -89,6 +89,18 @@ export interface Stage {
   real_average_time?: number;
   execution_count?: number;
   calculation_type: 'por_pedido' | 'por_peca' | 'por_lote';
+  meta_diaria?: number | null;
+}
+
+export interface CollaboratorStageGoal {
+  id?: number;
+  user_id: number;
+  stage_id: number;
+  meta_diaria: number;
+  created_at?: string;
+  updated_at?: string;
+  user_name?: string;
+  stage_name?: string;
 }
 
 export interface StageExecution {
