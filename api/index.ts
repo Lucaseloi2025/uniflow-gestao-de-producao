@@ -2,8 +2,8 @@ import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import { calculateExecutionTimes } from "../src/lib/timerUtils";
-import { calculateWorkedDays, resolveGoal, getGoalStatus } from "../src/lib/goalsUtils";
+import { calculateExecutionTimes } from "./lib/timerUtils";
+import { calculateWorkedDays, resolveGoal, getGoalStatus } from "./lib/goalsUtils";
 
 dotenv.config();
 
