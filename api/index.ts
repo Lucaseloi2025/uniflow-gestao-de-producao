@@ -18,6 +18,16 @@ if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith("http")) {
     console.warn("⚠️ SUPABASE_URL ou SUPABASE_ANON_KEY não estão definidos. Configure as Environment Variables no Vercel.");
 }
 
+// Middleware para verificar se o Supabase está configurado corretamente
+app.use((req, res, next) => {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith("http")) {
+        return res.status(500).json({ 
+            error: "As variáveis SUPABASE_URL e SUPABASE_ANON_KEY não estão configuradas no Vercel." 
+        });
+    }
+    next();
+});
+
 const supabase = createClient(
     supabaseUrl || "https://placeholder.supabase.co",
     supabaseAnonKey || "placeholder"
