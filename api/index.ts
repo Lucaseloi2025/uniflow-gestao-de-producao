@@ -10,7 +10,8 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-const supabaseUrl = process.env.SUPABASE_URL?.trim() || "";
+const rawSupabaseUrl = process.env.SUPABASE_URL?.trim() || "";
+const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "");
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim() || "";
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
 
