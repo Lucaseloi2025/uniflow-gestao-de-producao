@@ -604,6 +604,9 @@ export default function App() {
   const [editingStageName, setEditingStageName] = useState('');
   const [editingStageTime, setEditingStageTime] = useState<number>(0);
   const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
+  const [expandedGoalStageId, setExpandedGoalStageId] = useState<number | null>(null);
+  const [goalEditValues, setGoalEditValues] = useState<Record<string, string>>({}); // key: `${stageId}-${userId}`
+  const [goalsViewType, setGoalsViewType] = useState<'collaborator' | 'sector'>('collaborator');
   const [simOperadores, setSimOperadores] = useState<number>(0);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1247,6 +1250,10 @@ export default function App() {
     fetchData();
     if (currentUser?.role === 'Admin') {
       fetchConfig();
+    }
+    if (activeTab === 'settings' && currentUser?.role === 'Admin') {
+      fetchUsers();
+      fetchCollaboratorGoals();
     }
   }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, activeTab]);
 
@@ -2847,206 +2854,123 @@ export default function App() {
               </Card>
             )}
 
-            {/* Painel de Metas & Produtividade (Peças por Período) */}
-            {goalsProductivityData && (
-              <Card className="p-8 border-zinc-200 shadow-lg bg-white relative overflow-hidden">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                  <div>
-                    <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800 uppercase tracking-wider">
-                      <Target size={20} className="text-zinc-600" />
-                      Painel de Metas e Produtividade (Peças Processadas)
-                    </h3>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Acompanhamento em tempo real das peças produzidas por setor e colaborador nos períodos (Dia, Semana, Mês).
-                    </p>
-                  </div>
-                  
-                  {/* Totais Gerais do Período */}
-                  <div className="flex flex-wrap items-center gap-3 bg-zinc-50 p-2 rounded-xl border border-zinc-100">
-                    <div className="px-3 py-1 bg-white rounded-lg border border-zinc-200/50 shadow-sm text-center">
-                      <p className="text-[9px] text-zinc-400 font-bold uppercase">Hoje</p>
-                      <p className="text-sm font-black text-emerald-600">
-                        {goalsProductivityData.collaborators.reduce((sum, c) => sum + c.today, 0)}
-                      </p>
-                    </div>
-                    <div className="px-3 py-1 bg-white rounded-lg border border-zinc-200/50 shadow-sm text-center">
-                      <p className="text-[9px] text-zinc-400 font-bold uppercase">Esta Semana</p>
-                      <p className="text-sm font-black text-blue-600">
-                        {goalsProductivityData.collaborators.reduce((sum, c) => sum + c.week, 0)}
-                      </p>
-                    </div>
-                    <div className="px-3 py-1 bg-white rounded-lg border border-zinc-200/50 shadow-sm text-center">
-                      <p className="text-[9px] text-zinc-400 font-bold uppercase">Este Mês</p>
-                      <p className="text-sm font-black text-indigo-600">
-                        {goalsProductivityData.collaborators.reduce((sum, c) => sum + c.month, 0)}
-                      </p>
-                    </div>
-                  </div>
+            {/* Painel de Metas & Produtividade */}
+            {goalsProductivityData && (() => {
+              const statusBadge = (s: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta', pct: number | null) => {
+                if (s === 'sem_meta') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500">— Sem meta</span>;
+                const label = pct !== null ? `${Math.round(pct * 100)}%` : '—';
+                if (s === 'verde') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">✓ {label}</span>;
+                if (s === 'amarelo') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {label}</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">✗ {label}</span>;
+              };
+              const periodCell = (p: { real: number; target: number | null; pct: number | null; status: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta' }) => (
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-xs font-black font-mono text-zinc-800">{p.real}</span>
+                  {p.target !== null && <span className="text-[9px] text-zinc-400 font-mono">/ {p.target}</span>}
                 </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Colaboradores Table */}
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-700 mb-3 flex items-center gap-1.5 uppercase tracking-wide">
-                      <Users size={16} className="text-zinc-400" />
-                      Produção por Colaborador
-                    </h4>
+              );
+              const unitLabel = (t: string) => t === 'por_pedido' ? 'pedidos' : 'peças';
+              return (
+                <Card className="p-8 border-zinc-200 shadow-lg bg-white relative overflow-hidden">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800 uppercase tracking-wider">
+                        <Target size={20} className="text-zinc-600" />
+                        Painel de Metas e Produtividade
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1">Desempenho por colaborador e setor — ordenado do pior para o melhor % atingido.</p>
+                    </div>
+                    <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-lg self-start">
+                      <button onClick={() => setGoalsViewType('collaborator')} className={cn('px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5', goalsViewType === 'collaborator' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500 hover:text-zinc-700')}>
+                        <Users size={13} /> Por Colaborador
+                      </button>
+                      <button onClick={() => setGoalsViewType('sector')} className={cn('px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5', goalsViewType === 'sector' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500 hover:text-zinc-700')}>
+                        <Layers size={13} /> Por Setor
+                      </button>
+                    </div>
+                  </div>
+                  {goalsViewType === 'collaborator' ? (
                     <div className="overflow-x-auto border border-zinc-100 rounded-xl">
-                      <table className="w-full text-left">
+                      <table className="w-full text-left text-sm">
                         <thead>
                           <tr className="bg-zinc-50 border-b border-zinc-100">
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500">Colaborador</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Hoje</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Semana</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Mês</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-right">% Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Colaborador</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Setor</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Unidade</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Meta/dia</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Hoje</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Semana</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status Mês</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {goalsProductivityData.collaborators
-                            .sort((a, b) => b.month - a.month)
-                            .map((colab, i) => {
-                              const totalMonth = goalsProductivityData.collaborators.reduce((sum, c) => sum + c.month, 0) || 1;
-                              const pct = Math.round((colab.month / totalMonth) * 100);
-                              const isTop = i === 0 && colab.month > 0;
-                              
-                              return (
-                                <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
-                                  <td className="px-4 py-3 text-sm font-bold text-zinc-800 flex items-center gap-1.5">
-                                    {isTop && <span title="Destaque do Mês">👑</span>}
-                                    {colab.name}
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
-                                      colab.today > 0 ? "bg-emerald-50 text-emerald-700" : "text-zinc-400"
-                                    )}>
-                                      {colab.today}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
-                                      colab.week > 0 ? "bg-blue-50 text-blue-700" : "text-zinc-400"
-                                    )}>
-                                      {colab.week}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
-                                      colab.month > 0 ? "bg-indigo-50 text-indigo-700" : "text-zinc-400"
-                                    )}>
-                                      {colab.month}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <span className="text-xs font-mono font-bold text-zinc-600">{pct}%</span>
-                                      <div className="w-12 h-1.5 bg-zinc-100 rounded-full overflow-hidden hidden sm:block">
-                                        <div 
-                                          className="h-full bg-indigo-500 rounded-full" 
-                                          style={{ width: `${pct}%` }}
-                                        />
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          {goalsProductivityData.collaborators.length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="px-4 py-8 text-center text-zinc-400 italic text-xs">
-                                Sem dados de colaboradores no período.
+                          {[...(goalsProductivityData.collaborators || [])].sort((a, b) => {
+                            const pa = a.month.pct ?? (a.month.status === 'sem_meta' ? 2 : -1);
+                            const pb = b.month.pct ?? (b.month.status === 'sem_meta' ? 2 : -1);
+                            return pa - pb;
+                          }).map((row, i) => (
+                            <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                              <td className="px-4 py-3 font-bold text-zinc-800 whitespace-nowrap">
+                                {row.month.status === 'verde' && (row.month.pct ?? 0) >= 1 && <span title="Meta atingida">🏆 </span>}
+                                {row.user_name}
+                                {row.is_custom && <span className="ml-1 text-[9px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full border border-violet-200">personalizada</span>}
                               </td>
+                              <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{row.stage_name}</td>
+                              <td className="px-4 py-3 text-zinc-500 whitespace-nowrap text-[11px]">{unitLabel(row.calculation_type)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">—</span>}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.today)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.week)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.month)}</td>
+                              <td className="px-4 py-3 text-center">{statusBadge(row.month.status, row.month.pct)}</td>
                             </tr>
+                          ))}
+                          {(goalsProductivityData.collaborators || []).length === 0 && (
+                            <tr><td colSpan={8} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de colaborador no período.</td></tr>
                           )}
                         </tbody>
                       </table>
                     </div>
-                  </div>
-
-                  {/* Sectors Table */}
-                  <div>
-                    <h4 className="text-sm font-bold text-zinc-700 mb-3 flex items-center gap-1.5 uppercase tracking-wide">
-                      <Layers size={16} className="text-zinc-400" />
-                      Produção por Setor (Etapa)
-                    </h4>
+                  ) : (
                     <div className="overflow-x-auto border border-zinc-100 rounded-xl">
-                      <table className="w-full text-left">
+                      <table className="w-full text-left text-sm">
                         <thead>
                           <tr className="bg-zinc-50 border-b border-zinc-100">
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500">Setor / Etapa</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Hoje</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Semana</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center">Mês</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-right">% Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Setor / Etapa</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Unidade</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Meta/dia</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Hoje</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Semana</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status Mês</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {goalsProductivityData.sectors
-                            .sort((a, b) => b.month - a.month)
-                            .map((sector, i) => {
-                              const totalMonth = goalsProductivityData.sectors.reduce((sum, s) => sum + s.month, 0) || 1;
-                              const pct = Math.round((sector.month / totalMonth) * 100);
-                              
-                              return (
-                                <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
-                                  <td className="px-4 py-3 text-sm font-bold text-zinc-800">
-                                    {sector.name}
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
-                                      sector.today > 0 ? "bg-emerald-50 text-emerald-700" : "text-zinc-400"
-                                    )}>
-                                      {sector.today}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
-                                      sector.week > 0 ? "bg-blue-50 text-blue-700" : "text-zinc-400"
-                                    )}>
-                                      {sector.week}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <span className={cn(
-                                      "inline-block px-2 py-0.5 rounded text-xs font-black font-mono",
-                                      sector.month > 0 ? "bg-indigo-50 text-indigo-700" : "text-zinc-400"
-                                    )}>
-                                      {sector.month}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <span className="text-xs font-mono font-bold text-zinc-600">{pct}%</span>
-                                      <div className="w-12 h-1.5 bg-zinc-100 rounded-full overflow-hidden hidden sm:block">
-                                        <div 
-                                          className="h-full bg-indigo-500 rounded-full" 
-                                          style={{ width: `${pct}%` }}
-                                        />
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          {goalsProductivityData.sectors.length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="px-4 py-8 text-center text-zinc-400 italic text-xs">
-                                Sem dados de setores no período.
-                              </td>
+                          {[...(goalsProductivityData.sectors || [])].sort((a, b) => {
+                            const pa = a.month.pct ?? (a.month.status === 'sem_meta' ? 2 : -1);
+                            const pb = b.month.pct ?? (b.month.status === 'sem_meta' ? 2 : -1);
+                            return pa - pb;
+                          }).map((row, i) => (
+                            <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                              <td className="px-4 py-3 font-bold text-zinc-800 whitespace-nowrap">{row.stage_name}</td>
+                              <td className="px-4 py-3 text-zinc-500 whitespace-nowrap text-[11px]">{unitLabel(row.calculation_type)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">—</span>}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.today)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.week)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.month)}</td>
+                              <td className="px-4 py-3 text-center">{statusBadge(row.month.status, row.month.pct)}</td>
                             </tr>
+                          ))}
+                          {(goalsProductivityData.sectors || []).length === 0 && (
+                            <tr><td colSpan={7} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de setores no período.</td></tr>
                           )}
                         </tbody>
                       </table>
                     </div>
-                  </div>
-                </div>
-              </Card>
-            )}
+                  )}
+                </Card>
+              );
+            })()}
 
             {/* Drill-Down Operacional */}
             {
@@ -3965,6 +3889,14 @@ export default function App() {
                             <option value="por_peca">👕 Por peça</option>
                             <option value="por_lote">📦 Por lote</option>
                           </select>
+                          <input
+                            type="number"
+                            value={editingStageMetaDiaria}
+                            onChange={(e) => setEditingStageMetaDiaria(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="Meta Diária"
+                            title="Meta de produção diária base para esta etapa"
+                            className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
+                          />
                           <button
                             onClick={async () => {
                               if (editingStageName) {
@@ -3977,7 +3909,8 @@ export default function App() {
                                   body: JSON.stringify({ 
                                     name: editingStageName, 
                                     ideal_time: editingStageTime * 60,
-                                    calculation_type: editingStageCalculationType
+                                    calculation_type: editingStageCalculationType,
+                                    meta_diaria: editingStageMetaDiaria !== '' ? editingStageMetaDiaria : null
                                   })
                                 });
                                 fetchData();
@@ -4012,6 +3945,11 @@ export default function App() {
                                  Real: {formatSeconds(stage.real_average_time)} ({stage.execution_count} rec)
                                </span>
                             ) : null}
+                            {stage.meta_diaria && stage.meta_diaria > 0 ? (
+                              <span className="text-[10px] text-violet-600 font-mono bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100">
+                                Meta: {stage.meta_diaria}/{stage.calculation_type === 'por_pedido' ? 'ped' : 'pc'}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       )}
@@ -4042,6 +3980,7 @@ export default function App() {
                             setEditingStageName(stage.name);
                             setEditingStageTime(Math.round((stage.ideal_time || stage.average_time_seconds || 0) / 60));
                             setEditingStageCalculationType(stage.calculation_type || 'por_peca');
+                            setEditingStageMetaDiaria(stage.meta_diaria ?? '');
                           }}
                           className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
                         >
@@ -4066,6 +4005,90 @@ export default function App() {
                   </div>
                 );
               })}
+              </div>
+
+              {/* Metas Individuais por Colaborador */}
+              <div className="mt-8 border-t border-zinc-100 pt-6">
+                <h4 className="text-sm font-bold text-zinc-700 mb-4 flex items-center gap-2">
+                  <Target size={16} className="text-zinc-500" />
+                  Metas Individuais por Colaborador (Overrides)
+                </h4>
+                <p className="text-xs text-zinc-500 mb-4">Configure metas personalizadas por colaborador que sobrescrevem a meta padrão do setor.</p>
+                <div className="space-y-2">
+                  {stages.map(stage => (
+                    <div key={stage.id} className="border border-zinc-100 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => {
+                          setExpandedGoalStageId(expandedGoalStageId === stage.id ? null : stage.id);
+                          if (expandedGoalStageId !== stage.id) fetchCollaboratorGoals();
+                        }}
+                        className="w-full flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100 transition-colors text-left"
+                      >
+                        <span className="text-sm font-medium text-zinc-700 flex items-center gap-2">
+                          {stage.name}
+                          <span className="text-[10px] text-zinc-400 font-mono">
+                            Meta padrão: {stage.meta_diaria ?? '—'} {stage.calculation_type === 'por_pedido' ? 'pedidos' : 'peças'}/dia
+                          </span>
+                        </span>
+                        <ChevronRight size={14} className={cn('text-zinc-400 transition-transform', expandedGoalStageId === stage.id && 'rotate-90')} />
+                      </button>
+                      {expandedGoalStageId === stage.id && (
+                        <div className="p-4 space-y-2">
+                          {users.filter(u => u.active).map(user => {
+                            const override = collaboratorGoals.find(g => g.user_id === user.id && g.stage_id === stage.id);
+                            const key = `${stage.id}-${user.id}`;
+                            const editVal = goalEditValues[key] ?? '';
+                            return (
+                              <div key={user.id} className="flex items-center gap-3 p-2 rounded-lg bg-zinc-50/50 border border-zinc-100">
+                                <span className="text-sm font-medium text-zinc-700 w-40 truncate">{user.name}</span>
+                                {override ? (
+                                  <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200">Meta personalizada: {override.meta_diaria}</span>
+                                ) : (
+                                  <span className="text-[10px] text-zinc-400">Usa padrão do setor ({stage.meta_diaria ?? '—'})</span>
+                                )}
+                                <div className="flex items-center gap-2 ml-auto">
+                                  <input
+                                    type="number"
+                                    value={editVal}
+                                    onChange={e => setGoalEditValues(v => ({ ...v, [key]: e.target.value }))}
+                                    placeholder={String(override?.meta_diaria ?? stage.meta_diaria ?? '')}
+                                    className="w-20 p-1 border border-zinc-200 rounded text-xs text-center"
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      if (!editVal) return;
+                                      await fetch('/api/collaborator-goals', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
+                                        body: JSON.stringify({ user_id: user.id, stage_id: stage.id, meta_diaria: Number(editVal) })
+                                      });
+                                      setGoalEditValues(v => { const n = { ...v }; delete n[key]; return n; });
+                                      fetchCollaboratorGoals();
+                                    }}
+                                    className="px-2 py-1 bg-zinc-900 text-white rounded text-[10px] font-bold hover:bg-zinc-700 transition-colors"
+                                  >Salvar</button>
+                                  {override && (
+                                    <button
+                                      onClick={async () => {
+                                        if (!override.id) return;
+                                        await fetch(`/api/collaborator-goals/${override.id}`, {
+                                          method: 'DELETE',
+                                          headers: { 'x-user-role': currentUser?.role || '' }
+                                        });
+                                        fetchCollaboratorGoals();
+                                      }}
+                                      className="px-2 py-1 bg-rose-50 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-100 transition-colors"
+                                    >Remover</button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </Card>
 

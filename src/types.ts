@@ -225,15 +225,46 @@ export interface OperationalReportData {
   produtividade_colaboradores: CollaboratorProductivity[];
 }
 
+export interface PeriodStats {
+  real: number;
+  target: number | null;
+  pct: number | null;
+  status: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta';
+}
+
+export interface CollaboratorGoalRow {
+  user_id: number;
+  user_name: string;
+  stage_id: number;
+  stage_name: string;
+  calculation_type: 'por_pedido' | 'por_peca' | 'por_lote';
+  meta_diaria: number | null;
+  is_custom: boolean;
+  today: PeriodStats;
+  week: PeriodStats;
+  month: PeriodStats;
+}
+
+export interface SectorGoalRow {
+  stage_id: number;
+  stage_name: string;
+  calculation_type: 'por_pedido' | 'por_peca' | 'por_lote';
+  meta_diaria: number | null;
+  today: PeriodStats;
+  week: PeriodStats;
+  month: PeriodStats;
+}
+
+export interface GoalsProductivityResponse {
+  collaborators: CollaboratorGoalRow[];
+  sectors: SectorGoalRow[];
+}
+
+/** @deprecated Use GoalsProductivityResponse instead */
 export interface ProductivityPeriod {
   name: string;
   today: number;
   week: number;
   month: number;
-}
-
-export interface GoalsProductivityResponse {
-  collaborators: ProductivityPeriod[];
-  sectors: ProductivityPeriod[];
 }
 
