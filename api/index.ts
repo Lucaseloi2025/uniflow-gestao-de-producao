@@ -6,6 +6,7 @@ import {
     getLossReasons,
     updateLossReasons,
     getStageProgressForOrder,
+    enrichOrdersWithProgressSync,
     logProgress,
     logLoss,
     validateStageFinish,
@@ -491,29 +492,8 @@ app.get("/api/orders", async (req, res) => {
 
         for (const order of data) {
             order.current_operator = operatorMap.get(order.id) || null;
-            if (!Array.isArray(order.stages_status)) {
-                order.stages_status = [];
-            }
-            try {
-                const progressList = await getStageProgressForOrder(order.id, order);
-                if (Array.isArray(order.stages_status) && order.stages_status.length > 0) {
-                    order.stages_status = order.stages_status.map((st: any) => {
-                        const prog = progressList.find(p => Number(p.stage_id) === Number(st.id));
-                        const finished = prog ? prog.finished : !!st.finished;
-                        return {
-                            ...st,
-                            finished,
-                            quantidade_boa: prog ? prog.quantidade_boa : (st.finished ? (order.quantity || 0) : 0),
-                            quantidade_perdida: prog ? prog.quantidade_perdida : 0,
-                            pendencia_reposicao: prog ? prog.pendencia_reposicao : 0,
-                            quantidade_pedido: order.quantity || 0
-                        };
-                    });
-                }
-            } catch (pErr) {
-                console.warn(`[API] Erro ao carregar progresso do pedido ${order.id}:`, pErr);
-            }
         }
+        enrichOrdersWithProgressSync(data);
     }
 
     return res.json(data);

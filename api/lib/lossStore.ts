@@ -126,12 +126,7 @@ export async function getStageProgressForOrder(orderId: number, orderData?: any)
         finished: isFinished
       };
       stageProgressStore.set(key, prog);
-      // Try to persist to DB
-      try {
-        await supabase.from('order_stage_progress').upsert(prog);
-      } catch (e) {}
     } else {
-      // Ensure quantidade_pedido matches order quantity if updated
       if (order.quantity && prog.quantidade_pedido !== order.quantity) {
         prog.quantidade_pedido = order.quantity;
       }
@@ -140,6 +135,49 @@ export async function getStageProgressForOrder(orderId: number, orderData?: any)
   }
 
   return results;
+}
+
+export function enrichOrdersWithProgressSync(orders: any[]): void {
+  if (!orders || orders.length === 0) return;
+
+  for (const order of orders) {
+    if (!Array.isArray(order.stages_status)) {
+      order.stages_status = [];
+    }
+
+    const orderQty = order.quantity || 0;
+
+    order.stages_status = order.stages_status.map((st: any) => {
+      const stageId = Number(st.id);
+      const key = `${order.id}_${stageId}`;
+      let prog = stageProgressStore.get(key);
+
+      if (!prog) {
+        const isFinished = !!st.finished;
+        prog = {
+          order_id: order.id,
+          stage_id: stageId,
+          quantidade_pedido: orderQty,
+          quantidade_boa: isFinished ? orderQty : 0,
+          quantidade_perdida: 0,
+          pendencia_reposicao: 0,
+          finished: isFinished
+        };
+        stageProgressStore.set(key, prog);
+      } else if (orderQty && prog.quantidade_pedido !== orderQty) {
+        prog.quantidade_pedido = orderQty;
+      }
+
+      return {
+        ...st,
+        finished: prog.finished,
+        quantidade_boa: prog.quantidade_boa,
+        quantidade_perdida: prog.quantidade_perdida,
+        pendencia_reposicao: prog.pendencia_reposicao,
+        quantidade_pedido: orderQty
+      };
+    });
+  }
 }
 
 export async function logProgress(

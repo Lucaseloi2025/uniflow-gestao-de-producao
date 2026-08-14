@@ -2577,6 +2577,7 @@ export default function App() {
                 <tr className="border-bottom border-zinc-200 bg-zinc-50">
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Fluxo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
@@ -2595,9 +2596,9 @@ export default function App() {
                     if (!searchTerm) return true;
                     const search = searchTerm.toLowerCase();
                     return (
-                      o.order_number.toLowerCase().includes(search) ||
-                      o.client_name.toLowerCase().includes(search) ||
-                      o.product_type.toLowerCase().includes(search) ||
+                      (o.order_number || '').toLowerCase().includes(search) ||
+                      (o.client_name || '').toLowerCase().includes(search) ||
+                      (o.product_type || '').toLowerCase().includes(search) ||
                       (o.print_type || '').toLowerCase().includes(search)
                     );
                   })
