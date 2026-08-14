@@ -34,6 +34,7 @@ interface PrintableReportProps {
   reportData: any;
   operationalReportData: OperationalReportData | null;
   goalsProductivityData: GoalsProductivityResponse | null;
+  isAdmin?: boolean;
 }
 
 interface ConsolidatedCollaborator {
@@ -68,6 +69,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
   reportData,
   operationalReportData,
   goalsProductivityData,
+  isAdmin = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'both' | 'collaborators' | 'sectors'>('both');
 

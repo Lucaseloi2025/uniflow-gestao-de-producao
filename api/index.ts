@@ -2,6 +2,16 @@ import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import {
+    getLossReasons,
+    updateLossReasons,
+    getStageProgressForOrder,
+    logProgress,
+    logLoss,
+    validateStageFinish,
+    getLossReportDataStore,
+    getProgressLogs
+} from "./lib/lossStore.ts";
 
 dotenv.config();
 
@@ -479,9 +489,28 @@ app.get("/api/orders", async (req, res) => {
             });
         }
 
-        data.forEach((order: any) => {
+        for (const order of data) {
             order.current_operator = operatorMap.get(order.id) || null;
-        });
+            try {
+                const progressList = await getStageProgressForOrder(order.id, order);
+                if (Array.isArray(order.stages_status)) {
+                    order.stages_status = order.stages_status.map((st: any) => {
+                        const prog = progressList.find(p => Number(p.stage_id) === Number(st.id));
+                        const finished = prog ? prog.finished : !!st.finished;
+                        return {
+                            ...st,
+                            finished,
+                            quantidade_boa: prog ? prog.quantidade_boa : (st.finished ? (order.quantity || 0) : 0),
+                            quantidade_perdida: prog ? prog.quantidade_perdida : 0,
+                            pendencia_reposicao: prog ? prog.pendencia_reposicao : 0,
+                            quantidade_pedido: order.quantity || 0
+                        };
+                    });
+                }
+            } catch (pErr) {
+                console.warn(`[API] Erro ao carregar progresso do pedido ${order.id}:`, pErr);
+            }
+        }
     }
 
     return res.json(data);
@@ -863,6 +892,113 @@ app.delete("/api/stages/:id", async (req, res) => {
         .eq("id", Number(req.params.id));
     if (checkError(error, res)) return;
     return res.json({ success: true });
+});
+
+// ── Loss Reasons & Re-entry Configuration ──────────────────────────────────
+app.get("/api/loss-reasons", async (_req, res) => {
+    try {
+        const reasons = await getLossReasons();
+        return res.json(reasons);
+    } catch (err: any) {
+        console.error("[API] Erro ao buscar motivos de perda:", err);
+        return res.status(500).json({ error: "Erro ao buscar motivos de perda" });
+    }
+});
+
+app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
+    try {
+        const { reasons } = req.body;
+        if (!Array.isArray(reasons)) {
+            return res.status(400).json({ error: "Parâmetro 'reasons' deve ser um array." });
+        }
+        const updated = await updateLossReasons(reasons);
+        return res.json({ success: true, reasons: updated });
+    } catch (err: any) {
+        console.error("[API] Erro ao atualizar motivos de perda:", err);
+        return res.status(500).json({ error: "Erro ao atualizar motivos de perda" });
+    }
+});
+
+// ── Partial Progress & Loss Logging ────────────────────────────────────────
+app.get("/api/orders/:id/stage-progress", async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        const progressList = await getStageProgressForOrder(orderId);
+        return res.json(progressList);
+    } catch (err: any) {
+        console.error("[API] Erro ao buscar progresso do pedido:", err);
+        return res.status(500).json({ error: "Erro ao buscar progresso do pedido" });
+    }
+});
+
+app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        const stageId = Number(req.params.stageId);
+        const { incremento, user_id, user_name } = req.body;
+
+        if (!incremento || Number(incremento) <= 0) {
+            return res.status(400).json({ error: "Quantidade incremental deve ser maior que 0." });
+        }
+
+        const result = await logProgress(
+            orderId,
+            stageId,
+            Number(user_id) || 1,
+            user_name || "Operador",
+            Number(incremento)
+        );
+        return res.json(result);
+    } catch (err: any) {
+        console.error("[API] Erro ao registrar progresso parcial:", err);
+        return res.status(500).json({ error: "Erro ao registrar progresso parcial" });
+    }
+});
+
+app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        const stageId = Number(req.params.stageId);
+        const { quantidade_perdida, motivo, motivo_detalhe, etapa_reentrada_id, user_id, user_name } = req.body;
+
+        if (!quantidade_perdida || Number(quantidade_perdida) <= 0) {
+            return res.status(400).json({ error: "Quantidade perdida deve ser maior que 0." });
+        }
+        if (!motivo) {
+            return res.status(400).json({ error: "Motivo da perda é obrigatório." });
+        }
+        if (motivo === "Outro" && (!motivo_detalhe || !motivo_detalhe.trim())) {
+            return res.status(400).json({ error: "Campo livre obrigatório para o motivo 'Outro'." });
+        }
+
+        const result = await logLoss(
+            orderId,
+            stageId,
+            Number(user_id) || 1,
+            user_name || "Operador",
+            Number(quantidade_perdida),
+            motivo,
+            motivo_detalhe,
+            etapa_reentrada_id ? Number(etapa_reentrada_id) : undefined
+        );
+
+        return res.json(result);
+    } catch (err: any) {
+        console.error("[API] Erro ao registrar perda:", err);
+        return res.status(500).json({ error: "Erro ao registrar perda" });
+    }
+});
+
+// ── Loss & Rework Bottleneck Report ────────────────────────────────────────
+app.get("/api/reports/losses", async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const data = await getLossReportDataStore(startDate as string, endDate as string);
+        return res.json(data);
+    } catch (err: any) {
+        console.error("[API] Erro ao gerar relatório de perdas:", err);
+        return res.status(500).json({ error: "Erro ao gerar relatório de perdas" });
+    }
 });
 
 // ── Collaborator Stage Goals Overrides ─────────────────────────────────────
@@ -1402,6 +1538,12 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .single();
 
     if (checkError(e1, res, "Execução não encontrada") || !execution) return;
+
+    // 1.5 Validate if stage can be finished (for por_peca, quantidade_boa >= quantidade_pedido)
+    const val = await validateStageFinish(execution.order_id, execution.stage_id);
+    if (!val.canFinish) {
+        return res.status(400).json({ error: val.message });
+    }
 
     // 2. Finalize any active pause
     const { data: lastPauseData } = await supabaseAdmin

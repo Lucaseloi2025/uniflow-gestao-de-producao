@@ -72,7 +72,7 @@ import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMont
 import { ptBR } from 'date-fns/locale';
 import { cn, formatSeconds } from './lib/utils';
 import { calculateExecutionTimes } from './lib/timerUtils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod } from './types';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod, OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData, CollaboratorStageGoal } from './types';
 
 // Helpers
 const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url);
@@ -606,7 +606,23 @@ export default function App() {
   const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
   const [expandedGoalStageId, setExpandedGoalStageId] = useState<number | null>(null);
   const [goalEditValues, setGoalEditValues] = useState<Record<string, string>>({}); // key: `${stageId}-${userId}`
-  const [simOperadores, setSimOperadores] = useState<number>(0);
+  const [lossReportData, setLossReportData] = useState<LossReportData | null>(null);
+  const [lossReasonsList, setLossReasonsList] = useState<LossReasonSetting[]>([]);
+  const [activeReportSubTab, setActiveReportSubTab] = useState<'geral' | 'metas' | 'operacional' | 'perdas'>('geral');
+
+  // Modal State: Progresso Parcial
+  const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+  const [progressStageId, setProgressStageId] = useState<number | null>(null);
+  const [progressIncrementInput, setProgressIncrementInput] = useState<number>(1);
+
+  // Modal State: Registro de Perda
+  const [isLossModalOpen, setIsLossModalOpen] = useState(false);
+  const [lossStageId, setLossStageId] = useState<number | null>(null);
+  const [lossQtyInput, setLossQtyInput] = useState<number>(1);
+  const [lossReasonInput, setLossReasonInput] = useState<string>('');
+  const [lossReasonDetailInput, setLossReasonDetailInput] = useState<string>('');
+  const [lossReentryStageIdInput, setLossReentryStageIdInput] = useState<number | null>(null);
+
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -870,6 +886,12 @@ export default function App() {
 
     const goalsData = await safeFetch('/api/reports/goals-productivity');
     if (goalsData) setGoalsProductivityData(goalsData);
+
+    const lossData = await safeFetch(`/api/reports/losses?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    if (lossData) setLossReportData(lossData);
+
+    const reasonsData = await safeFetch('/api/loss-reasons');
+    if (reasonsData) setLossReasonsList(reasonsData);
 
     fetchOperationalReport();
   };
@@ -1224,13 +1246,110 @@ export default function App() {
 
   const handleFinishStage = async (executionId: number) => {
     if (!window.confirm("Tem certeza que deseja finalizar esta etapa?")) return;
-    await fetch(`/api/executions/${executionId}/finish`, {
+    const res = await fetch(`/api/executions/${executionId}/finish`, {
       method: 'POST',
       headers: { 'x-user-role': currentUser?.role || '' }
     });
-    fetchExecutions(selectedOrder!.id);
-    fetchData();
-    fetchActiveExecution();
+    if (res.ok) {
+      fetchExecutions(selectedOrder!.id);
+      fetchData();
+      fetchActiveExecution();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Erro ao finalizar etapa");
+    }
+  };
+
+  const handleOpenProgressModal = (stageId: number) => {
+    setProgressStageId(stageId);
+    setProgressIncrementInput(1);
+    setIsProgressModalOpen(true);
+  };
+
+  const handleSaveProgress = async () => {
+    if (!selectedOrder || !progressStageId || progressIncrementInput <= 0) return;
+    const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${progressStageId}/progress`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({
+        incremento: progressIncrementInput,
+        user_id: currentUser?.id || 1,
+        user_name: currentUser?.name || 'Operador'
+      })
+    });
+    if (res.ok) {
+      setIsProgressModalOpen(false);
+      fetchData();
+      fetchExecutions(selectedOrder.id);
+      fetchActiveExecution();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Erro ao registrar progresso");
+    }
+  };
+
+  const handleOpenLossModal = (stageId: number) => {
+    setLossStageId(stageId);
+    setLossQtyInput(1);
+    const initialReason = lossReasonsList.length > 0 ? lossReasonsList[0].motivo : 'Defeito de corte';
+    setLossReasonInput(initialReason);
+    setLossReasonDetailInput('');
+    const defaultReentry = lossReasonsList.find(r => r.motivo === initialReason)?.etapa_reentrada_id || stageId;
+    setLossReentryStageIdInput(defaultReentry);
+    setIsLossModalOpen(true);
+  };
+
+  const handleSaveLoss = async () => {
+    if (!selectedOrder || !lossStageId || lossQtyInput <= 0 || !lossReasonInput) return;
+    if (lossReasonInput === 'Outro' && !lossReasonDetailInput.trim()) {
+      alert("Por favor, informe o detalhamento do motivo 'Outro'.");
+      return;
+    }
+    const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${lossStageId}/loss`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({
+        quantidade_perdida: lossQtyInput,
+        motivo: lossReasonInput,
+        motivo_detalhe: lossReasonDetailInput,
+        etapa_reentrada_id: lossReentryStageIdInput,
+        user_id: currentUser?.id || 1,
+        user_name: currentUser?.name || 'Operador'
+      })
+    });
+    if (res.ok) {
+      setIsLossModalOpen(false);
+      alert("Perda registrada com sucesso! A pendência de reposição foi enviada para a etapa de reentrada.");
+      fetchData();
+      fetchExecutions(selectedOrder.id);
+      fetchActiveExecution();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Erro ao registrar perda");
+    }
+  };
+
+  const handleSaveLossReasonsMapping = async (updatedReasons: LossReasonSetting[]) => {
+    const res = await fetch('/api/loss-reasons', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({ reasons: updatedReasons })
+    });
+    if (res.ok) {
+      alert("Mapeamento de perdas atualizado!");
+      setLossReasonsList(updatedReasons);
+    } else {
+      alert("Erro ao salvar mapeamento de perdas.");
+    }
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
@@ -2603,6 +2722,253 @@ export default function App() {
         {activeTab === 'reports' && (
           <div className="space-y-8">
 
+            {/* Sub-navigation inside Reports */}
+            <div className="flex items-center gap-2 border-b border-zinc-200 pb-3">
+              <button
+                type="button"
+                onClick={() => setActiveReportSubTab('geral')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeReportSubTab === 'geral'
+                    ? "bg-zinc-900 text-white shadow"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                )}
+              >
+                <BarChart3 size={16} /> Visão Geral & Entregas
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReportSubTab('metas')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeReportSubTab === 'metas'
+                    ? "bg-zinc-900 text-white shadow"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                )}
+              >
+                <Target size={16} /> Metas & Produtividade
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReportSubTab('perdas')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeReportSubTab === 'perdas'
+                    ? "bg-rose-600 text-white shadow"
+                    : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
+                )}
+              >
+                <AlertCircle size={16} /> Relatório de Perdas & Retrabalho
+              </button>
+            </div>
+
+            {activeReportSubTab === 'perdas' && (
+              <div className="space-y-8">
+                {/* Executive Summary Cards for Losses */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <Card className="p-6 border-rose-100 bg-rose-50/20">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
+                        <AlertCircle size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Total Peças Perdidas</p>
+                        <h3 className="text-2xl font-bold text-rose-700">{lossReportData?.summary?.total_perdido || 0} <span className="text-xs font-normal text-zinc-500">peças</span></h3>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                        <TrendingUp size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Taxa de Perda (%)</p>
+                        <h3 className="text-2xl font-bold text-amber-700">{lossReportData?.summary?.pct_perda?.toFixed(1) || '0.0'}%</h3>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                        <Package size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Pedidos com Retrabalho</p>
+                        <h3 className="text-2xl font-bold text-zinc-900">{lossReportData?.summary?.total_pedidos_com_perda || 0}</h3>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
+                        <Clock size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Impacto Médio no Prazo</p>
+                        <h3 className="text-2xl font-bold text-purple-700">{lossReportData?.summary?.impacto_prazo_horas?.toFixed(1) || '0.0'} <span className="text-xs font-normal text-zinc-500">horas/ped</span></h3>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Section 1: Perdas por Setor (Etapa) */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <Layers size={16} className="text-rose-600" /> Perdas por Setor / Etapa (Gráfico)
+                    </h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={lossReportData?.perdas_por_setor || []}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                          <XAxis dataKey="stage_name" fontSize={10} axisLine={false} tickLine={false} />
+                          <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                          <Bar dataKey="quantidade_perdida" name="Peças Perdidas" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <FileText size={16} className="text-rose-600" /> Detalhamento por Setor
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-zinc-100 bg-zinc-50">
+                            <th className="py-2.5 px-3 font-bold text-zinc-500">Setor / Etapa</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Perdas</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">% do Total</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Pedidos Afetados</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {(lossReportData?.perdas_por_setor || []).map((item, idx) => (
+                            <tr key={idx} className="hover:bg-zinc-50">
+                              <td className="py-2.5 px-3 font-bold text-zinc-900">{item.stage_name}</td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-rose-600">{item.quantidade_perdida} pc</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.pct_total}%</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.pedidos_afetados}</td>
+                            </tr>
+                          ))}
+                          {(lossReportData?.perdas_por_setor || []).length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhuma perda registrada no período.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Section 2: Perdas por Motivo Categorizado */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <BarChart3 size={16} className="text-rose-600" /> Distribuição por Motivo (Gráfico)
+                    </h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={lossReportData?.perdas_por_motivo || []} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f1f1" />
+                          <XAxis type="number" fontSize={10} axisLine={false} tickLine={false} />
+                          <YAxis dataKey="motivo" type="category" fontSize={9} axisLine={false} tickLine={false} width={130} />
+                          <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                          <Bar dataKey="quantidade_perdida" name="Peças Perdidas" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <AlertCircle size={16} className="text-rose-600" /> Motivos de Defeito / Retrabalho
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-zinc-100 bg-zinc-50">
+                            <th className="py-2.5 px-3 font-bold text-zinc-500">Motivo Categorizado</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500">Setor Origem</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Peças</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">% Perdas</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {(lossReportData?.perdas_por_motivo || []).map((item, idx) => (
+                            <tr key={idx} className="hover:bg-zinc-50">
+                              <td className="py-2.5 px-3 font-bold text-zinc-900">{item.motivo}</td>
+                              <td className="py-2.5 px-3 text-zinc-600">{item.stage_name}</td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-amber-700">{item.quantidade_perdida} pc</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.pct_total}%</td>
+                            </tr>
+                          ))}
+                          {(lossReportData?.perdas_por_motivo || []).length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhum motivo registrado no período.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Section 3: Impacto em Prazo de Entrega (Custo do Retrabalho) */}
+                <Card className="p-6">
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <Clock size={16} className="text-purple-600" /> Impacto no Prazo por Pedidos com Reposição (Custo do Retrabalho)
+                  </h3>
+                  <p className="text-xs text-zinc-500 mb-4">
+                    Compara o tempo total de produção dos pedidos que tiveram perdas contra a média dos pedidos sem perdas.
+                  </p>
+                  <div className="overflow-x-auto border border-zinc-100 rounded-xl">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-100">
+                          <th className="py-3 px-4 font-bold text-zinc-500">Pedido</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500">Cliente</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Peças Perdidas</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Lead Time (com perda)</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Média Sem Perda</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Atraso Adicional (Retrabalho)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {(lossReportData?.impacto_pedidos || []).map((imp, idx) => (
+                          <tr key={idx} className="hover:bg-zinc-50">
+                            <td className="py-3 px-4 font-mono font-bold text-zinc-900">{imp.order_number}</td>
+                            <td className="py-3 px-4 font-medium text-zinc-700">{imp.client_name}</td>
+                            <td className="py-3 px-4 text-center font-mono font-bold text-rose-600">{imp.quantidade_perdida} pc</td>
+                            <td className="py-3 px-4 text-center font-mono">{imp.lead_time_com_perda_horas}h</td>
+                            <td className="py-3 px-4 text-center font-mono text-zinc-500">{imp.lead_time_medio_sem_perda_horas}h</td>
+                            <td className="py-3 px-4 text-center font-mono font-bold text-purple-700">
+                              +{imp.atraso_adicional_horas}h
+                            </td>
+                          </tr>
+                        ))}
+                        {(lossReportData?.impacto_pedidos || []).length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="text-center py-6 text-zinc-400">Nenhum pedido com reposição/retrabalho registrado.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {activeReportSubTab !== 'perdas' && (
+              <>
+
             {/* Delivery & Performance KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {/* Entregues Hoje */}
@@ -3225,9 +3591,10 @@ export default function App() {
                 </table>
               </div>
             </Card>
-          </div >
-        )
-        }
+            </>
+            )}
+          </div>
+        )}
 
         {activeTab === 'costs' && currentUser?.role === 'Admin' && (
           <ErrorBoundary>
@@ -4091,6 +4458,49 @@ export default function App() {
               </div>
             </Card>
 
+            {/* Mapeamento de Motivos de Perda & Etapa de Reentrada */}
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                <AlertCircle size={20} className="text-rose-600" />
+                Mapeamento de Motivos de Perda & Etapa de Reentrada Padrão
+              </h3>
+              <p className="text-xs text-zinc-500 mb-6">
+                Configure para qual etapa a peça de reposição reentra automaticamente no fluxo quando um operador registra uma perda.
+              </p>
+              <div className="space-y-3">
+                {lossReasonsList.map((reason, idx) => (
+                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl gap-3">
+                    <div className="flex-1">
+                      <span className="font-bold text-xs text-zinc-900">{reason.motivo}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500 font-medium">Reentra em:</span>
+                      <select
+                        value={reason.etapa_reentrada_id}
+                        onChange={(e) => {
+                          const newId = Number(e.target.value);
+                          const updated = lossReasonsList.map((r, i) => i === idx ? { ...r, etapa_reentrada_id: newId } : r);
+                          setLossReasonsList(updated);
+                        }}
+                        className="p-2 border border-zinc-200 rounded-lg text-xs bg-white font-medium focus:outline-none focus:border-zinc-400"
+                      >
+                        {stages.map(st => (
+                          <option key={st.id} value={st.id}>{st.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSaveLossReasonsMapping(lossReasonsList)}
+                className="mt-6 px-5 py-2.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors"
+              >
+                Salvar Mapeamento de Perdas
+              </button>
+            </Card>
+
             <Card className="p-8">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg font-bold flex items-center gap-2">
@@ -4449,51 +4859,101 @@ export default function App() {
                                         )}
                                       </div>
 
+                                      {stage.calculation_type !== 'por_pedido' && (
+                                        <div className="mt-2 text-[10px] space-y-1 bg-zinc-50/80 p-2 rounded-md border border-zinc-100">
+                                          <div className="flex items-center justify-between text-zinc-700 font-bold">
+                                            <span>Progresso de peças:</span>
+                                            <span className="font-mono text-emerald-700">
+                                              {orderStage.quantidade_boa || 0} / {orderStage.quantidade_pedido || selectedOrder.quantity}
+                                            </span>
+                                          </div>
+                                          <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
+                                            <div
+                                              className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                                              style={{ width: `${Math.min(100, Math.round(((orderStage.quantidade_boa || 0) / (orderStage.quantidade_pedido || selectedOrder.quantity || 1)) * 100))}%` }}
+                                            />
+                                          </div>
+                                          <div className="flex flex-wrap items-center justify-between gap-1 text-[9px] pt-1">
+                                            {orderStage.quantidade_perdida ? (
+                                              <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
+                                                Perdas: {orderStage.quantidade_perdida} pc
+                                              </span>
+                                            ) : <span />}
+                                            {orderStage.pendencia_reposicao ? (
+                                              <span className="bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold animate-pulse">
+                                                Reposição pendente: +{orderStage.pendencia_reposicao} pc
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      )}
+
                                       {!orderStage.finished && (
-                                        <div className="mt-2 flex items-center gap-1.5">
-                                          {!execution && (
-                                            <button
-                                              onClick={() => handleStartStage(stage.id)}
-                                              className={cn(
-                                                "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
-                                                isNextToStart 
-                                                  ? "bg-zinc-900 text-white hover:bg-zinc-800" 
-                                                  : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
-                                              )}
-                                            >
-                                              <Play size={12} fill="currentColor" />
-                                              INICIAR {isSelected && <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>}
-                                            </button>
-                                          )}
-
-                                          {execution?.status === 'Em andamento' && (
-                                            <>
+                                        <div className="mt-2 space-y-1.5">
+                                          {stage.calculation_type !== 'por_pedido' && (
+                                            <div className="flex items-center gap-1.5">
                                               <button
-                                                onClick={() => handlePauseStage(execution.id)}
-                                                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleOpenProgressModal(stage.id); }}
+                                                className="flex-1 py-1 px-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold border border-emerald-200 transition-colors flex items-center justify-center gap-1"
                                               >
-                                                <Pause size={12} fill="currentColor" />
-                                                PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
+                                                + Progresso Parcial
                                               </button>
                                               <button
-                                                onClick={() => handleFinishStage(execution.id)}
-                                                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleOpenLossModal(stage.id); }}
+                                                className="flex-1 py-1 px-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-[9px] font-bold border border-rose-200 transition-colors flex items-center justify-center gap-1"
                                               >
-                                                <CheckCircle size={12} />
-                                                FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
+                                                ⚠️ Registrar Perda
                                               </button>
-                                            </>
+                                            </div>
                                           )}
 
-                                          {execution?.status === 'Pausado' && (
-                                            <button
-                                              onClick={() => handleResumeStage(execution.id)}
-                                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
-                                            >
-                                              <Play size={12} fill="currentColor" />
-                                              RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
-                                            </button>
-                                          )}
+                                          <div className="flex items-center gap-1.5">
+                                            {!execution && (
+                                              <button
+                                                onClick={() => handleStartStage(stage.id)}
+                                                className={cn(
+                                                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
+                                                  isNextToStart 
+                                                    ? "bg-zinc-900 text-white hover:bg-zinc-800" 
+                                                    : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
+                                                )}
+                                              >
+                                                <Play size={12} fill="currentColor" />
+                                                INICIAR {isSelected && <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>}
+                                              </button>
+                                            )}
+
+                                            {execution?.status === 'Em andamento' && (
+                                              <>
+                                                <button
+                                                  onClick={() => handlePauseStage(execution.id)}
+                                                  className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
+                                                >
+                                                  <Pause size={12} fill="currentColor" />
+                                                  PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
+                                                </button>
+                                                <button
+                                                  onClick={() => handleFinishStage(execution.id)}
+                                                  className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                                >
+                                                  <CheckCircle size={12} />
+                                                  FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
+                                                </button>
+                                              </>
+                                            )}
+
+                                            {execution?.status === 'Pausado' && (
+                                              <button
+                                                onClick={() => handleResumeStage(execution.id)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
+                                              >
+                                                <Play size={12} fill="currentColor" />
+                                                RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -5772,6 +6232,213 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-    </div >
+      {/* MODAL: Registrar Progresso Parcial */}
+      {isProgressModalOpen && selectedOrder && progressStageId && (() => {
+        const stage = stages.find(s => s.id === progressStageId);
+        const orderStage = selectedOrder.stages_status.find(s => s.id === progressStageId);
+        const currentGood = orderStage?.quantidade_boa || 0;
+        const totalReq = selectedOrder.quantity || 0;
+        const remaining = Math.max(0, totalReq - currentGood);
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm">Registrar Progresso Parcial</h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsProgressModalOpen(false)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="py-2 space-y-4">
+                <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1">
+                  <div className="flex justify-between font-medium text-zinc-600">
+                    <span>Peças concluídas até agora:</span>
+                    <span className="font-bold text-zinc-900 font-mono">{currentGood} / {totalReq}</span>
+                  </div>
+                  <div className="flex justify-between font-medium text-amber-700">
+                    <span>Peças restantes para finalizar:</span>
+                    <span className="font-bold font-mono">{remaining} peças</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Quantidade de peças concluídas agora (+):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={progressIncrementInput}
+                    onChange={(e) => setProgressIncrementInput(Math.max(1, Number(e.target.value)))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    Isso somará à produção diária do dia e atualizará o total acumulado do pedido.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setIsProgressModalOpen(false)}
+                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveProgress}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs hover:bg-emerald-700 transition-colors"
+                >
+                  Confirmar (+{progressIncrementInput} peças)
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: Registrar Perda */}
+      {isLossModalOpen && selectedOrder && lossStageId && (() => {
+        const stage = stages.find(s => s.id === lossStageId);
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-rose-100 text-rose-700 rounded-lg">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm">Registrar Perda de Peça</h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsLossModalOpen(false)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-[11px] text-amber-800 space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  ℹ️ Regra de Reposição
+                </p>
+                <p>
+                  A quantidade do pedido <strong>nunca diminui</strong>. O registro de perda gera automaticamente uma <strong>pendência de reposição</strong> na etapa de reentrada.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Quantidade de Peças Perdidas:
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={lossQtyInput}
+                    onChange={(e) => setLossQtyInput(Math.max(1, Number(e.target.value)))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Motivo da Perda (Categorizado):
+                  </label>
+                  <select
+                    value={lossReasonInput}
+                    onChange={(e) => {
+                      const selectedReason = e.target.value;
+                      setLossReasonInput(selectedReason);
+                      const defaultReentry = lossReasonsList.find(r => r.motivo === selectedReason)?.etapa_reentrada_id || lossStageId;
+                      setLossReentryStageIdInput(defaultReentry);
+                    }}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  >
+                    {lossReasonsList.map((r, i) => (
+                      <option key={i} value={r.motivo}>{r.motivo}</option>
+                    ))}
+                    {lossReasonsList.length === 0 && (
+                      <>
+                        <option value="Falta de matéria-prima/peça (estoque)">Falta de matéria-prima/peça (estoque)</option>
+                        <option value="Defeito de corte">Defeito de corte</option>
+                        <option value="Falha na estampa/DTF">Falha na estampa/DTF</option>
+                        <option value="Defeito de costura">Defeito de costura</option>
+                        <option value="Extravio">Extravio</option>
+                        <option value="Reprovado na conferência (qualidade)">Reprovado na conferência (qualidade)</option>
+                        <option value="Outro">Outro</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {lossReasonInput === 'Outro' && (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1">
+                      Detalhamento do Motivo (Obrigatório):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Descreva a causa específica..."
+                      value={lossReasonDetailInput}
+                      onChange={(e) => setLossReasonDetailInput(e.target.value)}
+                      className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Etapa de Reentrada da Reposição:
+                  </label>
+                  <select
+                    value={lossReentryStageIdInput || lossStageId}
+                    onChange={(e) => setLossReentryStageIdInput(Number(e.target.value))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  >
+                    {stages.map(st => (
+                      <option key={st.id} value={st.id}>
+                        {st.name} {st.id === lossStageId ? '(Etapa Atual)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    Sugerido automaticamente com base no motivo. Você pode ajustar manualmente para casos atípicos.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setIsLossModalOpen(false)}
+                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveLoss}
+                  className="flex-1 py-2.5 bg-rose-600 text-white font-bold rounded-xl text-xs hover:bg-rose-700 transition-colors"
+                >
+                  Confirmar Perda e Gerar Reposição
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
   );
 }

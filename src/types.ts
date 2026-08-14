@@ -11,6 +11,81 @@ export interface StageStatus {
   id: number;
   name: string;
   finished: boolean;
+  in_progress?: boolean;
+  quantidade_boa?: number;
+  quantidade_perdida?: number;
+  pendencia_reposicao?: number;
+  quantidade_pedido?: number;
+  calculation_type?: 'por_pedido' | 'por_peca' | 'por_lote';
+}
+
+export interface OrderStageProgress {
+  order_id: number;
+  stage_id: number;
+  quantidade_pedido: number;
+  quantidade_boa: number;
+  quantidade_perdida: number;
+  pendencia_reposicao: number;
+  finished: boolean;
+}
+
+export interface OrderLossLog {
+  id?: number;
+  order_id: number;
+  stage_id: number;
+  stage_name?: string;
+  user_id: number;
+  user_name?: string;
+  quantidade_perdida: number;
+  motivo: string;
+  motivo_detalhe?: string;
+  etapa_reentrada_id: number;
+  etapa_reentrada_name?: string;
+  created_at: string;
+}
+
+export interface LossReasonSetting {
+  id?: number;
+  motivo: string;
+  etapa_reentrada_id: number;
+  etapa_reentrada_name?: string;
+}
+
+export interface SectorLossItem {
+  stage_id: number;
+  stage_name: string;
+  quantidade_perdida: number;
+  pct_total: number;
+  pedidos_afetados: number;
+}
+
+export interface ReasonLossItem {
+  motivo: string;
+  stage_name: string;
+  quantidade_perdida: number;
+  pct_total: number;
+}
+
+export interface OrderImpactItem {
+  order_id: number;
+  order_number: string;
+  client_name: string;
+  quantidade_perdida: number;
+  lead_time_com_perda_horas: number;
+  lead_time_medio_sem_perda_horas: number;
+  atraso_adicional_horas: number;
+}
+
+export interface LossReportData {
+  summary: {
+    total_perdido: number;
+    pct_perda: number;
+    total_pedidos_com_perda: number;
+    impacto_prazo_horas: number;
+  };
+  perdas_por_setor: SectorLossItem[];
+  perdas_por_motivo: ReasonLossItem[];
+  impacto_pedidos: OrderImpactItem[];
 }
 
 export interface Order {
