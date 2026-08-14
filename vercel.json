@@ -16,9 +16,6 @@
         },
         "api/ping.ts": {
             "maxDuration": 30
-        },
-        "api/diag.ts": {
-            "maxDuration": 30
         }
     },
     "crons": [
