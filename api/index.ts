@@ -491,9 +491,12 @@ app.get("/api/orders", async (req, res) => {
 
         for (const order of data) {
             order.current_operator = operatorMap.get(order.id) || null;
+            if (!Array.isArray(order.stages_status)) {
+                order.stages_status = [];
+            }
             try {
                 const progressList = await getStageProgressForOrder(order.id, order);
-                if (Array.isArray(order.stages_status)) {
+                if (Array.isArray(order.stages_status) && order.stages_status.length > 0) {
                     order.stages_status = order.stages_status.map((st: any) => {
                         const prog = progressList.find(p => Number(p.stage_id) === Number(st.id));
                         const finished = prog ? prog.finished : !!st.finished;

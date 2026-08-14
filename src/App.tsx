@@ -1401,11 +1401,12 @@ export default function App() {
   // Initialize selectedStageId when order is opened
   useEffect(() => {
     if (selectedOrder) {
-      const firstUnfinished = selectedOrder.stages_status.find(s => !s.finished);
+      const orderStages = selectedOrder.stages_status || [];
+      const firstUnfinished = orderStages.find(s => !s.finished);
       if (firstUnfinished) {
         setSelectedStageId(firstUnfinished.id);
-      } else if (selectedOrder.stages_status.length > 0) {
-        setSelectedStageId(selectedOrder.stages_status[0].id);
+      } else if (orderStages.length > 0) {
+        setSelectedStageId(orderStages[0].id);
       }
     } else {
       setSelectedStageId(null);
@@ -1432,15 +1433,15 @@ export default function App() {
       // Handle Arrow Navigation
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const stageIds = selectedOrder.stages_status.map(s => s.id);
+        const stageIds = (selectedOrder.stages_status || []).map(s => s.id);
         const currentIndex = stageIds.indexOf(selectedStageId || -1);
         
         if (e.key === 'ArrowDown') {
-          const nextIndex = (currentIndex + 1) % stageIds.length;
-          setSelectedStageId(stageIds[nextIndex]);
+          const nextIndex = (currentIndex + 1) % Math.max(1, stageIds.length);
+          if (stageIds[nextIndex] !== undefined) setSelectedStageId(stageIds[nextIndex]);
         } else {
-          const prevIndex = (currentIndex - 1 + stageIds.length) % stageIds.length;
-          setSelectedStageId(stageIds[prevIndex]);
+          const prevIndex = (currentIndex - 1 + stageIds.length) % Math.max(1, stageIds.length);
+          if (stageIds[prevIndex] !== undefined) setSelectedStageId(stageIds[prevIndex]);
         }
         return;
       }
@@ -1458,7 +1459,7 @@ export default function App() {
       if (!stage) return;
       
       const execution = (executions || []).find(ex => ex.stage_id === stage.id);
-      const isFinished = selectedOrder.stages_status.find(s => s.id === selectedStageId)?.finished;
+      const isFinished = (selectedOrder.stages_status || []).find(s => s.id === selectedStageId)?.finished;
 
       switch (e.key) {
         case '1':
@@ -2603,7 +2604,8 @@ export default function App() {
                   .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
                   .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                   .map(order => {
-                    const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
+                    const stagesList = Array.isArray(order.stages_status) ? order.stages_status : [];
+                    const isOverdue = order.status !== 'Entregue' && order.deadline ? isPast(endOfDay(parseISO(order.deadline))) : false;
                   return (
                     <tr
                       key={order.id}
@@ -2620,7 +2622,7 @@ export default function App() {
                       <td className="px-6 py-4 text-sm font-medium">{order.client_name}</td>
                       <td className="px-6 py-4">
                         <div className="flex gap-1">
-                          {order.stages_status.map((stage, i) => (
+                          {stagesList.map((stage, i) => (
                             <div
                               key={i}
                               title={stage.name}
@@ -2647,7 +2649,7 @@ export default function App() {
                         {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') ? (
                           <input
                             type="date"
-                            defaultValue={order.deadline.split('T')[0]}
+                            defaultValue={order.deadline ? order.deadline.split('T')[0] : ''}
                             onChange={(e) => handleUpdateDeadline(order.id, e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             className="bg-transparent border-none focus:ring-0 text-sm p-0 cursor-pointer hover:underline"
@@ -2657,7 +2659,7 @@ export default function App() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
-                        {order.stages_status.find(s => !s.finished)?.name || 'Concluído'}
+                        {stagesList.find(s => !s.finished)?.name || 'Concluído'}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
                         {order.current_operator || '-'}
@@ -4793,15 +4795,21 @@ export default function App() {
                               <div className="flex items-center gap-2">
                                 <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
                               </div>
-                              <Badge variant="info" className="text-[8px] py-0 px-1.5">
-                                {selectedOrder.stages_status.filter(s => s.finished).length}/{selectedOrder.stages_status.length}
-                              </Badge>
+                              {(() => {
+                                const stagesStatusList = selectedOrder.stages_status || [];
+                                return (
+                                  <Badge variant="info" className="text-[8px] py-0 px-1.5">
+                                    {stagesStatusList.filter(s => s.finished).length}/{stagesStatusList.length}
+                                  </Badge>
+                                );
+                              })()}
                             </h3>
 
                             <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
                               {(() => {
-                                const firstUnfinishedId = selectedOrder.stages_status.find(s => !s.finished)?.id;
-                                return selectedOrder.stages_status.map(orderStage => {
+                                const stagesStatusList = selectedOrder.stages_status || [];
+                                const firstUnfinishedId = stagesStatusList.find(s => !s.finished)?.id;
+                                return stagesStatusList.map(orderStage => {
                                   const stage = stages.find(s => s.id === orderStage.id);
                                   if (!stage) return null;
                                   const execution = executions.find(e => e.stage_id === stage.id);
@@ -6235,7 +6243,7 @@ export default function App() {
       {/* MODAL: Registrar Progresso Parcial */}
       {isProgressModalOpen && selectedOrder && progressStageId && (() => {
         const stage = stages.find(s => s.id === progressStageId);
-        const orderStage = selectedOrder.stages_status.find(s => s.id === progressStageId);
+        const orderStage = (selectedOrder.stages_status || []).find(s => s.id === progressStageId);
         const currentGood = orderStage?.quantidade_boa || 0;
         const totalReq = selectedOrder.quantity || 0;
         const remaining = Math.max(0, totalReq - currentGood);
