@@ -2,19 +2,166 @@ import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import {
-    getLossReasons,
-    updateLossReasons,
-    getStageProgressForOrder,
-    enrichOrdersWithProgressSync,
-    logProgress,
-    logLoss,
-    validateStageFinish,
-    getLossReportDataStore,
-    getProgressLogs
-} from "./lib/lossStore.ts";
 
 dotenv.config();
+
+// ── Inline: lossStore ──────────────────────────────────────────────────────────
+// (Inlined to avoid cross-file .ts import issues on Vercel @vercel/node runtime)
+
+interface OrderStageProgress {
+  id?: number; order_id: number; stage_id: number;
+  quantidade_pedido: number; quantidade_boa: number;
+  quantidade_perdida: number; pendencia_reposicao: number; finished: boolean;
+}
+interface OrderLossLog {
+  id?: number; order_id: number; stage_id: number; stage_name: string;
+  user_id: number; user_name: string; quantidade_perdida: number; motivo: string;
+  motivo_detalhe: string; etapa_reentrada_id: number; etapa_reentrada_name: string; created_at: string;
+}
+interface LossReasonSetting { motivo: string; etapa_reentrada_id: number; }
+interface LossReportData {
+  summary: { total_perdido: number; pct_perda: number; total_pedidos_com_perda: number; impacto_prazo_horas: number };
+  perdas_por_setor: any[]; perdas_por_motivo: any[]; impacto_pedidos: any[];
+}
+
+function _getDefaultLossReasons(stages: { id: number; name: string; sort_order?: number }[]): LossReasonSetting[] {
+  const find = (name: string, fb: number) => stages.find(s => s.name.toLowerCase().trim() === name.toLowerCase().trim())?.id ?? fb;
+  const sorted = [...stages].sort((a, b) => (a.sort_order||0)-(b.sort_order||0));
+  const first = sorted[0]?.id ?? 1;
+  const corte = find('Corte', first); const estoque = find('Separação estoque', corte);
+  const dtf = find('DTF', corte); const costura = find('Costura', corte);
+  return [
+    { motivo: 'Falta de matéria-prima/peça (estoque)', etapa_reentrada_id: estoque },
+    { motivo: 'Defeito de corte', etapa_reentrada_id: corte },
+    { motivo: 'Falha na estampa/DTF', etapa_reentrada_id: dtf },
+    { motivo: 'Defeito de costura', etapa_reentrada_id: costura },
+    { motivo: 'Extravio', etapa_reentrada_id: first },
+    { motivo: 'Reprovado na conferência (qualidade)', etapa_reentrada_id: corte },
+    { motivo: 'Outro', etapa_reentrada_id: first },
+  ];
+}
+function _calculateLossReport(lossLogs: OrderLossLog[], orders: any[]=[], stages: any[]=[]): LossReportData {
+  const stageMap = new Map<number, string>(); stages.forEach(s => stageMap.set(s.id, s.name));
+  const totalLost = lossLogs.reduce((s, l) => s + (l.quantidade_perdida||0), 0);
+  const sectorMap = new Map<number, any>(); const reasonMap = new Map<string, any>(); const orderLostMap = new Map<number, number>();
+  lossLogs.forEach(log => {
+    const sn = log.stage_name || stageMap.get(log.stage_id) || `Etapa #${log.stage_id}`;
+    const sec = sectorMap.get(log.stage_id) || { stage_name: sn, lost: 0, orderIds: new Set() };
+    sec.lost += log.quantidade_perdida; sec.orderIds.add(log.order_id); sectorMap.set(log.stage_id, sec);
+    const rk = `${log.motivo}|${sn}`; const r = reasonMap.get(rk) || { motivo: log.motivo, stage_name: sn, lost: 0 };
+    r.lost += log.quantidade_perdida; reasonMap.set(rk, r);
+    orderLostMap.set(log.order_id, (orderLostMap.get(log.order_id)||0) + log.quantidade_perdida);
+  });
+  const perdas_por_setor = Array.from(sectorMap.entries()).map(([sid, v]) => ({ stage_id: sid, stage_name: v.stage_name, quantidade_perdida: v.lost, pct_total: totalLost>0?Math.round(v.lost/totalLost*1000)/10:0, pedidos_afetados: v.orderIds.size })).sort((a,b)=>b.quantidade_perdida-a.quantidade_perdida);
+  const perdas_por_motivo = Array.from(reasonMap.values()).map(v => ({ motivo: v.motivo, stage_name: v.stage_name, quantidade_perdida: v.lost, pct_total: totalLost>0?Math.round(v.lost/totalLost*1000)/10:0 })).sort((a,b)=>b.quantidade_perdida-a.quantidade_perdida);
+  const owl = orders.filter(o => orderLostMap.has(o.id)); const nwl = orders.filter(o => !orderLostMap.has(o.id) && o.total_time_seconds>0);
+  const avg = nwl.length>0?nwl.reduce((s,o)=>s+o.total_time_seconds,0)/nwl.length:0;
+  const impacto_pedidos = owl.map(o => { const a=Math.round(o.total_time_seconds/3600*10)/10,b=Math.round(avg/3600*10)/10; return { order_id:o.id, order_number:o.order_number, client_name:o.client_name, quantidade_perdida:orderLostMap.get(o.id)||0, lead_time_com_perda_horas:a, lead_time_medio_sem_perda_horas:b, atraso_adicional_horas:Math.max(0,Math.round((a-b)*10)/10) }; });
+  const ttp = orders.reduce((s,o)=>s+(o.quantity||0),0);
+  return { summary: { total_perdido:totalLost, pct_perda:ttp>0?Math.round(totalLost/ttp*1000)/10:0, total_pedidos_com_perda:orderLostMap.size, impacto_prazo_horas:impacto_pedidos.length>0?Math.round(impacto_pedidos.reduce((s,i)=>s+i.atraso_adicional_horas,0)/impacto_pedidos.length*10)/10:0 }, perdas_por_setor, perdas_por_motivo, impacto_pedidos };
+}
+
+const _lossStageProgressStore = new Map<string, OrderStageProgress>();
+let _lossLogsStore: OrderLossLog[] = [];
+let _progressLogsStore: any[] = [];
+let _lossReasonSettingsStore: LossReasonSetting[] = [];
+let _lossStoreInitialized = false;
+
+async function _initLossStore(sb: any) {
+  if (_lossStoreInitialized) return;
+  _lossStoreInitialized = true;
+  try { const { data } = await sb.from('loss_reason_settings').select('*'); if (data?.length) _lossReasonSettingsStore = data; } catch(e) {}
+  if (_lossReasonSettingsStore.length === 0) {
+    try { const { data } = await sb.from('stages').select('id, name, sort_order'); if (data) _lossReasonSettingsStore = _getDefaultLossReasons(data); }
+    catch(e) { _lossReasonSettingsStore = _getDefaultLossReasons([{id:1,name:'Ficha de aprovação',sort_order:1},{id:2,name:'Corte',sort_order:2},{id:12,name:'Separação estoque',sort_order:4},{id:5,name:'DTF',sort_order:7},{id:7,name:'Costura',sort_order:12},{id:8,name:'Conferência',sort_order:13}]); }
+  }
+  try { const { data } = await sb.from('order_loss_logs').select('*'); if (data) _lossLogsStore = data; } catch(e) {}
+  try { const { data } = await sb.from('order_progress_logs').select('*'); if (data) _progressLogsStore = data; } catch(e) {}
+  try { const { data } = await sb.from('order_stage_progress').select('*'); if (data) data.forEach((p: any) => _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p)); } catch(e) {}
+}
+async function getLossReasons(sb: any) { await _initLossStore(sb); return _lossReasonSettingsStore; }
+async function updateLossReasons(sb: any, settings: LossReasonSetting[]) { await _initLossStore(sb); _lossReasonSettingsStore = settings; try { await sb.from('loss_reason_settings').upsert(settings); } catch(e) {} return _lossReasonSettingsStore; }
+async function getStageProgressForOrder(sb: any, orderId: number, orderData?: any) {
+  await _initLossStore(sb);
+  let order = orderData || (await sb.from('orders').select('*').eq('id', orderId).single()).data;
+  if (!order) return [];
+  const requiredStages: number[] = Array.isArray(order.required_stages) ? order.required_stages : [];
+  const stagesStatus: any[] = Array.isArray(order.stages_status) ? order.stages_status : [];
+  return requiredStages.map(stageId => {
+    const key = `${orderId}_${stageId}`;
+    let prog = _lossStageProgressStore.get(key);
+    if (!prog) {
+      const st = stagesStatus.find((s: any) => Number(s.id) === Number(stageId));
+      const qty = order.quantity || 0;
+      prog = { order_id: orderId, stage_id: stageId, quantidade_pedido: qty, quantidade_boa: st?.finished ? qty : 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: !!st?.finished };
+      _lossStageProgressStore.set(key, prog);
+    } else if (order.quantity && prog.quantidade_pedido !== order.quantity) { prog.quantidade_pedido = order.quantity; }
+    return prog;
+  });
+}
+function enrichOrdersWithProgressSync(orders: any[]) {
+  if (!orders?.length) return;
+  for (const order of orders) {
+    if (!Array.isArray(order.stages_status)) order.stages_status = [];
+    const qty = order.quantity || 0;
+    order.stages_status = order.stages_status.map((st: any) => {
+      const key = `${order.id}_${Number(st.id)}`;
+      let prog = _lossStageProgressStore.get(key);
+      if (!prog) { prog = { order_id: order.id, stage_id: Number(st.id), quantidade_pedido: qty, quantidade_boa: st.finished ? qty : 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: !!st.finished }; _lossStageProgressStore.set(key, prog); }
+      else if (qty && prog.quantidade_pedido !== qty) prog.quantidade_pedido = qty;
+      return { ...st, finished: prog.finished, quantidade_boa: prog.quantidade_boa, quantidade_perdida: prog.quantidade_perdida, pendencia_reposicao: prog.pendencia_reposicao, quantidade_pedido: qty };
+    });
+  }
+}
+async function logProgress(sb: any, orderId: number, stageId: number, userId: number, userName: string, incremento: number) {
+  await _initLossStore(sb);
+  const key = `${orderId}_${stageId}`;
+  let prog = _lossStageProgressStore.get(key) || { order_id: orderId, stage_id: stageId, quantidade_pedido: (await sb.from('orders').select('quantity').eq('id', orderId).single()).data?.quantity || 0, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
+  prog.quantidade_boa = Math.max(0, prog.quantidade_boa + incremento);
+  if (prog.pendencia_reposicao > 0) prog.pendencia_reposicao = Math.max(0, prog.pendencia_reposicao - incremento);
+  const calcType = (await sb.from('stages').select('calculation_type').eq('id', stageId).single()).data?.calculation_type || 'por_peca';
+  if (calcType === 'por_peca') prog.finished = prog.quantidade_boa >= prog.quantidade_pedido;
+  _lossStageProgressStore.set(key, prog);
+  try { await sb.from('order_stage_progress').upsert(prog); } catch(e) {}
+  const logEntry = { order_id: orderId, stage_id: stageId, user_id: userId, user_name: userName, quantidade_boa_incremento: incremento, created_at: new Date().toISOString() };
+  _progressLogsStore.push(logEntry);
+  try { await sb.from('order_progress_logs').insert(logEntry); } catch(e) {}
+  return { success: true, progress: prog, log: logEntry };
+}
+async function logLoss(sb: any, orderId: number, stageId: number, userId: number, userName: string, qtd: number, motivo: string, det?: string, retId?: number) {
+  await _initLossStore(sb);
+  const key = `${orderId}_${stageId}`;
+  let prog = _lossStageProgressStore.get(key) || { order_id: orderId, stage_id: stageId, quantidade_pedido: (await sb.from('orders').select('quantity').eq('id', orderId).single()).data?.quantity || 0, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
+  prog.quantidade_perdida += qtd; if (prog.quantidade_boa < prog.quantidade_pedido) prog.finished = false;
+  _lossStageProgressStore.set(key, prog); try { await sb.from('order_stage_progress').upsert(prog); } catch(e) {}
+  const rs = retId || _lossReasonSettingsStore.find(r => r.motivo.toLowerCase() === motivo.toLowerCase())?.etapa_reentrada_id || stageId;
+  const sn = (await sb.from('stages').select('name').eq('id', stageId).single()).data?.name || `Etapa #${stageId}`;
+  const rn = (await sb.from('stages').select('name').eq('id', rs).single()).data?.name || `Etapa #${rs}`;
+  const lossLog: OrderLossLog = { id: _lossLogsStore.length+1, order_id: orderId, stage_id: stageId, stage_name: sn, user_id: userId, user_name: userName, quantidade_perdida: qtd, motivo, motivo_detalhe: det||'', etapa_reentrada_id: rs, etapa_reentrada_name: rn, created_at: new Date().toISOString() };
+  _lossLogsStore.push(lossLog); try { await sb.from('order_loss_logs').insert(lossLog); } catch(e) {}
+  const rk = `${orderId}_${rs}`; let rp = _lossStageProgressStore.get(rk) || { order_id: orderId, stage_id: rs, quantidade_pedido: prog.quantidade_pedido, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
+  rp.pendencia_reposicao += qtd; rp.finished = false; _lossStageProgressStore.set(rk, rp); try { await sb.from('order_stage_progress').upsert(rp); } catch(e) {}
+  return { success: true, progress: prog, lossLog, reentradaStageId: rs };
+}
+async function validateStageFinish(sb: any, orderId: number, stageId: number) {
+  await _initLossStore(sb);
+  const si = (await sb.from('stages').select('name, calculation_type').eq('id', stageId).single()).data;
+  if (si?.calculation_type === 'por_pedido') return { canFinish: true };
+  const prog = (await getStageProgressForOrder(sb, orderId)).find((p: any) => p.stage_id === stageId);
+  if (!prog || prog.quantidade_boa >= prog.quantidade_pedido) return { canFinish: true };
+  const remaining = prog.quantidade_pedido - prog.quantidade_boa;
+  return { canFinish: false, remaining, message: `Não é possível finalizar a etapa '${si?.name||stageId}': faltam ${remaining} peças boas para atingir o total de ${prog.quantidade_pedido} peças do pedido.` };
+}
+async function getLossReportDataStore(sb: any, startDate?: string, endDate?: string) {
+  await _initLossStore(sb);
+  let logs = [..._lossLogsStore];
+  if (startDate) { const ms = new Date(startDate).getTime(); logs = logs.filter(l => new Date(l.created_at).getTime() >= ms); }
+  if (endDate) { const ms = new Date(endDate).getTime(); logs = logs.filter(l => new Date(l.created_at).getTime() <= ms); }
+  let orders: any[] = []; try { const { data } = await sb.from('orders').select('id, order_number, client_name, total_time_seconds, status, quantity'); if (data) orders = data; } catch(e) {}
+  let stages: any[] = []; try { const { data } = await sb.from('stages').select('id, name'); if (data) stages = data; } catch(e) {}
+  return _calculateLossReport(logs, orders, stages);
+}
+async function getProgressLogs(sb: any) { await _initLossStore(sb); return _progressLogsStore; }
 
 // ── Inline: timerUtils ─────────────────────────────────────────────────────
 interface PauseRecord { id?: number; execution_id?: number; start_pause: string; end_pause?: string | null; duration_seconds?: number | null; }
@@ -888,7 +1035,7 @@ app.delete("/api/stages/:id", async (req, res) => {
 // ── Loss Reasons & Re-entry Configuration ──────────────────────────────────
 app.get("/api/loss-reasons", async (_req, res) => {
     try {
-        const reasons = await getLossReasons();
+        const reasons = await getLossReasons(supabase);
         return res.json(reasons);
     } catch (err: any) {
         console.error("[API] Erro ao buscar motivos de perda:", err);
@@ -902,7 +1049,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
         if (!Array.isArray(reasons)) {
             return res.status(400).json({ error: "Parâmetro 'reasons' deve ser um array." });
         }
-        const updated = await updateLossReasons(reasons);
+        const updated = await updateLossReasons(supabase, reasons);
         return res.json({ success: true, reasons: updated });
     } catch (err: any) {
         console.error("[API] Erro ao atualizar motivos de perda:", err);
@@ -914,7 +1061,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
 app.get("/api/orders/:id/stage-progress", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
-        const progressList = await getStageProgressForOrder(orderId);
+        const progressList = await getStageProgressForOrder(supabase, orderId);
         return res.json(progressList);
     } catch (err: any) {
         console.error("[API] Erro ao buscar progresso do pedido:", err);
@@ -933,6 +1080,7 @@ app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
         }
 
         const result = await logProgress(
+            supabase,
             orderId,
             stageId,
             Number(user_id) || 1,
@@ -963,6 +1111,7 @@ app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
         }
 
         const result = await logLoss(
+            supabase,
             orderId,
             stageId,
             Number(user_id) || 1,
@@ -984,7 +1133,7 @@ app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
 app.get("/api/reports/losses", async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        const data = await getLossReportDataStore(startDate as string, endDate as string);
+        const data = await getLossReportDataStore(supabase, startDate as string, endDate as string);
         return res.json(data);
     } catch (err: any) {
         console.error("[API] Erro ao gerar relatório de perdas:", err);
@@ -1531,7 +1680,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
     if (checkError(e1, res, "Execução não encontrada") || !execution) return;
 
     // 1.5 Validate if stage can be finished (for por_peca, quantidade_boa >= quantidade_pedido)
-    const val = await validateStageFinish(execution.order_id, execution.stage_id);
+    const val = await validateStageFinish(supabase, execution.order_id, execution.stage_id);
     if (!val.canFinish) {
         return res.status(400).json({ error: val.message });
     }
