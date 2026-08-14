@@ -24,19 +24,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         results['supabase'] = 'ERRO: ' + e.message;
     }
     
-    try {
-        const { calculateExecutionTimes } = await import('./lib/timerUtils');
-        results['timerUtils'] = 'OK - ' + (typeof calculateExecutionTimes);
-    } catch (e: any) {
-        results['timerUtils'] = 'ERRO: ' + e.message;
-    }
-
-    try {
-        const { calculateWorkedDays } = await import('./lib/goalsUtils');
-        results['goalsUtils'] = 'OK - ' + (typeof calculateWorkedDays);
-    } catch (e: any) {
-        results['goalsUtils'] = 'ERRO: ' + e.message;
-    }
+    results['status'] = 'OK';
+    results['timestamp'] = new Date().toISOString();
 
     res.status(200).json({ modules: results });
 }

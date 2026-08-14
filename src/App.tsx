@@ -825,23 +825,54 @@ export default function App() {
       ordersUrl += `&print_type=${encodeURIComponent(printTypeFilter)}`;
     }
 
-    const [ordersData, stagesData, statsData, templatesData] = await Promise.all([
+    let [ordersData, stagesData, statsData, templatesData] = await Promise.all([
       safeFetch(ordersUrl),
       safeFetch('/api/stages'),
       safeFetch(statsUrl),
       safeFetch('/api/order-templates')
     ]);
 
-    if (ordersData) {
+    // Fallback para consulta direta ao Supabase caso a API REST do backend falhe ou retorne nulo
+    if (!Array.isArray(ordersData)) {
+      console.warn('[FetchData] /api/orders indisponível via API. Executando fallback direto ao Supabase...');
+      try {
+        const { data: fallbackOrders } = await supabase.rpc('get_orders_with_stages', {
+          p_search: searchTerm || null,
+          p_stage_id: selectedStageFilter ? Number(selectedStageFilter) : null,
+          p_stage_status: selectedStageStatus || null,
+          p_product_type: productTypeFilter || null,
+          p_print_type: printTypeFilter || null,
+        });
+        if (Array.isArray(fallbackOrders)) {
+          ordersData = fallbackOrders.map((o: any) => ({
+            ...o,
+            stages_status: Array.isArray(o.stages_status) ? o.stages_status : []
+          }));
+        }
+      } catch (err) {
+        console.error('[FetchData] Erro no fallback do Supabase:', err);
+      }
+    }
+
+    if (!Array.isArray(stagesData)) {
+      try {
+        const { data: fallbackStages } = await supabase.from('stages').select('*').order('sort_order', { ascending: true });
+        if (Array.isArray(fallbackStages)) {
+          stagesData = fallbackStages;
+        }
+      } catch (err) {}
+    }
+
+    if (Array.isArray(ordersData)) {
       // Prioridade visual por prazo (crescente)
-      const sortedOrders = ordersData.sort((a: Order, b: Order) => {
-        if (!a.deadline) return 1;
-        if (!b.deadline) return -1;
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      const sortedOrders = [...ordersData].sort((a: Order, b: Order) => {
+        const timeA = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        const timeB = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+        return (isNaN(timeA) ? Infinity : timeA) - (isNaN(timeB) ? Infinity : timeB);
       });
       setOrders(sortedOrders);
     }
-    if (stagesData) setStages(stagesData);
+    if (Array.isArray(stagesData)) setStages(stagesData);
     if (statsData) setStats(statsData);
     if (templatesData) setTemplates(templatesData);
     fetchCollaboratorGoals();
