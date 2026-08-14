@@ -1,5 +1,14 @@
 {
     "version": 2,
+    "builds": [
+        {
+            "src": "api/index.ts",
+            "use": "@vercel/node",
+            "config": {
+                "includeFiles": ["api/**/*"]
+            }
+        }
+    ],
     "rewrites": [
         {
             "source": "/api/(.*)",
@@ -11,9 +20,6 @@
         }
     ],
     "functions": {
-        "api/ping.ts": {
-            "maxDuration": 30
-        },
         "api/index.ts": {
             "maxDuration": 60
         }

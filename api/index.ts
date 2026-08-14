@@ -2262,4 +2262,7 @@ app.all("/api/*", (req, res) => {
     res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
 
+// Named export for Vercel Serverless Functions compatibility
+export const handler = (req: any, res: any) => app(req, res);
+
 export default app;
