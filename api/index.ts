@@ -1667,6 +1667,7 @@ app.post("/api/executions/:id/resume", async (req, res) => {
 
 app.post("/api/executions/:id/finish", async (req, res) => {
     const execution_id = Number(req.params.id);
+    const { force } = req.body || {};
     const nowISO = new Date().toISOString();
     const nowMs = new Date().getTime();
 
@@ -1680,9 +1681,11 @@ app.post("/api/executions/:id/finish", async (req, res) => {
     if (checkError(e1, res, "Execução não encontrada") || !execution) return;
 
     // 1.5 Validate if stage can be finished (for por_peca, quantidade_boa >= quantidade_pedido)
-    const val = await validateStageFinish(supabase, execution.order_id, execution.stage_id);
-    if (!val.canFinish) {
-        return res.status(400).json({ error: val.message });
+    if (!force) {
+        const val = await validateStageFinish(supabase, execution.order_id, execution.stage_id);
+        if (!val.canFinish) {
+            return res.status(400).json({ error: val.message, remaining: val.remaining, canForce: true });
+        }
     }
 
     // 2. Finalize any active pause

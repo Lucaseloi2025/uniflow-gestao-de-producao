@@ -613,7 +613,20 @@ export default function App() {
   // Modal State: Progresso Parcial
   const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
   const [progressStageId, setProgressStageId] = useState<number | null>(null);
-  const [progressIncrementInput, setProgressIncrementInput] = useState<number>(1);
+  const [progressIncrementInput, setProgressIncrementInput] = useState<number>(0);
+
+  // Modal State: Ação de Pausar / Finalizar Etapa com Quantidade e Perdas
+  const [executionActionModal, setExecutionActionModal] = useState<{
+    type: 'pause' | 'finish';
+    executionId: number;
+    stageId: number;
+  } | null>(null);
+  const [actionQuantityInput, setActionQuantityInput] = useState<number>(0);
+  const [actionLossQuantityInput, setActionLossQuantityInput] = useState<number>(0);
+  const [actionLossReasonInput, setActionLossReasonInput] = useState<string>('');
+  const [actionLossReasonDetailInput, setActionLossReasonDetailInput] = useState<string>('');
+  const [actionLossReentryStageIdInput, setActionLossReentryStageIdInput] = useState<number | null>(null);
+  const [showActionLossSection, setShowActionLossSection] = useState<boolean>(false);
 
   // Modal State: Registro de Perda
   const [isLossModalOpen, setIsLossModalOpen] = useState(false);
@@ -1257,13 +1270,126 @@ export default function App() {
     }
   };
 
-  const handlePauseStage = async (executionId: number) => {
-    await fetch(`/api/executions/${executionId}/pause`, {
-      method: 'POST',
-      headers: { 'x-user-role': currentUser?.role || '' }
-    });
-    fetchExecutions(selectedOrder!.id);
-    fetchActiveExecution();
+  const handleOpenActionModal = (type: 'pause' | 'finish', executionId: number, stageId: number) => {
+    setActionQuantityInput(0);
+    setActionLossQuantityInput(0);
+    const initialReason = lossReasonsList.length > 0 ? lossReasonsList[0].motivo : 'Defeito de corte';
+    setActionLossReasonInput(initialReason);
+    setActionLossReasonDetailInput('');
+    const defaultReentry = lossReasonsList.find(r => r.motivo === initialReason)?.etapa_reentrada_id || stageId;
+    setActionLossReentryStageIdInput(defaultReentry);
+    setShowActionLossSection(false);
+    setExecutionActionModal({ type, executionId, stageId });
+  };
+
+  const handlePauseStage = (executionId: number, stageId: number) => {
+    handleOpenActionModal('pause', executionId, stageId);
+  };
+
+  const handleFinishStage = (executionId: number, stageId: number) => {
+    handleOpenActionModal('finish', executionId, stageId);
+  };
+
+  const handleConfirmExecutionAction = async (forceFinish = false) => {
+    if (!executionActionModal || !selectedOrder) return;
+    const { type, executionId, stageId } = executionActionModal;
+
+    // Validação do motivo se informou perdas
+    if (actionLossQuantityInput > 0) {
+      if (!actionLossReasonInput) {
+        alert("Por favor, selecione o motivo da perda.");
+        return;
+      }
+      if (actionLossReasonInput === 'Outro' && !actionLossReasonDetailInput.trim()) {
+        alert("Por favor, informe o detalhamento do motivo 'Outro'.");
+        return;
+      }
+    }
+
+    // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
+    if (actionQuantityInput > 0) {
+      const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        },
+        body: JSON.stringify({
+          incremento: actionQuantityInput,
+          user_id: currentUser?.id || 1,
+          user_name: currentUser?.name || 'Operador'
+        })
+      });
+      if (!progRes.ok) {
+        const err = await progRes.json();
+        alert(err.error || "Erro ao registrar progresso.");
+        return;
+      }
+    }
+
+    // 2. Se informou peças perdidas > 0, registra a perda
+    if (actionLossQuantityInput > 0) {
+      const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        },
+        body: JSON.stringify({
+          quantidade_perdida: actionLossQuantityInput,
+          motivo: actionLossReasonInput,
+          motivo_detalhe: actionLossReasonDetailInput,
+          etapa_reentrada_id: actionLossReentryStageIdInput || stageId,
+          user_id: currentUser?.id || 1,
+          user_name: currentUser?.name || 'Operador'
+        })
+      });
+      if (!lossRes.ok) {
+        const err = await lossRes.json();
+        alert(err.error || "Erro ao registrar perda.");
+        return;
+      }
+    }
+
+    // 3. Executa a Pausa ou a Finalização
+    if (type === 'pause') {
+      await fetch(`/api/executions/${executionId}/pause`, {
+        method: 'POST',
+        headers: { 'x-user-role': currentUser?.role || '' }
+      });
+      setExecutionActionModal(null);
+      fetchExecutions(selectedOrder.id);
+      fetchData();
+      fetchActiveExecution();
+    } else if (type === 'finish') {
+      const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        },
+        body: JSON.stringify({ force: forceFinish })
+      });
+
+      if (finishRes.ok) {
+        setExecutionActionModal(null);
+        fetchExecutions(selectedOrder.id);
+        fetchData();
+        fetchActiveExecution();
+      } else {
+        const err = await finishRes.json();
+        if (err.canForce && !forceFinish) {
+          const confirmForce = window.confirm(
+            `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
+          );
+          if (confirmForce) {
+            await handleConfirmExecutionAction(true);
+          }
+        } else {
+          alert(err.error || "Erro ao finalizar etapa");
+        }
+      }
+    }
   };
 
   const handleResumeStage = async (executionId: number) => {
@@ -1275,25 +1401,9 @@ export default function App() {
     fetchActiveExecution();
   };
 
-  const handleFinishStage = async (executionId: number) => {
-    if (!window.confirm("Tem certeza que deseja finalizar esta etapa?")) return;
-    const res = await fetch(`/api/executions/${executionId}/finish`, {
-      method: 'POST',
-      headers: { 'x-user-role': currentUser?.role || '' }
-    });
-    if (res.ok) {
-      fetchExecutions(selectedOrder!.id);
-      fetchData();
-      fetchActiveExecution();
-    } else {
-      const err = await res.json();
-      alert(err.error || "Erro ao finalizar etapa");
-    }
-  };
-
   const handleOpenProgressModal = (stageId: number) => {
     setProgressStageId(stageId);
-    setProgressIncrementInput(1);
+    setProgressIncrementInput(0);
     setIsProgressModalOpen(true);
   };
 
@@ -1505,13 +1615,13 @@ export default function App() {
         case '2':
           e.preventDefault();
           if (execution?.status === 'Em andamento') {
-            handlePauseStage(execution.id);
+            handlePauseStage(execution.id, stage.id);
           }
           break;
         case '3':
           e.preventDefault();
           if (execution?.status === 'Em andamento') {
-            handleFinishStage(execution.id);
+            handleFinishStage(execution.id, stage.id);
           }
           break;
       }
@@ -4951,24 +5061,6 @@ export default function App() {
 
                                       {!orderStage.finished && (
                                         <div className="mt-2 space-y-1.5">
-                                          {stage.calculation_type !== 'por_pedido' && (
-                                            <div className="flex items-center gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); handleOpenProgressModal(stage.id); }}
-                                                className="flex-1 py-1 px-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded text-[9px] font-bold border border-emerald-200 transition-colors flex items-center justify-center gap-1"
-                                              >
-                                                + Progresso Parcial
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); handleOpenLossModal(stage.id); }}
-                                                className="flex-1 py-1 px-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-[9px] font-bold border border-rose-200 transition-colors flex items-center justify-center gap-1"
-                                              >
-                                                ⚠️ Registrar Perda
-                                              </button>
-                                            </div>
-                                          )}
 
                                           <div className="flex items-center gap-1.5">
                                             {!execution && (
@@ -4989,14 +5081,14 @@ export default function App() {
                                             {execution?.status === 'Em andamento' && (
                                               <>
                                                 <button
-                                                  onClick={() => handlePauseStage(execution.id)}
+                                                  onClick={() => handlePauseStage(execution.id, stage.id)}
                                                   className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
                                                 >
                                                   <Pause size={12} fill="currentColor" />
                                                   PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
                                                 </button>
                                                 <button
-                                                  onClick={() => handleFinishStage(execution.id)}
+                                                  onClick={() => handleFinishStage(execution.id, stage.id)}
                                                   className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
                                                 >
                                                   <CheckCircle size={12} />
@@ -6293,6 +6385,199 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+      {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de Produção e Perdas */}
+      {executionActionModal && selectedOrder && (() => {
+        const { type, executionId, stageId } = executionActionModal;
+        const isPause = type === 'pause';
+        const stage = stages.find(s => s.id === stageId);
+        const orderStage = (selectedOrder.stages_status || []).find(s => s.id === stageId);
+        const currentGood = orderStage?.quantidade_boa || 0;
+        const currentLoss = orderStage?.quantidade_perdida || 0;
+        const totalReq = selectedOrder.quantity || 0;
+        const remaining = Math.max(0, totalReq - currentGood);
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-2 rounded-lg", isPause ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>
+                    {isPause ? <Pause size={20} /> : <CheckCircle size={20} />}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm">
+                      {isPause ? 'Pausar Etapa — Apontamento da Sessão' : 'Finalizar Etapa — Apontamento Final'}
+                    </h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button onClick={() => setExecutionActionModal(null)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="py-1 space-y-4">
+                <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1.5">
+                  <div className="flex justify-between font-medium text-zinc-600">
+                    <span>Peças boas concluídas até agora:</span>
+                    <span className="font-bold text-zinc-900 font-mono">{currentGood} / {totalReq}</span>
+                  </div>
+                  {currentLoss > 0 && (
+                    <div className="flex justify-between font-medium text-rose-600">
+                      <span>Perdas registradas no pedido:</span>
+                      <span className="font-bold font-mono">{currentLoss} peças</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-medium text-amber-700">
+                    <span>Peças restantes para finalizar:</span>
+                    <span className="font-bold font-mono">{remaining} peças</span>
+                  </div>
+                </div>
+
+                {/* Seção 1: Peças Boas Produzidas */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                      <TrendingUp size={14} className="text-emerald-600" />
+                      Peças boas produzidas nesta sessão (+):
+                    </label>
+                    {remaining > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setActionQuantityInput(remaining)}
+                        className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
+                      >
+                        + Preencher restantes ({remaining})
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={actionQuantityInput}
+                    onChange={(e) => setActionQuantityInput(Math.max(0, Number(e.target.value)))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Seção 2: Registrar Perda (Opcional / Expansível) */}
+                <div className="pt-2 border-t border-zinc-100 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowActionLossSection(!showActionLossSection)}
+                    className="w-full flex items-center justify-between p-2 rounded-xl bg-rose-50/50 hover:bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <AlertTriangle size={14} />
+                      {actionLossQuantityInput > 0
+                        ? `⚠️ Perda registrada nesta sessão: ${actionLossQuantityInput} peça(s)`
+                        : '⚠️ Houve alguma perda / refugo nesta sessão?'}
+                    </span>
+                    <span className="text-[10px] underline">
+                      {showActionLossSection ? 'Ocultar' : (actionLossQuantityInput > 0 ? 'Editar Perda' : '+ Adicionar Perda')}
+                    </span>
+                  </button>
+
+                  {(showActionLossSection || actionLossQuantityInput > 0) && (
+                    <div className="p-3 bg-rose-50/30 rounded-xl border border-rose-100 space-y-3 animate-in fade-in duration-200 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                          Quantidade de peças perdidas nesta sessão:
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={actionLossQuantityInput}
+                          onChange={(e) => setActionLossQuantityInput(Math.max(0, Number(e.target.value)))}
+                          className="w-full p-2 border border-rose-200 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {actionLossQuantityInput > 0 && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-bold text-zinc-700 mb-1">Motivo da perda:</label>
+                            <select
+                              value={actionLossReasonInput}
+                              onChange={(e) => {
+                                const newReason = e.target.value;
+                                setActionLossReasonInput(newReason);
+                                const defaultReentry = lossReasonsList.find(r => r.motivo === newReason)?.etapa_reentrada_id || stageId;
+                                setActionLossReentryStageIdInput(defaultReentry);
+                              }}
+                              className="w-full p-2 border border-zinc-200 rounded-lg bg-white text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                            >
+                              {lossReasonsList.map((r, i) => (
+                                <option key={i} value={r.motivo}>{r.motivo}</option>
+                              ))}
+                              {!lossReasonsList.some(r => r.motivo === 'Outro') && (
+                                <option value="Outro">Outro</option>
+                              )}
+                            </select>
+                          </div>
+
+                          {actionLossReasonInput === 'Outro' && (
+                            <div>
+                              <label className="block text-[11px] font-bold text-zinc-700 mb-1">Detalhamento do motivo (obrigatório):</label>
+                              <input
+                                type="text"
+                                placeholder="Explique o motivo..."
+                                value={actionLossReasonDetailInput}
+                                onChange={(e) => setActionLossReasonDetailInput(e.target.value)}
+                                className="w-full p-2 border border-zinc-200 rounded-lg bg-white text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-zinc-700 mb-1">Etapa para reentrada de reposição:</label>
+                            <select
+                              value={actionLossReentryStageIdInput || stageId}
+                              onChange={(e) => setActionLossReentryStageIdInput(Number(e.target.value))}
+                              className="w-full p-2 border border-zinc-200 rounded-lg bg-white text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                            >
+                              {stages.map((st) => (
+                                <option key={st.id} value={st.id}>{st.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setExecutionActionModal(null)}
+                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmExecutionAction(false)}
+                  className={cn(
+                    "flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors shadow-sm",
+                    isPause ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"
+                  )}
+                >
+                  {isPause
+                    ? (actionQuantityInput > 0 || actionLossQuantityInput > 0
+                        ? `Salvar e Pausar Etapa`
+                        : "Pausar Etapa")
+                    : (actionQuantityInput > 0 || actionLossQuantityInput > 0
+                        ? `Salvar e Finalizar Etapa`
+                        : "Finalizar Etapa")}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* MODAL: Registrar Progresso Parcial */}
       {isProgressModalOpen && selectedOrder && progressStageId && (() => {
         const stage = stages.find(s => s.id === progressStageId);
@@ -6337,9 +6622,9 @@ export default function App() {
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     value={progressIncrementInput}
-                    onChange={(e) => setProgressIncrementInput(Math.max(1, Number(e.target.value)))}
+                    onChange={(e) => setProgressIncrementInput(Math.max(0, Number(e.target.value)))}
                     className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                   <p className="text-[10px] text-zinc-400 mt-1">
