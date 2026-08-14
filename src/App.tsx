@@ -1373,7 +1373,7 @@ export default function App() {
       fetchUsers();
       fetchCollaboratorGoals();
     }
-  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, activeTab]);
+  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, activeTab, currentUser]);
 
   useEffect(() => {
     if (activeTab === 'collaborators') {
@@ -2587,26 +2587,46 @@ export default function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200">
-                {(orders || [])
-                  .filter(order => {
-                    if (showCompletedOrders) return true;
-                    return order.status !== 'Entregue' && order.status !== 'Cancelado';
-                  })
-                  .filter(o => {
-                    if (!searchTerm) return true;
-                    const search = searchTerm.toLowerCase();
+                {(() => {
+                  const filteredOrders = (orders || [])
+                    .filter(order => {
+                      if (showCompletedOrders) return true;
+                      return order.status !== 'Entregue' && order.status !== 'Cancelado';
+                    })
+                    .filter(o => {
+                      if (!searchTerm) return true;
+                      const search = searchTerm.toLowerCase();
+                      return (
+                        (o.order_number || '').toLowerCase().includes(search) ||
+                        (o.client_name || '').toLowerCase().includes(search) ||
+                        (o.product_type || '').toLowerCase().includes(search) ||
+                        (o.print_type || '').toLowerCase().includes(search)
+                      );
+                    })
+                    .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                    .filter(o => !productTypeFilter || o.product_type === productTypeFilter);
+
+                  if (filteredOrders.length === 0) {
                     return (
-                      (o.order_number || '').toLowerCase().includes(search) ||
-                      (o.client_name || '').toLowerCase().includes(search) ||
-                      (o.product_type || '').toLowerCase().includes(search) ||
-                      (o.print_type || '').toLowerCase().includes(search)
+                      <tr>
+                        <td colSpan={9} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
+                          Nenhum pedido encontrado. {(orders || []).length > 0 ? `(${orders.length} pedidos no total, mas nenhum atende aos filtros aplicados)` : 'Nenhum pedido cadastrado no sistema.'}
+                        </td>
+                      </tr>
                     );
-                  })
-                  .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
-                  .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
-                  .map(order => {
+                  }
+
+                  return filteredOrders.map(order => {
                     const stagesList = Array.isArray(order.stages_status) ? order.stages_status : [];
-                    const isOverdue = order.status !== 'Entregue' && order.deadline ? isPast(endOfDay(parseISO(order.deadline))) : false;
+                    let isOverdue = false;
+                    if (order.status !== 'Entregue' && order.deadline) {
+                      try {
+                        const d = parseISO(order.deadline);
+                        if (d && !isNaN(d.getTime())) {
+                          isOverdue = isPast(endOfDay(d));
+                        }
+                      } catch (e) {}
+                    }
                   return (
                     <tr
                       key={order.id}
@@ -2671,7 +2691,8 @@ export default function App() {
                       <td className="px-6 py-4 text-right font-mono text-xs">{formatSeconds(order.total_time_seconds)}</td>
                     </tr>
                   );
-                })}
+                });
+              })()}
               </tbody>
             </table>
             </Card>
