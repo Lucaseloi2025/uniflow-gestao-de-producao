@@ -5,9 +5,12 @@ import { OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData } f
 
 dotenv.config();
 
-const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
-const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || "").trim();
-const supabase = createClient(supabaseUrl || "https://placeholder.supabase.co", supabaseAnonKey || "placeholder");
+const DEFAULT_SUPABASE_URL = "https://dkyvzxmocppbydtpsgyu.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRreXZ6eG1vY3BwYnlkdHBzZ3l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzU0NDksImV4cCI6MjA4NzU1MTQ0OX0.2s2RJevOZr2Na0bigWqR5rxt5bNtB6GIS6-N_TlpFgk";
+
+const supabaseUrl = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // In-memory data structures with database sync & fallback file persistence
 const stageProgressStore = new Map<string, OrderStageProgress>(); // Key: `${order_id}_${stage_id}`

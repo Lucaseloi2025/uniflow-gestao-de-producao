@@ -72,33 +72,22 @@ function resolveGoal(stageGoalDefault: number | null | undefined, collaboratorOv
 const app = express();
 app.use(express.json());
 
-const rawSupabaseUrl = process.env.SUPABASE_URL?.trim() || "";
-const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "");
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim() || "";
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+const DEFAULT_SUPABASE_URL = "https://dkyvzxmocppbydtpsgyu.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRreXZ6eG1vY3BwYnlkdHBzZ3l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzU0NDksImV4cCI6MjA4NzU1MTQ0OX0.2s2RJevOZr2Na0bigWqR5rxt5bNtB6GIS6-N_TlpFgk";
 
-if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith("http")) {
-    console.warn("⚠️ SUPABASE_URL ou SUPABASE_ANON_KEY não estão definidos. Configure as Environment Variables no Vercel.");
-}
-
-// Middleware para verificar se o Supabase está configurado corretamente
-app.use((req, res, next) => {
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith("http")) {
-        return res.status(500).json({ 
-            error: "As variáveis SUPABASE_URL e SUPABASE_ANON_KEY não estão configuradas no Vercel." 
-        });
-    }
-    next();
-});
+const rawSupabaseUrl = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+const supabaseUrl = (rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "")) || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 
 const supabase = createClient(
-    supabaseUrl || "https://placeholder.supabase.co",
-    supabaseAnonKey || "placeholder"
+    supabaseUrl,
+    supabaseAnonKey
 );
 
 const supabaseAdmin = createClient(
-    supabaseUrl || "https://placeholder.supabase.co",
-    supabaseServiceRoleKey || supabaseAnonKey // Fallback to anon key if not provided (will fail on restricted actions)
+    supabaseUrl,
+    supabaseServiceRoleKey || supabaseAnonKey
 );
 
 // Utilizando memória ao invés de disco local
