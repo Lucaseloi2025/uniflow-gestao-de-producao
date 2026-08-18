@@ -645,13 +645,67 @@ app.get("/api/orders", async (req, res) => {
             });
         }
 
+        enrichOrdersWithProgressSync(data);
+
+        // Fetch stage_observations for these orders to find the most recent observation of the active stage
+        let observationsMap = new Map();
+        try {
+            const { data: obsData } = await supabaseAdmin
+                .from("stage_observations")
+                .select("order_id, stage_id, observation, created_at")
+                .in("order_id", orderIds)
+                .order("created_at", { ascending: false });
+
+            if (obsData) {
+                // Since obsData is ordered by created_at desc, the first match per (order_id, stage_id) is the newest one
+                obsData.forEach((obs: any) => {
+                    const key = `${obs.order_id}_${obs.stage_id}`;
+                    if (!observationsMap.has(key)) {
+                        observationsMap.set(key, obs.observation);
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn("[API] Failed to fetch stage_observations for orders list:", err);
+        }
+
         for (const order of data) {
             order.current_operator = operatorMap.get(order.id) || null;
+            
+            // Enrich with active stage name and active stage observation
+            const activeStage = (order.stages_status || []).find((s: any) => !s.finished);
+            order.active_stage_name = activeStage?.name || null;
+            order.active_stage_observation = null;
+            
+            if (activeStage) {
+                const obsKey = `${order.id}_${activeStage.id}`;
+                order.active_stage_observation = observationsMap.get(obsKey) || null;
+            }
         }
-        enrichOrdersWithProgressSync(data);
     }
 
     return res.json(data);
+});
+
+app.get("/api/orders/:id/stage-observations", async (req, res) => {
+    const orderId = Number(req.params.id);
+    const { data, error } = await supabaseAdmin
+        .from("stage_observations")
+        .select("*, users(name)")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: false });
+    
+    if (error) {
+        console.warn(`[API] stage_observations query failed:`, error.message);
+        return res.json([]);
+    }
+    
+    const enriched = (data || []).map((o: any) => ({
+        ...o,
+        user_name: o.users?.name || 'Operador'
+    }));
+    
+    return res.json(enriched);
 });
 
 app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
@@ -1614,6 +1668,14 @@ app.post("/api/executions/auto-pause", async (req, res) => {
 
 app.post("/api/executions/:id/pause", async (req, res) => {
     const execution_id = Number(req.params.id);
+    const { observation } = req.body || {};
+
+    const { data: exec } = await supabaseAdmin
+        .from("stage_executions")
+        .select("order_id, stage_id, user_id")
+        .eq("id", execution_id)
+        .single();
+
     const { error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .update({ status: "Pausado" })
@@ -1624,6 +1686,19 @@ app.post("/api/executions/:id/pause", async (req, res) => {
         .from("pauses")
         .insert({ execution_id });
     if (checkError(e2, res, "Erro ao registrar pausa")) return;
+
+    if (observation && exec) {
+        try {
+            await supabaseAdmin.from("stage_observations").insert({
+                order_id: exec.order_id,
+                stage_id: exec.stage_id,
+                user_id: exec.user_id,
+                observation
+            });
+        } catch (e) {
+            console.error("Erro ao salvar observação da etapa na pausa:", e);
+        }
+    }
 
     return res.json({ success: true });
 });
@@ -1667,7 +1742,7 @@ app.post("/api/executions/:id/resume", async (req, res) => {
 
 app.post("/api/executions/:id/finish", async (req, res) => {
     const execution_id = Number(req.params.id);
-    const { force } = req.body || {};
+    const { force, observation } = req.body || {};
     const nowISO = new Date().toISOString();
     const nowMs = new Date().getTime();
 
@@ -1732,6 +1807,19 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .eq("id", execution_id);
 
     if (checkError(e2, res, "Erro ao finalizar execução")) return;
+
+    if (observation && execution) {
+        try {
+            await supabaseAdmin.from("stage_observations").insert({
+                order_id: execution.order_id,
+                stage_id: execution.stage_id,
+                user_id: execution.user_id,
+                observation
+            });
+        } catch (e) {
+            console.error("Erro ao salvar observação da etapa na finalização:", e);
+        }
+    }
 
     // 6. Update order total time
     const { data: allExecs } = await supabaseAdmin

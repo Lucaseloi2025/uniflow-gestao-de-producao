@@ -588,6 +588,7 @@ export default function App() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
+  const [orderStageObservations, setOrderStageObservations] = useState<any[]>([]);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
@@ -627,6 +628,7 @@ export default function App() {
   const [actionLossReasonDetailInput, setActionLossReasonDetailInput] = useState<string>('');
   const [actionLossReentryStageIdInput, setActionLossReentryStageIdInput] = useState<number | null>(null);
   const [showActionLossSection, setShowActionLossSection] = useState<boolean>(false);
+  const [actionObservationInput, setActionObservationInput] = useState<string>('');
 
   // Modal State: Registro de Perda
   const [isLossModalOpen, setIsLossModalOpen] = useState(false);
@@ -861,6 +863,43 @@ export default function App() {
             ...o,
             stages_status: Array.isArray(o.stages_status) ? o.stages_status : []
           }));
+          try {
+            const orderIds = ordersData.map((o: any) => o.id);
+            const { data: obsData } = await supabase
+              .from('stage_observations' as any)
+              .select('order_id, stage_id, observation')
+              .in('order_id', orderIds)
+              .order('created_at', { ascending: false });
+
+            if (obsData) {
+              const obsMap = new Map();
+              obsData.forEach((obs: any) => {
+                const key = `${obs.order_id}_${obs.stage_id}`;
+                if (!obsMap.has(key)) {
+                  obsMap.set(key, obs.observation);
+                }
+              });
+
+              ordersData.forEach((order: any) => {
+                const activeStage = order.stages_status.find((s: any) => !s.finished);
+                order.active_stage_name = activeStage?.name || null;
+                order.active_stage_observation = activeStage ? (obsMap.get(`${order.id}_${activeStage.id}`) || null) : null;
+              });
+            } else {
+              ordersData.forEach((order: any) => {
+                const activeStage = order.stages_status.find((s: any) => !s.finished);
+                order.active_stage_name = activeStage?.name || null;
+                order.active_stage_observation = null;
+              });
+            }
+          } catch (err) {
+            console.warn('[FetchData] Falha ao buscar observações no fallback:', err);
+            ordersData.forEach((order: any) => {
+              const activeStage = order.stages_status.find((s: any) => !s.finished);
+              order.active_stage_name = activeStage?.name || null;
+              order.active_stage_observation = null;
+            });
+          }
         }
       } catch (err) {
         console.error('[FetchData] Erro no fallback do Supabase:', err);
@@ -908,6 +947,8 @@ export default function App() {
   const fetchExecutions = async (orderId: number) => {
     const data = await safeFetch(`/api/orders/${orderId}/executions`);
     if (data) setExecutions(data);
+    const obsData = await safeFetch(`/api/orders/${orderId}/stage-observations`);
+    setOrderStageObservations(obsData || []);
   };
 
   const fetchReports = async () => {
@@ -1279,6 +1320,7 @@ export default function App() {
     const defaultReentry = lossReasonsList.find(r => r.motivo === initialReason)?.etapa_reentrada_id || stageId;
     setActionLossReentryStageIdInput(defaultReentry);
     setShowActionLossSection(false);
+    setActionObservationInput('');
     setExecutionActionModal({ type, executionId, stageId });
   };
 
@@ -1355,7 +1397,11 @@ export default function App() {
     if (type === 'pause') {
       await fetch(`/api/executions/${executionId}/pause`, {
         method: 'POST',
-        headers: { 'x-user-role': currentUser?.role || '' }
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        },
+        body: JSON.stringify({ observation: actionObservationInput })
       });
       setExecutionActionModal(null);
       fetchExecutions(selectedOrder.id);
@@ -1368,7 +1414,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'x-user-role': currentUser?.role || ''
         },
-        body: JSON.stringify({ force: forceFinish })
+        body: JSON.stringify({ force: forceFinish, observation: actionObservationInput })
       });
 
       if (finishRes.ok) {
@@ -1758,10 +1804,11 @@ export default function App() {
               <tr className="bg-zinc-100 border-b-2 border-zinc-300 uppercase text-[10px] tracking-wider text-zinc-600">
                 <th className="p-2 border-r border-zinc-200">OP</th>
                 <th className="p-2 border-r border-zinc-200">Cliente</th>
-                <th className="p-2 border-r border-zinc-200 w-48">Produto</th>
                 <th className="p-2 border-r border-zinc-200 text-center">Qtde</th>
                 <th className="p-2 border-r border-zinc-200">Estampa</th>
-                <th className="p-2 text-center">Prazo</th>
+                <th className="p-2 border-r border-zinc-200">Etapa atual</th>
+                <th className="p-2 border-r border-zinc-200 text-center">Prazo</th>
+                <th className="p-2 text-left">Observação</th>
               </tr>
             </thead>
             <tbody>
@@ -1791,10 +1838,17 @@ export default function App() {
                   <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
                     <td className="p-2 border-b border-zinc-200 border-r py-3 font-mono font-bold">{o.order_number}</td>
                     <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[200px]">{o.client_name}</td>
-                    <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.product_type}</td>
                     <td className="p-2 border-b border-zinc-200 border-r text-center font-bold">{o.quantity}</td>
                     <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.print_type || '-'}</td>
-                    <td className="p-2 border-b border-zinc-200 text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-xs font-semibold text-zinc-700">{o.active_stage_name || '-'}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
+                    <td className="p-2 border-b border-zinc-200 text-xs italic text-zinc-600 truncate max-w-[250px]" title={o.active_stage_observation || ''}>
+                      {o.active_stage_observation 
+                        ? (o.active_stage_observation.length > 60 
+                            ? `${o.active_stage_observation.slice(0, 60)}...` 
+                            : o.active_stage_observation)
+                        : ''}
+                    </td>
                   </tr>
               ))}
             </tbody>
@@ -5013,6 +5067,23 @@ export default function App() {
                                                 <span className="font-mono text-zinc-500">Total: {formatSeconds(stageTimes.totalAccumulatedSeconds)}</span>
                                               </p>
                                             )}
+                                            {(() => {
+                                               const stageObs = orderStageObservations.filter((o: any) => o.stage_id === stage.id);
+                                               if (stageObs.length === 0) return null;
+                                               return (
+                                                 <div className="mt-1 p-1.5 bg-zinc-50 border border-zinc-100 rounded text-[9px] text-zinc-600 leading-normal max-w-xs space-y-1">
+                                                   {stageObs.map((obs: any, oIdx: number) => (
+                                                     <div key={oIdx} className="border-t border-zinc-200/50 first:border-t-0 pt-0.5 first:pt-0">
+                                                       <div className="flex items-center justify-between text-[7px] text-zinc-400 font-bold mb-0.5">
+                                                         <span>{obs.user_name || 'Operador'}</span>
+                                                         <span>{safeFormat(obs.created_at, 'dd/MM HH:mm')}</span>
+                                                       </div>
+                                                       <p className="italic">"{obs.observation}"</p>
+                                                     </div>
+                                                   ))}
+                                                 </div>
+                                               );
+                                             })()}
                                           </div>
                                         </div>
                                         
@@ -6545,6 +6616,21 @@ export default function App() {
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Seção 3: Observação do Apontamento (Opcional) */}
+                <div className="pt-2 border-t border-zinc-100 space-y-1.5">
+                  <label className="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                    <ClipboardList size={14} className="text-zinc-500" />
+                    Observação da etapa (opcional):
+                  </label>
+                  <textarea
+                    placeholder="Adicione alguma observação sobre esta sessão..."
+                    value={actionObservationInput}
+                    onChange={(e) => setActionObservationInput(e.target.value)}
+                    rows={2}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs focus:ring-2 focus:ring-zinc-500 focus:outline-none resize-none font-medium text-zinc-700 bg-white"
+                  />
                 </div>
               </div>
 
