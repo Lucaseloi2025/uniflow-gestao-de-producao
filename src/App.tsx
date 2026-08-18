@@ -947,7 +947,24 @@ export default function App() {
   const fetchExecutions = async (orderId: number) => {
     const data = await safeFetch(`/api/orders/${orderId}/executions`);
     if (data) setExecutions(data);
-    const obsData = await safeFetch(`/api/orders/${orderId}/stage-observations`);
+    let obsData = await safeFetch(`/api/orders/${orderId}/stage-observations`);
+    if (!obsData) {
+      try {
+        const { data: sbObs } = await supabase
+          .from('stage_observations' as any)
+          .select('*, users(name)')
+          .eq('order_id', orderId)
+          .order('created_at', { ascending: false });
+        if (sbObs) {
+          obsData = sbObs.map((o: any) => ({
+            ...o,
+            user_name: o.users?.name || 'Operador'
+          }));
+        }
+      } catch (err) {
+        console.warn('[fetchExecutions] Fallback stage_observations falhou:', err);
+      }
+    }
     setOrderStageObservations(obsData || []);
   };
 
