@@ -49,7 +49,8 @@ import {
   ChevronLeft,
   Eye,
   EyeOff,
-  Printer
+  Printer,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
@@ -629,6 +630,7 @@ export default function App() {
   const [actionLossReentryStageIdInput, setActionLossReentryStageIdInput] = useState<number | null>(null);
   const [showActionLossSection, setShowActionLossSection] = useState<boolean>(false);
   const [actionObservationInput, setActionObservationInput] = useState<string>('');
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
 
   // Modal State: Registro de Perda
   const [isLossModalOpen, setIsLossModalOpen] = useState(false);
@@ -1349,9 +1351,10 @@ export default function App() {
     handleOpenActionModal('finish', executionId, stageId);
   };
 
-  const handleConfirmExecutionAction = async (forceFinish = false) => {
+  const handleConfirmExecutionAction = async (actionType?: 'pause' | 'finish', forceFinish = false) => {
     if (!executionActionModal || !selectedOrder) return;
-    const { type, executionId, stageId } = executionActionModal;
+    const { executionId, stageId } = executionActionModal;
+    const type = actionType || executionActionModal.type;
 
     // Validação do motivo se informou perdas
     if (actionLossQuantityInput > 0) {
@@ -1365,93 +1368,98 @@ export default function App() {
       }
     }
 
-    // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
-    if (actionQuantityInput > 0) {
-      const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
-        },
-        body: JSON.stringify({
-          incremento: actionQuantityInput,
-          user_id: currentUser?.id || 1,
-          user_name: currentUser?.name || 'Operador'
-        })
-      });
-      if (!progRes.ok) {
-        const err = await progRes.json();
-        alert(err.error || "Erro ao registrar progresso.");
-        return;
+    setIsActionLoading(true);
+    try {
+      // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
+      if (actionQuantityInput > 0) {
+        const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({
+            incremento: actionQuantityInput,
+            user_id: currentUser?.id || 1,
+            user_name: currentUser?.name || 'Operador'
+          })
+        });
+        if (!progRes.ok) {
+          const err = await progRes.json();
+          alert(err.error || "Erro ao registrar progresso.");
+          return;
+        }
       }
-    }
 
-    // 2. Se informou peças perdidas > 0, registra a perda
-    if (actionLossQuantityInput > 0) {
-      const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
-        },
-        body: JSON.stringify({
-          quantidade_perdida: actionLossQuantityInput,
-          motivo: actionLossReasonInput,
-          motivo_detalhe: actionLossReasonDetailInput,
-          etapa_reentrada_id: actionLossReentryStageIdInput || stageId,
-          user_id: currentUser?.id || 1,
-          user_name: currentUser?.name || 'Operador'
-        })
-      });
-      if (!lossRes.ok) {
-        const err = await lossRes.json();
-        alert(err.error || "Erro ao registrar perda.");
-        return;
+      // 2. Se informou peças perdidas > 0, registra a perda
+      if (actionLossQuantityInput > 0) {
+        const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({
+            quantidade_perdida: actionLossQuantityInput,
+            motivo: actionLossReasonInput,
+            motivo_detalhe: actionLossReasonDetailInput,
+            etapa_reentrada_id: actionLossReentryStageIdInput || stageId,
+            user_id: currentUser?.id || 1,
+            user_name: currentUser?.name || 'Operador'
+          })
+        });
+        if (!lossRes.ok) {
+          const err = await lossRes.json();
+          alert(err.error || "Erro ao registrar perda.");
+          return;
+        }
       }
-    }
 
-    // 3. Executa a Pausa ou a Finalização
-    if (type === 'pause') {
-      await fetch(`/api/executions/${executionId}/pause`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
-        },
-        body: JSON.stringify({ observation: actionObservationInput })
-      });
-      setExecutionActionModal(null);
-      fetchExecutions(selectedOrder.id);
-      fetchData();
-      fetchActiveExecution();
-    } else if (type === 'finish') {
-      const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
-        },
-        body: JSON.stringify({ force: forceFinish, observation: actionObservationInput })
-      });
-
-      if (finishRes.ok) {
+      // 3. Executa a Pausa ou a Finalização
+      if (type === 'pause') {
+        await fetch(`/api/executions/${executionId}/pause`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ observation: actionObservationInput })
+        });
         setExecutionActionModal(null);
         fetchExecutions(selectedOrder.id);
         fetchData();
         fetchActiveExecution();
-      } else {
-        const err = await finishRes.json();
-        if (err.canForce && !forceFinish) {
-          const confirmForce = window.confirm(
-            `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
-          );
-          if (confirmForce) {
-            await handleConfirmExecutionAction(true);
-          }
+      } else if (type === 'finish') {
+        const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ force: forceFinish, observation: actionObservationInput })
+        });
+
+        if (finishRes.ok) {
+          setExecutionActionModal(null);
+          fetchExecutions(selectedOrder.id);
+          fetchData();
+          fetchActiveExecution();
         } else {
-          alert(err.error || "Erro ao finalizar etapa");
+          const err = await finishRes.json();
+          if (err.canForce && !forceFinish) {
+            const confirmForce = window.confirm(
+              `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
+            );
+            if (confirmForce) {
+              await handleConfirmExecutionAction('finish', true);
+            }
+          } else {
+            alert(err.error || "Erro ao finalizar etapa");
+          }
         }
       }
+    } finally {
+      setIsActionLoading(false);
     }
   };
 
@@ -1819,13 +1827,12 @@ export default function App() {
           <table className="w-full border-collapse text-sm text-left">
             <thead>
               <tr className="bg-zinc-100 border-b-2 border-zinc-300 uppercase text-[10px] tracking-wider text-zinc-600">
-                <th className="p-2 border-r border-zinc-200">OP</th>
                 <th className="p-2 border-r border-zinc-200">Cliente</th>
                 <th className="p-2 border-r border-zinc-200 text-center">Qtde</th>
                 <th className="p-2 border-r border-zinc-200">Estampa</th>
                 <th className="p-2 border-r border-zinc-200">Etapa atual</th>
                 <th className="p-2 border-r border-zinc-200 text-center">Prazo</th>
-                <th className="p-2 text-left">Observação</th>
+                <th className="p-2 text-left" style={{minWidth: '200px'}}>Observação</th>
               </tr>
             </thead>
             <tbody>
@@ -1853,17 +1860,16 @@ export default function App() {
                 .sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''))
                 .map((o, idx) => (
                   <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
-                    <td className="p-2 border-b border-zinc-200 border-r py-3 font-mono font-bold">{o.order_number}</td>
-                    <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[200px]">{o.client_name}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[220px]">{o.client_name}</td>
                     <td className="p-2 border-b border-zinc-200 border-r text-center font-bold">{o.quantity}</td>
                     <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.print_type || '-'}</td>
                     <td className="p-2 border-b border-zinc-200 border-r text-xs font-semibold text-zinc-700">{o.active_stage_name || '-'}</td>
                     <td className="p-2 border-b border-zinc-200 border-r text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
-                    <td className="p-2 border-b border-zinc-200 text-xs italic text-zinc-600 truncate max-w-[250px]" title={o.active_stage_observation || ''}>
+                    <td className="p-2 border-b border-zinc-200 text-xs text-zinc-700" style={{minWidth: '200px'}}>
                       {o.active_stage_observation 
-                        ? (o.active_stage_observation.length > 60 
-                            ? `${o.active_stage_observation.slice(0, 60)}...` 
-                            : o.active_stage_observation)
+                        ? <span className="italic">📝 {o.active_stage_observation.length > 120 
+                            ? `${o.active_stage_observation.slice(0, 120)}...` 
+                            : o.active_stage_observation}</span>
                         : ''}
                     </td>
                   </tr>
@@ -6486,25 +6492,57 @@ export default function App() {
 
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className={cn("bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar relative", isActionLoading && "pointer-events-none")}>
+              {isActionLoading && (
+                <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 rounded-2xl flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 size={32} className="animate-spin text-zinc-600" />
+                    <span className="text-xs font-bold text-zinc-600">Processando...</span>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
                 <div className="flex items-center gap-2">
-                  <div className={cn("p-2 rounded-lg", isPause ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>
-                    {isPause ? <Pause size={20} /> : <CheckCircle size={20} />}
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
+                    <ClipboardList size={20} />
                   </div>
                   <div>
                     <h3 className="font-bold text-zinc-900 text-sm">
-                      {isPause ? 'Pausar Etapa — Apontamento da Sessão' : 'Finalizar Etapa — Apontamento Final'}
+                      Apontamento de Produção
                     </h3>
                     <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
                   </div>
                 </div>
-                <button onClick={() => setExecutionActionModal(null)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
+                <button onClick={() => setExecutionActionModal(null)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600" disabled={isActionLoading}>
                   <X size={18} />
                 </button>
               </div>
 
               <div className="py-1 space-y-4">
+                {/* Barra de Progresso Visual */}
+                {(() => {
+                  const projected = currentGood + actionQuantityInput;
+                  const pctCurrent = totalReq > 0 ? Math.min(100, Math.round((currentGood / totalReq) * 100)) : 0;
+                  const pctProjected = totalReq > 0 ? Math.min(100, Math.round((projected / totalReq) * 100)) : 0;
+                  const isComplete = projected >= totalReq;
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                        <span>Progresso da Etapa</span>
+                        <span className={cn("font-mono text-xs", isComplete ? "text-emerald-600" : "text-amber-600")}>
+                          {projected} / {totalReq} ({pctProjected}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-3 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                        <div className="h-full rounded-full relative overflow-hidden" style={{ width: `${pctProjected}%`, transition: 'width 0.4s ease' }}>
+                          <div className={cn("absolute inset-0", isComplete ? "bg-emerald-500" : "bg-amber-400")} style={{ width: `${totalReq > 0 ? Math.min(100, Math.round((currentGood / Math.max(projected, 1)) * 100)) : 0}%` }} />
+                          <div className={cn("absolute inset-0", isComplete ? "bg-emerald-400" : "bg-amber-300 animate-pulse")} style={{ left: `${totalReq > 0 ? Math.min(100, Math.round((currentGood / Math.max(projected, 1)) * 100)) : 0}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1.5">
                   <div className="flex justify-between font-medium text-zinc-600">
                     <span>Peças boas concluídas até agora:</span>
@@ -6655,26 +6693,47 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setExecutionActionModal(null)}
-                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors"
+                  disabled={isActionLoading}
+                  className="py-2.5 px-4 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleConfirmExecutionAction(false)}
-                  className={cn(
-                    "flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors shadow-sm",
-                    isPause ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"
-                  )}
+                  onClick={() => handleConfirmExecutionAction('pause')}
+                  disabled={isActionLoading}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
-                  {isPause
-                    ? (actionQuantityInput > 0 || actionLossQuantityInput > 0
-                        ? `Salvar e Pausar Etapa`
-                        : "Pausar Etapa")
-                    : (actionQuantityInput > 0 || actionLossQuantityInput > 0
-                        ? `Salvar e Finalizar Etapa`
-                        : "Finalizar Etapa")}
+                  {isActionLoading && executionActionModal?.type === 'pause' ? (
+                    <><Loader2 size={14} className="animate-spin" /> Pausando...</>
+                  ) : (
+                    <><Pause size={14} /> Pausar</>
+                  )}
                 </button>
+                {(() => {
+                  const canFinish = (currentGood + actionQuantityInput) >= totalReq;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmExecutionAction('finish')}
+                      disabled={isActionLoading || !canFinish}
+                      title={!canFinish ? `Faltam ${remaining - actionQuantityInput} peças para finalizar. Preencha a quantidade restante.` : 'Finalizar etapa'}
+                      className={cn(
+                        "flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5",
+                        canFinish
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : "bg-zinc-300 cursor-not-allowed text-zinc-500",
+                        "disabled:opacity-60 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      {isActionLoading && executionActionModal?.type === 'finish' ? (
+                        <><Loader2 size={14} className="animate-spin" /> Finalizando...</>
+                      ) : (
+                        <><CheckCircle size={14} /> Finalizar</>
+                      )}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
