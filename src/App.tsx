@@ -567,6 +567,7 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [reportData, setReportData] = useState<any>(null);
+  const [expandedReportStage, setExpandedReportStage] = useState<string | null>(null);
   const [deliveryReportData, setDeliveryReportData] = useState<DeliveryReportData | null>(null);
   const [delaysReportData, setDelaysReportData] = useState<DeliveryReportData['atrasados'] | null>(null);
   const [reportPeriod, setReportPeriod] = useState<'day' | 'week' | 'month'>('week');
@@ -3391,9 +3392,9 @@ export default function App() {
                 <Card className="p-6 border-zinc-200 shadow-sm bg-white">
                   <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-4 flex items-center gap-2">
                     <Layers size={16} className="text-emerald-600" />
-                    Detalhamento de Volume por Etapa
+                    Detalhamento de Volume por Etapa (Clique para expandir)
                   </h3>
-                  <div className="overflow-x-auto max-h-64 overflow-y-auto scrollbar-thin">
+                  <div className="overflow-x-auto max-h-[380px] overflow-y-auto scrollbar-thin">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="border-b border-zinc-100 bg-zinc-50">
@@ -3403,13 +3404,69 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
-                        {reportData.production_by_stage.map((item: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-zinc-50 transition-colors">
-                            <td className="py-2.5 px-3 font-bold text-zinc-900">{item.stage_name}</td>
-                            <td className="py-2.5 px-3 text-center font-mono font-semibold text-zinc-600">{item.completed_count} ordens</td>
-                            <td className="py-2.5 px-3 text-center font-mono font-bold text-emerald-600">{item.total_pieces} un</td>
-                          </tr>
-                        ))}
+                        {reportData.production_by_stage.map((item: any, idx: number) => {
+                          const isExpanded = expandedReportStage === item.stage_name;
+                          return (
+                            <React.Fragment key={idx}>
+                              <tr 
+                                onClick={() => setExpandedReportStage(isExpanded ? null : item.stage_name)}
+                                className="hover:bg-zinc-50 transition-colors cursor-pointer select-none"
+                              >
+                                <td className="py-3 px-3 font-bold text-zinc-900 flex items-center gap-2">
+                                  <span className={cn(
+                                    "text-[9px] text-zinc-400 inline-block transition-transform duration-200",
+                                    isExpanded && "rotate-90 text-zinc-800"
+                                  )}>
+                                    ▶
+                                  </span>
+                                  {item.stage_name}
+                                </td>
+                                <td className="py-3 px-3 text-center font-mono font-semibold text-zinc-600">{item.completed_count} ordens</td>
+                                <td className="py-3 px-3 text-center font-mono font-bold text-emerald-600">{item.total_pieces} un</td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="bg-zinc-50/50">
+                                  <td colSpan={3} className="py-3 px-4 border-t border-b border-zinc-100/80">
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                          Pedidos Processados em "{item.stage_name}"
+                                        </h4>
+                                        <span className="text-[9px] text-zinc-400 font-medium">Filtro aplicado: {item.completed_count} itens</span>
+                                      </div>
+                                      <div className="overflow-x-auto border border-zinc-200 rounded-lg bg-white shadow-inner max-h-48 overflow-y-auto scrollbar-thin">
+                                        <table className="w-full text-left text-[11px]">
+                                          <thead>
+                                            <tr className="border-b border-zinc-200 bg-zinc-50/80 text-[9px] font-bold text-zinc-500 uppercase">
+                                              <th className="py-2 px-3">Pedido</th>
+                                              <th className="py-2 px-3">Cliente</th>
+                                              <th className="py-2 px-3 text-center">Pecas</th>
+                                              <th className="py-2 px-3">Operador</th>
+                                              <th className="py-2 px-3 text-right">Horário</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-zinc-100">
+                                            {item.details.map((detail: any, detIdx: number) => (
+                                              <tr key={detIdx} className="hover:bg-zinc-50/60 transition-colors">
+                                                <td className="py-2 px-3 font-mono font-bold text-zinc-700">#{detail.order_number}</td>
+                                                <td className="py-2 px-3 text-zinc-600 font-medium">{detail.client_name}</td>
+                                                <td className="py-2 px-3 text-center font-bold text-zinc-800">{detail.quantity}</td>
+                                                <td className="py-2 px-3 text-zinc-600">{detail.operator}</td>
+                                                <td className="py-2 px-3 text-right text-zinc-500 font-mono">
+                                                  {safeFormat(detail.finished_at, 'HH:mm')}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
