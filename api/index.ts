@@ -410,11 +410,22 @@ app.get("/api/reports", async (req, res) => {
     if (checkError(error, res, "Erro nos relatórios")) return;
 
     if (data) {
-        // Calcular produção detalhada por etapa dentro do período selecionado
-        const start = startDate ? new Date(startDate as string) : new Date();
-        if (!startDate) start.setHours(0,0,0,0);
-        const end = endDate ? new Date(endDate as string) : new Date();
-        if (!endDate) end.setHours(23,59,59,999);
+        // Calcular produção detalhada por etapa dentro do período selecionado (ajustado para timezone)
+        const tzOffset = req.query.tzOffset ? Number(req.query.tzOffset) : 180; // padrão 180 (BRT -03:00)
+
+        const getUtcRange = (dateStr: string, isEnd = false) => {
+            const parts = dateStr.split('-');
+            const y = Number(parts[0]);
+            const m = Number(parts[1]) - 1;
+            const d = Number(parts[2]);
+            const utcDate = new Date(Date.UTC(y, m, d, isEnd ? 23 : 0, isEnd ? 59 : 0, isEnd ? 59 : 0, isEnd ? 999 : 0));
+            utcDate.setUTCMinutes(utcDate.getUTCMinutes() + tzOffset);
+            return utcDate.toISOString();
+        };
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        const startIso = getUtcRange((startDate as string) || todayStr, false);
+        const endIso = getUtcRange((endDate as string) || todayStr, true);
 
         try {
             const { data: periodExecutions } = await supabaseAdmin
@@ -429,8 +440,8 @@ app.get("/api/reports", async (req, res) => {
                     orders(order_number, client_name, quantity)
                 `)
                 .eq("status", "Finalizado")
-                .gte("end_time", start.toISOString())
-                .lte("end_time", end.toISOString());
+                .gte("end_time", startIso)
+                .lte("end_time", endIso);
 
             const stageProductionMap = new Map();
             if (periodExecutions) {

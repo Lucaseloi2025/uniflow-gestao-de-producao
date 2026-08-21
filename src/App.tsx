@@ -971,7 +971,8 @@ export default function App() {
   };
 
   const fetchReports = async () => {
-    let url = `/api/reports?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}`;
+    const tzOffset = new Date().getTimezoneOffset();
+    let url = `/api/reports?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}&tzOffset=${tzOffset}`;
     if (reportUser) url += `&user_id=${reportUser}`;
     if (reportStage) url += `&stage_id=${reportStage}`;
     if (reportPrintType) url += `&print_type=${encodeURIComponent(reportPrintType)}`;
