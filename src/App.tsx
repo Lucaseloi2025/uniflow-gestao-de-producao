@@ -2795,10 +2795,10 @@ export default function App() {
                 <tr className="border-bottom border-zinc-200 bg-zinc-50">
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Fluxo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Observação da Etapa</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Operador</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Status</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-right">Tempo</th>
@@ -2860,20 +2860,6 @@ export default function App() {
                       <td className="px-6 py-4 font-mono text-xs font-bold">{order.order_number}</td>
                       <td className="px-6 py-4 text-sm font-medium">{order.client_name}</td>
                       <td className="px-6 py-4">
-                        <div className="flex gap-1">
-                          {stagesList.map((stage, i) => (
-                            <div
-                              key={i}
-                              title={stage.name}
-                              className={cn(
-                                "w-2 h-2 rounded-full",
-                                stage.finished ? "bg-emerald-500" : "bg-zinc-200"
-                              )}
-                            />
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="text-sm flex items-center gap-1.5">
                             {order.product_type}
@@ -2908,6 +2894,15 @@ export default function App() {
                           const isCurrentStageActive = exec && Number(exec.stage_id) === Number(active.id);
                           const execStatus = isCurrentStageActive ? exec.status : null;
 
+                          const latestFinished = order.latest_finished_stage;
+                          const isFinishedToday = latestFinished && (() => {
+                            const d = new Date(latestFinished.end_time);
+                            const today = new Date();
+                            return d.getDate() === today.getDate() &&
+                                   d.getMonth() === today.getMonth() &&
+                                   d.getFullYear() === today.getFullYear();
+                          })();
+
                           return (
                             <div className="flex flex-col gap-0.5">
                               <span className="text-zinc-800 font-bold">{active.name}</span>
@@ -2928,15 +2923,31 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
+                              {isFinishedToday && (
+                                <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5 mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
+                                  ✓ {latestFinished.stage_name} hoje
+                                </span>
+                              )}
                             </div>
                           );
                         })()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-zinc-600">
+                        {order.active_stage_observation ? (
+                          <span className="italic text-zinc-700">
+                            📝 "{order.active_stage_observation}"
+                          </span>
+                        ) : (
+                          <span className="text-zinc-400 italic font-light">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
                         {order.current_operator || '-'}
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={order.status === 'Entregue' ? 'success' : (isOverdue ? 'danger' : 'info')}>{order.status}</Badge>
+                        <Badge variant={order.status === 'Entregue' ? 'success' : (isOverdue ? 'danger' : 'info')}>
+                          {order.status === 'Entrada' ? 'Em Fila' : order.status}
+                        </Badge>
                       </td>
                       <td className="px-6 py-4 text-right font-mono text-xs">{formatSeconds(order.total_time_seconds)}</td>
                     </tr>
@@ -3391,7 +3402,7 @@ export default function App() {
                             "text-[8px] font-black px-1 py-0.5 rounded uppercase",
                             order.status === 'Entregue' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
                           )}>
-                            {order.status}
+                            {order.status === 'Entrada' ? 'Em Fila' : order.status}
                           </span>
                         </div>
                         <p className="text-xs font-bold text-zinc-700 truncate line-clamp-1">{order.client_name}</p>

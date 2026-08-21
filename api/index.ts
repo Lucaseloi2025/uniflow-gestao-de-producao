@@ -680,24 +680,35 @@ app.get("/api/orders", async (req, res) => {
         const orderIds = data.map((o: any) => o.id);
         const { data: executions } = await supabaseAdmin
             .from("stage_executions")
-            .select("order_id, status, stage_id, users(name)")
-            .in("order_id", orderIds)
-            .in("status", ["Em andamento", "Pausado"]);
+            .select("order_id, status, stage_id, end_time, users(name)")
+            .in("order_id", orderIds);
 
         const operatorMap = new Map();
         const activeStageExecutionMap = new Map();
+        const latestFinishedStageMap = new Map();
         if (executions) {
             executions.forEach((ex: any) => {
                 if (ex.status === "Em andamento") {
                     operatorMap.set(ex.order_id, ex.users?.name || null);
                 }
-                const existing = activeStageExecutionMap.get(ex.order_id);
-                if (!existing || existing.status === "Pausado") {
-                    activeStageExecutionMap.set(ex.order_id, {
-                        status: ex.status,
-                        stage_id: ex.stage_id,
-                        operator: ex.users?.name || null
-                    });
+                if (ex.status === "Em andamento" || ex.status === "Pausado") {
+                    const existing = activeStageExecutionMap.get(ex.order_id);
+                    if (!existing || existing.status === "Pausado") {
+                        activeStageExecutionMap.set(ex.order_id, {
+                            status: ex.status,
+                            stage_id: ex.stage_id,
+                            operator: ex.users?.name || null
+                        });
+                    }
+                } else if (ex.status === "Finalizado" && ex.end_time) {
+                    const existing = latestFinishedStageMap.get(ex.order_id);
+                    if (!existing || new Date(ex.end_time) > new Date(existing.end_time)) {
+                        latestFinishedStageMap.set(ex.order_id, {
+                            stage_id: ex.stage_id,
+                            end_time: ex.end_time,
+                            operator: ex.users?.name || null
+                        });
+                    }
                 }
             });
         }
@@ -749,6 +760,19 @@ app.get("/api/orders", async (req, res) => {
             if (activeStage) {
                 const obsKey = `${order.id}_${activeStage.id}`;
                 order.active_stage_observation = observationsMap.get(obsKey) || null;
+            }
+
+            // Enrich with latest finished stage
+            const latestFinished = latestFinishedStageMap.get(order.id);
+            order.latest_finished_stage = null;
+            if (latestFinished) {
+                const stageObj = (order.stages_status || []).find((s: any) => s.id === latestFinished.stage_id);
+                order.latest_finished_stage = {
+                    stage_id: latestFinished.stage_id,
+                    stage_name: stageObj?.name || `Etapa #${latestFinished.stage_id}`,
+                    end_time: latestFinished.end_time,
+                    operator: latestFinished.operator
+                };
             }
         }
     }
