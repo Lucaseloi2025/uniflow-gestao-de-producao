@@ -2847,12 +2847,17 @@ export default function App() {
                         }
                       } catch (e) {}
                     }
+                    const hasPendingReplacements = stagesList.some(s => s.pendencia_reposicao > 0);
                   return (
                     <tr
                       key={order.id}
                       className={cn(
-                        "cursor-pointer transition-colors",
-                        isOverdue ? "bg-rose-50 hover:bg-rose-100" : "hover:bg-zinc-50"
+                        "cursor-pointer transition-colors border-l-4",
+                        hasPendingReplacements 
+                          ? "bg-rose-50 hover:bg-rose-100/80 border-l-rose-500 font-semibold"
+                          : isOverdue 
+                            ? "bg-amber-50/50 hover:bg-amber-100/60 border-l-amber-500"
+                            : "border-l-transparent hover:bg-zinc-50"
                       )}
                       onClick={() => {
                         setSelectedOrder(order);
@@ -2925,6 +2930,11 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
+                              {active.pendencia_reposicao > 0 && (
+                                <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1 flex items-center gap-1 w-max animate-pulse">
+                                  ⚠️ Reposição: +{active.pendencia_reposicao} pc
+                                </span>
+                              )}
                               {isFinishedToday && (
                                 <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5 mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
                                   ✓ {latestFinished.stage_name} hoje
@@ -2947,8 +2957,8 @@ export default function App() {
                         {order.current_operator || '-'}
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={order.status === 'Entregue' ? 'success' : (isOverdue ? 'danger' : 'info')}>
-                          {order.status === 'Entrada' ? 'Em Fila' : order.status}
+                        <Badge variant={hasPendingReplacements ? 'danger' : order.status === 'Entregue' ? 'success' : (isOverdue ? 'danger' : 'info')}>
+                          {hasPendingReplacements ? '⚠️ Reposição' : (order.status === 'Entrada' ? 'Em Fila' : order.status)}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-right font-mono text-xs">{formatSeconds(order.total_time_seconds)}</td>
