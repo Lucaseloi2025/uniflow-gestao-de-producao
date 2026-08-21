@@ -870,7 +870,7 @@ export default function App() {
             const orderIds = ordersData.map((o: any) => o.id);
             const { data: obsData } = await supabase
               .from('stage_observations' as any)
-              .select('order_id, stage_id, observation')
+              .select('order_id, stage_id, observation, created_at')
               .in('order_id', orderIds)
               .order('created_at', { ascending: false });
 
@@ -879,14 +879,33 @@ export default function App() {
               obsData.forEach((obs: any) => {
                 const key = `${obs.order_id}_${obs.stage_id}`;
                 if (!obsMap.has(key)) {
-                  obsMap.set(key, obs.observation);
+                  obsMap.set(key, {
+                    observation: obs.observation,
+                    created_at: obs.created_at
+                  });
                 }
               });
 
               ordersData.forEach((order: any) => {
                 const activeStage = order.stages_status.find((s: any) => !s.finished);
                 order.active_stage_name = activeStage?.name || null;
-                order.active_stage_observation = activeStage ? (obsMap.get(`${order.id}_${activeStage.id}`) || null) : null;
+                
+                const unfinishedStages = (order.stages_status || []).filter((s: any) => !s.finished);
+                let newestObs = null;
+                for (const st of unfinishedStages) {
+                  const obsKey = `${order.id}_${st.id}`;
+                  const obsObj = obsMap.get(obsKey);
+                  if (obsObj) {
+                    const obsTime = new Date(obsObj.created_at).getTime();
+                    if (!newestObs || obsTime > newestObs.time) {
+                      newestObs = {
+                        text: obsObj.observation,
+                        time: obsTime
+                      };
+                    }
+                  }
+                }
+                order.active_stage_observation = newestObs ? newestObs.text : null;
               });
             } else {
               ordersData.forEach((order: any) => {

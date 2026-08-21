@@ -823,11 +823,13 @@ app.get("/api/orders", async (req, res) => {
                 .order("created_at", { ascending: false });
 
             if (obsData) {
-                // Since obsData is ordered by created_at desc, the first match per (order_id, stage_id) is the newest one
                 obsData.forEach((obs: any) => {
                     const key = `${obs.order_id}_${obs.stage_id}`;
                     if (!observationsMap.has(key)) {
-                        observationsMap.set(key, obs.observation);
+                        observationsMap.set(key, {
+                            observation: obs.observation,
+                            created_at: obs.created_at
+                        });
                     }
                 });
             }
@@ -844,10 +846,22 @@ app.get("/api/orders", async (req, res) => {
             order.active_stage_name = activeStage?.name || null;
             order.active_stage_observation = null;
             
-            if (activeStage) {
-                const obsKey = `${order.id}_${activeStage.id}`;
-                order.active_stage_observation = observationsMap.get(obsKey) || null;
+            const unfinishedStages = (order.stages_status || []).filter((s: any) => !s.finished);
+            let newestObs = null;
+            for (const st of unfinishedStages) {
+                const obsKey = `${order.id}_${st.id}`;
+                const obsObj = observationsMap.get(obsKey);
+                if (obsObj) {
+                    const obsTime = new Date(obsObj.created_at).getTime();
+                    if (!newestObs || obsTime > newestObs.time) {
+                        newestObs = {
+                            text: obsObj.observation,
+                            time: obsTime
+                        };
+                    }
+                }
             }
+            order.active_stage_observation = newestObs ? newestObs.text : null;
 
             // Enrich with latest finished stage
             const latestFinished = latestFinishedStageMap.get(order.id);
