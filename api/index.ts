@@ -409,22 +409,98 @@ app.get("/api/reports", async (req, res) => {
 
     if (checkError(error, res, "Erro nos relatórios")) return;
 
-    if (!isAdminUser && data) {
-        if (data.summary) {
-            data.summary.total_labor_cost = 0;
+    if (data) {
+        // Calcular produção detalhada por etapa dentro do período selecionado
+        const start = startDate ? new Date(startDate as string) : new Date();
+        if (!startDate) start.setHours(0,0,0,0);
+        const end = endDate ? new Date(endDate as string) : new Date();
+        if (!endDate) end.setHours(23,59,59,999);
+
+        try {
+            const { data: periodExecutions } = await supabaseAdmin
+                .from("stage_executions")
+                .select(`
+                    id,
+                    end_time,
+                    stage_id,
+                    user_id,
+                    stages(name),
+                    users(name),
+                    orders(order_number, client_name, quantity)
+                `)
+                .eq("status", "Finalizado")
+                .gte("end_time", start.toISOString())
+                .lte("end_time", end.toISOString());
+
+            const stageProductionMap = new Map();
+            if (periodExecutions) {
+                periodExecutions.forEach((ex: any) => {
+                    const stageName = ex.stages?.name || `Etapa #${ex.stage_id}`;
+                    const orderQty = ex.orders?.quantity || 0;
+                    const orderNumber = ex.orders?.order_number || "-";
+                    const clientName = ex.orders?.client_name || "-";
+                    const operatorName = ex.users?.name || "Operador";
+
+                    if (!stageProductionMap.has(stageName)) {
+                        stageProductionMap.set(stageName, {
+                            stage_name: stageName,
+                            completed_count: 0,
+                            total_pieces: 0,
+                            details: []
+                        });
+                    }
+
+                    const stageProd = stageProductionMap.get(stageName);
+                    stageProd.completed_count += 1;
+                    stageProd.total_pieces += orderQty;
+                    stageProd.details.push({
+                        order_number: orderNumber,
+                        client_name: clientName,
+                        quantity: orderQty,
+                        operator: operatorName,
+                        finished_at: ex.end_time
+                    });
+                });
+            }
+            data.production_by_stage = Array.from(stageProductionMap.values());
+
+            // Enriquecer orders_list com as etapas concluídas para cada pedido no período
+            if (Array.isArray(data.orders_list) && data.orders_list.length > 0) {
+                data.orders_list.forEach((ord: any) => {
+                    const orderExecutions = periodExecutions ? periodExecutions.filter((ex: any) => ex.order_id === ord.order_id) : [];
+                    if (orderExecutions.length > 0) {
+                        ord.stages_worked_in_period = orderExecutions.map((ex: any) => ({
+                            stage_name: ex.stages?.name || `Etapa #${ex.stage_id}`,
+                            finished_at: ex.end_time,
+                            operator: ex.users?.name || "Operador"
+                        }));
+                    } else {
+                        ord.stages_worked_in_period = [];
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Erro ao calcular produção por etapa no relatório:", err);
+            data.production_by_stage = [];
         }
-        if (Array.isArray(data.costsByCollaborator)) {
-            data.costsByCollaborator = data.costsByCollaborator.map((item: any) => ({
-                ...item,
-                hourly_cost: 0,
-                total_cost: 0,
-                cost_per_piece: 0,
-                totalCost: 0,
-                costPerPiece: 0
-            }));
-        }
-        if (data.costsByOrder) {
-            data.costsByOrder = [];
+
+        if (!isAdminUser) {
+            if (data.summary) {
+                data.summary.total_labor_cost = 0;
+            }
+            if (Array.isArray(data.costsByCollaborator)) {
+                data.costsByCollaborator = data.costsByCollaborator.map((item: any) => ({
+                    ...item,
+                    hourly_cost: 0,
+                    total_cost: 0,
+                    cost_per_piece: 0,
+                    totalCost: 0,
+                    costPerPiece: 0
+                }));
+            }
+            if (data.costsByOrder) {
+                data.costsByOrder = [];
+            }
         }
     }
 

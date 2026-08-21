@@ -3364,6 +3364,58 @@ export default function App() {
               </Card>
             </div>
             
+            {/* Produção por Etapa no Período (Visual) */}
+            {reportData?.production_by_stage && reportData.production_by_stage.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <Card className="p-6 border-zinc-200 shadow-sm bg-white">
+                  <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <BarChart3 size={16} className="text-emerald-600" />
+                    Peças Produzidas por Etapa (Gráfico)
+                  </h3>
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.production_by_stage}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                        <XAxis dataKey="stage_name" fontSize={10} axisLine={false} tickLine={false} />
+                        <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Bar dataKey="total_pieces" name="Peças Produzidas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+
+                <Card className="p-6 border-zinc-200 shadow-sm bg-white">
+                  <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Layers size={16} className="text-emerald-600" />
+                    Detalhamento de Volume por Etapa
+                  </h3>
+                  <div className="overflow-x-auto max-h-64 overflow-y-auto scrollbar-thin">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-zinc-100 bg-zinc-50">
+                          <th className="py-2.5 px-3 font-bold text-zinc-500">Etapa</th>
+                          <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Ordens Finalizadas</th>
+                          <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Peças Produzidas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {reportData.production_by_stage.map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                            <td className="py-2.5 px-3 font-bold text-zinc-900">{item.stage_name}</td>
+                            <td className="py-2.5 px-3 text-center font-mono font-semibold text-zinc-600">{item.completed_count} ordens</td>
+                            <td className="py-2.5 px-3 text-center font-mono font-bold text-emerald-600">{item.total_pieces} un</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
             {/* Detalhamento dos Pedidos do Período */}
             {reportData?.orders_list && reportData.orders_list.length > 0 && (
               <Card className="p-6 border-zinc-200 shadow-sm mb-8">
@@ -3379,7 +3431,7 @@ export default function App() {
                     </Badge>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[280px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-200">
                   {reportData.orders_list.map((order: any, idx: number) => (
                     <motion.div 
                       key={idx}
@@ -3395,7 +3447,7 @@ export default function App() {
                       }}
                       className="flex items-center justify-between p-3 bg-zinc-50 border border-zinc-100 rounded-xl hover:bg-white hover:border-zinc-300 hover:shadow-md transition-all cursor-pointer group"
                     >
-                      <div className="min-w-0 pr-2">
+                      <div className="min-w-0 pr-2 flex-1">
                         <div className="flex items-center gap-2 mb-0.5">
                           <p className="text-[10px] font-black font-mono text-zinc-400 group-hover:text-zinc-900 transition-colors">#{order.order_number}</p>
                           <span className={cn(
@@ -3406,8 +3458,21 @@ export default function App() {
                           </span>
                         </div>
                         <p className="text-xs font-bold text-zinc-700 truncate line-clamp-1">{order.client_name}</p>
+                        
+                        {/* Etapas finalizadas neste período */}
+                        {order.stages_worked_in_period && order.stages_worked_in_period.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1 max-w-[190px]">
+                            {order.stages_worked_in_period.map((st: any, sidx: number) => (
+                              <span key={sidx} title={`Concluído por ${st.operator}`} className="text-[8px] leading-tight bg-emerald-50 text-emerald-700 border border-emerald-100 px-1 py-0.5 rounded font-bold">
+                                ✓ {st.stage_name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[8px] text-zinc-400 font-medium italic mt-1 block">Sem etapas finalizadas</span>
+                        )}
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <p className="text-xs font-black text-zinc-900">{order.quantity}</p>
                         <p className="text-[8px] text-zinc-400 font-bold uppercase">Peças</p>
                       </div>
