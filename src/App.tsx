@@ -2898,7 +2898,39 @@ export default function App() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
-                        {stagesList.find(s => !s.finished)?.name || 'Concluído'}
+                        {(() => {
+                          const active = stagesList.find(s => !s.finished);
+                          if (!active) return <span className="text-zinc-400 font-medium">Concluído</span>;
+                          const qty = active.quantidade_pedido || order.quantity || 0;
+                          const current = active.quantidade_boa || 0;
+                          const exec = order.active_stage_execution;
+                          
+                          const isCurrentStageActive = exec && Number(exec.stage_id) === Number(active.id);
+                          const execStatus = isCurrentStageActive ? exec.status : null;
+
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-zinc-800 font-bold">{active.name}</span>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                {qty > 0 && (
+                                  <span className="text-[10px] text-zinc-600 font-mono font-bold bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200/50">
+                                    {current} / {qty} un
+                                  </span>
+                                )}
+                                {execStatus === 'Pausado' && (
+                                  <span className="text-[8px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    Pausado
+                                  </span>
+                                )}
+                                {execStatus === 'Em andamento' && (
+                                  <span className="text-[8px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                                    Produzindo
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
                         {order.current_operator || '-'}

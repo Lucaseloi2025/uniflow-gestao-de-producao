@@ -87,6 +87,19 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
   if (!order) return [];
   const requiredStages: number[] = Array.isArray(order.required_stages) ? order.required_stages : [];
   const stagesStatus: any[] = Array.isArray(order.stages_status) ? order.stages_status : [];
+
+  // Buscar progresso atualizado direto do banco para evitar cache local dessincronizado
+  try {
+    const { data: dbProg } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId);
+    if (dbProg) {
+      dbProg.forEach((p: any) => {
+        _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p);
+      });
+    }
+  } catch (err) {
+    console.warn('[API] Falha ao buscar progresso atualizado no getStageProgressForOrder:', err);
+  }
+
   return requiredStages.map(stageId => {
     const key = `${orderId}_${stageId}`;
     let prog = _lossStageProgressStore.get(key);
@@ -115,6 +128,17 @@ function enrichOrdersWithProgressSync(orders: any[]) {
 }
 async function logProgress(sb: any, orderId: number, stageId: number, userId: number, userName: string, incremento: number) {
   await _initLossStore(sb);
+  
+  // Buscar progresso atualizado direto do banco para evitar cache local dessincronizado
+  try {
+    const { data: dbProg } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', stageId).maybeSingle();
+    if (dbProg) {
+      _lossStageProgressStore.set(`${orderId}_${stageId}`, dbProg);
+    }
+  } catch (err) {
+    console.warn('[API] Falha ao sincronizar progresso no logProgress:', err);
+  }
+
   const key = `${orderId}_${stageId}`;
   let prog = _lossStageProgressStore.get(key) || { order_id: orderId, stage_id: stageId, quantidade_pedido: (await sb.from('orders').select('quantity').eq('id', orderId).single()).data?.quantity || 0, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
   prog.quantidade_boa = Math.max(0, prog.quantidade_boa + incremento);
@@ -130,6 +154,17 @@ async function logProgress(sb: any, orderId: number, stageId: number, userId: nu
 }
 async function logLoss(sb: any, orderId: number, stageId: number, userId: number, userName: string, qtd: number, motivo: string, det?: string, retId?: number) {
   await _initLossStore(sb);
+  
+  // Buscar progresso atualizado direto do banco para evitar cache local dessincronizado
+  try {
+    const { data: dbProg } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', stageId).maybeSingle();
+    if (dbProg) {
+      _lossStageProgressStore.set(`${orderId}_${stageId}`, dbProg);
+    }
+  } catch (err) {
+    console.warn('[API] Falha ao sincronizar progresso no logLoss:', err);
+  }
+
   const key = `${orderId}_${stageId}`;
   let prog = _lossStageProgressStore.get(key) || { order_id: orderId, stage_id: stageId, quantidade_pedido: (await sb.from('orders').select('quantity').eq('id', orderId).single()).data?.quantity || 0, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
   prog.quantidade_perdida += qtd; if (prog.quantidade_boa < prog.quantidade_pedido) prog.finished = false;
@@ -139,6 +174,17 @@ async function logLoss(sb: any, orderId: number, stageId: number, userId: number
   const rn = (await sb.from('stages').select('name').eq('id', rs).single()).data?.name || `Etapa #${rs}`;
   const lossLog: OrderLossLog = { id: _lossLogsStore.length+1, order_id: orderId, stage_id: stageId, stage_name: sn, user_id: userId, user_name: userName, quantidade_perdida: qtd, motivo, motivo_detalhe: det||'', etapa_reentrada_id: rs, etapa_reentrada_name: rn, created_at: new Date().toISOString() };
   _lossLogsStore.push(lossLog); try { await sb.from('order_loss_logs').insert(lossLog); } catch(e) {}
+  
+  // Buscar progresso da reentrada para evitar dessincronizar
+  try {
+    const { data: dbProgReentry } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', rs).maybeSingle();
+    if (dbProgReentry) {
+      _lossStageProgressStore.set(`${orderId}_${rs}`, dbProgReentry);
+    }
+  } catch (err) {
+    console.warn('[API] Falha ao sincronizar progresso de reentrada no logLoss:', err);
+  }
+
   const rk = `${orderId}_${rs}`; let rp = _lossStageProgressStore.get(rk) || { order_id: orderId, stage_id: rs, quantidade_pedido: prog.quantidade_pedido, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
   rp.pendencia_reposicao += qtd; rp.finished = false; _lossStageProgressStore.set(rk, rp); try { await sb.from('order_stage_progress').upsert(rp); } catch(e) {}
   return { success: true, progress: prog, lossLog, reentradaStageId: rs };
@@ -632,16 +678,38 @@ app.get("/api/orders", async (req, res) => {
 
     if (data && data.length > 0) {
         const orderIds = data.map((o: any) => o.id);
-        const { data: executions } = await supabase
+        const { data: executions } = await supabaseAdmin
             .from("stage_executions")
-            .select("order_id, users(name)")
+            .select("order_id, status, stage_id, users(name)")
             .in("order_id", orderIds)
-            .in("status", ["Em andamento"]);
+            .in("status", ["Em andamento", "Pausado"]);
 
         const operatorMap = new Map();
+        const activeStageExecutionMap = new Map();
         if (executions) {
             executions.forEach((ex: any) => {
-                operatorMap.set(ex.order_id, ex.users?.name || null);
+                if (ex.status === "Em andamento") {
+                    operatorMap.set(ex.order_id, ex.users?.name || null);
+                }
+                const existing = activeStageExecutionMap.get(ex.order_id);
+                if (!existing || existing.status === "Pausado") {
+                    activeStageExecutionMap.set(ex.order_id, {
+                        status: ex.status,
+                        stage_id: ex.stage_id,
+                        operator: ex.users?.name || null
+                    });
+                }
+            });
+        }
+
+        const { data: dbProgress } = await supabaseAdmin
+            .from("order_stage_progress")
+            .select("*")
+            .in("order_id", orderIds);
+
+        if (dbProgress) {
+            dbProgress.forEach((p: any) => {
+                _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p);
             });
         }
 
@@ -671,6 +739,7 @@ app.get("/api/orders", async (req, res) => {
 
         for (const order of data) {
             order.current_operator = operatorMap.get(order.id) || null;
+            order.active_stage_execution = activeStageExecutionMap.get(order.id) || null;
             
             // Enrich with active stage name and active stage observation
             const activeStage = (order.stages_status || []).find((s: any) => !s.finished);
@@ -1115,7 +1184,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
 app.get("/api/orders/:id/stage-progress", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
-        const progressList = await getStageProgressForOrder(supabase, orderId);
+        const progressList = await getStageProgressForOrder(supabaseAdmin, orderId);
         return res.json(progressList);
     } catch (err: any) {
         console.error("[API] Erro ao buscar progresso do pedido:", err);
@@ -1134,7 +1203,7 @@ app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
         }
 
         const result = await logProgress(
-            supabase,
+            supabaseAdmin,
             orderId,
             stageId,
             Number(user_id) || 1,
@@ -1165,7 +1234,7 @@ app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
         }
 
         const result = await logLoss(
-            supabase,
+            supabaseAdmin,
             orderId,
             stageId,
             Number(user_id) || 1,
