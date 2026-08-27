@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -1236,7 +1237,7 @@ app.post("/api/stages", async (req, res) => {
         .single();
     const sort_order = (maxData?.sort_order || 0) + 1;
 
-    const { data, error } = await supabase
+    let result = await supabase
         .from("stages")
         .insert({ 
             name, 
@@ -1248,8 +1249,23 @@ app.post("/api/stages", async (req, res) => {
         })
         .select()
         .single();
-    if (checkError(error, res)) return;
-    return res.json(data);
+
+    if (result.error && result.error.message.includes("meta_diaria")) {
+        result = await supabase
+            .from("stages")
+            .insert({ 
+                name, 
+                sort_order, 
+                average_time_seconds: Number(average_time_seconds) || 0,
+                ideal_time: Number(ideal_time) || Number(average_time_seconds) || 0,
+                calculation_type: calculation_type || 'por_peca'
+            })
+            .select()
+            .single();
+    }
+
+    if (checkError(result.error, res)) return;
+    return res.json(result.data);
 });
 
 app.patch("/api/stages/:id", async (req, res) => {
@@ -1263,11 +1279,20 @@ app.patch("/api/stages/:id", async (req, res) => {
     if (calculation_type !== undefined) updates.calculation_type = calculation_type;
     if (meta_diaria !== undefined) updates.meta_diaria = meta_diaria !== null ? Number(meta_diaria) : null;
 
-    const { error } = await supabase
+    let result = await supabase
         .from("stages")
         .update(updates)
         .eq("id", Number(req.params.id));
-    if (checkError(error, res)) return;
+
+    if (result.error && result.error.message.includes("meta_diaria")) {
+        delete updates.meta_diaria;
+        result = await supabase
+            .from("stages")
+            .update(updates)
+            .eq("id", Number(req.params.id));
+    }
+
+    if (checkError(result.error, res)) return;
     return res.json({ success: true });
 });
 
@@ -2495,7 +2520,7 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
 
     try {
         // Fetch completed stage executions since queryStartDate
-        const { data: executions, error } = await supabaseAdmin
+        let resultExecutions: any = await supabaseAdmin
             .from("stage_executions")
             .select(`
                 id,
@@ -2510,13 +2535,38 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
             .eq("status", "Finalizado")
             .gte("end_time", queryStartDate.toISOString());
 
-        if (error) throw error;
+        if (resultExecutions.error && resultExecutions.error.message.includes("meta_diaria")) {
+            resultExecutions = await supabaseAdmin
+                .from("stage_executions")
+                .select(`
+                    id,
+                    end_time,
+                    status,
+                    user_id,
+                    stage_id,
+                    users ( name ),
+                    stages ( name, calculation_type ),
+                    orders ( quantity )
+                `)
+                .eq("status", "Finalizado")
+                .gte("end_time", queryStartDate.toISOString());
+        }
+
+        if (resultExecutions.error) throw resultExecutions.error;
+        const executions = resultExecutions.data;
 
         // Fetch all active users and active stages to populate complete lists
-        const [usersRes, stagesRes] = await Promise.all([
+        const [usersRes, stagesResResult] = await Promise.all([
             supabaseAdmin.from("users").select("id, name").eq("active", true),
-            supabaseAdmin.from("stages").select("id, name, calculation_type, meta_diaria").eq("active", 1)
+            (async () => {
+                let res: any = await supabaseAdmin.from("stages").select("id, name, calculation_type, meta_diaria").eq("active", 1);
+                if (res.error && res.error.message.includes("meta_diaria")) {
+                    res = await supabaseAdmin.from("stages").select("id, name, calculation_type").eq("active", 1);
+                }
+                return res;
+            })()
         ]);
+        const stagesRes = stagesResResult;
 
         let overrides: any[] = [];
         try {
@@ -2688,6 +2738,126 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
     } catch (err: any) {
         console.error("[GoalsProductivity] Error:", err);
         return res.status(500).json({ error: "Erro ao carregar metas de produtividade" });
+    }
+});
+
+// ── Geração de Token & Acompanhamento Público de Pedido ─────────────────────
+app.post("/api/orders/:id/tracking-token", isAdminOrComercial, async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        
+        // 1. Buscar pedido
+        const { data: order, error: fetchErr } = await supabaseAdmin
+            .from("orders")
+            .select("id, tracking_token")
+            .eq("id", orderId)
+            .is("deleted_at", null)
+            .single();
+
+        if (fetchErr || !order) {
+            return res.status(404).json({ error: "Pedido não encontrado" });
+        }
+
+        // 2. Se já tiver token, retorna
+        if (order.tracking_token) {
+            return res.json({ tracking_token: order.tracking_token });
+        }
+
+        // 3. Gerar novo token único (UUID)
+        const newToken = crypto.randomUUID();
+
+        // 4. Salvar token no banco
+        const { error: updateErr } = await supabaseAdmin
+            .from("orders")
+            .update({ tracking_token: newToken })
+            .eq("id", orderId);
+
+        if (checkError(updateErr, res, "Erro ao salvar token de acompanhamento")) return;
+
+        return res.json({ tracking_token: newToken });
+    } catch (err: any) {
+        console.error("[API] Erro ao obter/gerar token de acompanhamento:", err);
+        return res.status(500).json({ error: "Erro ao processar token de acompanhamento" });
+    }
+});
+
+app.get("/api/public/orders/:token", async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!token || typeof token !== "string" || token.length < 12) {
+            return res.status(404).json({ error: "Pedido não encontrado" });
+        }
+
+        // 1. Buscar pedido por token
+        const { data: order, error: fetchErr } = await supabaseAdmin
+            .from("orders")
+            .select("id, order_number")
+            .eq("tracking_token", token)
+            .is("deleted_at", null)
+            .maybeSingle();
+
+        if (fetchErr || !order) {
+            return res.status(404).json({ error: "Pedido não encontrado" });
+        }
+
+        // 2. Chamar a RPC get_orders_with_stages com o order_number do pedido
+        const { data: rpcOrders, error: rpcError } = await supabaseAdmin.rpc("get_orders_with_stages", {
+            p_search: order.order_number,
+            p_stage_id: null,
+            p_stage_status: null,
+            p_product_type: null,
+            p_print_type: null
+        });
+
+        if (rpcError || !rpcOrders || rpcOrders.length === 0) {
+            return res.status(404).json({ error: "Pedido não encontrado" });
+        }
+
+        const rpcOrder = rpcOrders.find((o: any) => o.id === order.id);
+        if (!rpcOrder) {
+            return res.status(404).json({ error: "Pedido não encontrado" });
+        }
+
+        // Sincronizar progresso de perdas/quantidade boa com o store local temporário
+        enrichOrdersWithProgressSync([rpcOrder]);
+
+        const stagesList = rpcOrder.stages_status || [];
+
+        // Identificar etapa ativa
+        let activeStageId = stagesList.find((s: any) => s.in_progress)?.id;
+        if (!activeStageId) {
+            activeStageId = stagesList.find((s: any) => !s.finished)?.id;
+        }
+
+        // Filtrar e mapear apenas dados públicos permitidos
+        const stages = stagesList.map((st: any) => {
+            let status: 'concluida' | 'em_andamento' | 'pendente' = 'pendente';
+            if (st.finished) {
+                status = 'concluida';
+            } else if (st.id === activeStageId) {
+                status = 'em_andamento';
+            }
+            return {
+                id: st.id,
+                name: st.name,
+                status
+            };
+        });
+
+        const publicData = {
+            order_number: rpcOrder.order_number,
+            client_name: rpcOrder.client_name,
+            product_type: rpcOrder.product_type,
+            print_type: rpcOrder.print_type,
+            quantity: rpcOrder.quantity,
+            deadline: rpcOrder.deadline,
+            stages
+        };
+
+        return res.json(publicData);
+    } catch (err: any) {
+        console.error("[API Public] Erro ao buscar pedido público por token:", err);
+        return res.status(404).json({ error: "Pedido não encontrado" });
     }
 });
 

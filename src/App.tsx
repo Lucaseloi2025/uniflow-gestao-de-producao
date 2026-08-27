@@ -50,12 +50,14 @@ import {
   Eye,
   EyeOff,
   Printer,
-  Loader2
+  Loader2,
+  Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './lib/supabase';
 import PrintableReport from './PrintableReport';
 import { Session } from '@supabase/supabase-js';
+import PublicTracking from './PublicTracking';
 import {
   BarChart,
   Bar,
@@ -646,6 +648,8 @@ export default function App() {
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [selectedStageFilter, setSelectedStageFilter] = useState<string>('');
   const [selectedStageStatus, setSelectedStageStatus] = useState<'Pending' | 'Finished'>('Pending');
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [productTypeFilter, setProductTypeFilter] = useState<string>('');
   const [printTypeFilter, setPrintTypeFilter] = useState<string>('');
   const [newOrderRequiredStages, setNewOrderRequiredStages] = useState<number[]>([]);
@@ -1124,6 +1128,41 @@ export default function App() {
       alert('Erro na conexão com o servidor');
     } finally {
       setIsDeletingOrder(false);
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
+  const handleGenerateTrackingLink = async (order: Order) => {
+    setIsGeneratingLink(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/tracking-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin',
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao gerar link de acompanhamento');
+      }
+
+      const token = data.tracking_token;
+      const trackingUrl = `${window.location.origin}/acompanhar/${token}`;
+      await navigator.clipboard.writeText(trackingUrl);
+      showToast('Link copiado!');
+    } catch (err: any) {
+      console.error('[Tracking Link] Error:', err);
+      alert(err.message || 'Erro ao gerar e copiar link de acompanhamento.');
+    } finally {
+      setIsGeneratingLink(false);
     }
   };
 
@@ -1767,6 +1806,13 @@ export default function App() {
     if (!operationalReportData?.pedidos_concluidos || !Array.isArray(operationalReportData.pedidos_concluidos)) return [];
     return [...operationalReportData.pedidos_concluidos];
   }, [operationalReportData?.pedidos_concluidos]);
+
+  const isTrackingPage = window.location.pathname.startsWith('/acompanhar/');
+  const trackingToken = isTrackingPage ? window.location.pathname.split('/').pop() || null : null;
+
+  if (isTrackingPage) {
+    return <PublicTracking token={trackingToken} />;
+  }
 
   if (isAuthLoading) {
     return <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA]"><div className="animate-spin text-zinc-400"><RefreshCw size={24} /></div></div>;
@@ -4594,13 +4640,13 @@ export default function App() {
                 Gerenciar Etapas de Produção
               </h3>
 
-              <div className="flex gap-2 mb-8">
+              <div className="flex flex-wrap gap-2 mb-8">
                 <input
                   type="text"
                   value={newStageName}
                   onChange={(e) => setNewStageName(e.target.value)}
                   placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
-                  className="flex-1 p-2 border border-zinc-200 rounded-lg text-sm"
+                  className="flex-1 min-w-[200px] p-2 border border-zinc-200 rounded-lg text-sm"
                 />
                 <input
                   type="number"
@@ -4664,7 +4710,7 @@ export default function App() {
                     <div className="flex items-center gap-4 flex-1">
                       <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
                       {editingStageId === stage.id ? (
-                        <div className="flex flex-1 gap-2">
+                        <div className="flex flex-wrap flex-1 gap-2">
                           <input
                             type="text"
                             autoFocus
@@ -4673,7 +4719,7 @@ export default function App() {
                             onKeyDown={async (e) => {
                               if (e.key === 'Escape') setEditingStageId(null);
                             }}
-                            className="flex-1 bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                            className="flex-1 min-w-[150px] bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
                           />
                           <input
                             type="number"
@@ -5116,6 +5162,16 @@ export default function App() {
                           >
                             {isCancellingOrder ? <RefreshCw size={13} className="animate-spin" /> : <X size={13} />}
                             <span className="hidden xl:inline">Cancelar</span>
+                          </button>
+                          <button
+                            onClick={() => handleGenerateTrackingLink(selectedOrder)}
+                            disabled={isGeneratingLink}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-all font-bold text-xs active:scale-95"
+                            title="Gerar e copiar link de acompanhamento do cliente"
+                          >
+                            {isGeneratingLink ? <RefreshCw size={13} className="animate-spin" /> : <LinkIcon size={13} />}
+                            <span className="hidden xl:inline">Link Cliente</span>
+                            <span className="xl:hidden">Link</span>
                           </button>
                         </>
                       )}
@@ -7142,6 +7198,14 @@ export default function App() {
           </div>
         );
       })()}
+
+      {/* Global Toast Message */}
+      {toastMessage && (
+        <div className="fixed bottom-4 right-4 bg-zinc-900 border border-zinc-800 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-bold z-[100] flex items-center gap-2 animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }
