@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Circle, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Loader2, AlertCircle, Star } from 'lucide-react';
 
 interface PublicStage {
   id: number;
@@ -16,6 +16,34 @@ interface PublicOrder {
   deadline: string;
   stages: PublicStage[];
 }
+
+/* ── Comfort Logo Component ─────────────────────────────────────── */
+const ComfortLogo = ({ className = '' }: { className?: string }) => (
+  <svg viewBox="0 0 320 80" className={className} xmlns="http://www.w3.org/2000/svg">
+    {/* T-shirt icon */}
+    <g transform="translate(10,8)">
+      {/* Dark blue shirt body */}
+      <path d="M8,25 L8,60 L45,60 L45,25 L35,20 L28,25 L25,25 L18,20 L8,25Z" fill="#0B2545"/>
+      {/* Orange arrow/accent */}
+      <path d="M20,28 L35,45 L28,45 L28,58 L20,58 L20,45 L13,45Z" fill="#F27B20" opacity="0.9"/>
+      {/* Stars */}
+      <circle cx="38" cy="10" r="2.5" fill="#F27B20"/>
+      <circle cx="45" cy="5" r="2" fill="#F27B20"/>
+      <circle cx="48" cy="14" r="1.5" fill="#F27B20"/>
+    </g>
+    {/* COMFORT text */}
+    <text x="75" y="42" fontFamily="Arial, Helvetica, sans-serif" fontSize="32" fontWeight="900" fill="#0B2545" letterSpacing="1">COMFORT</text>
+    {/* Subtitle */}
+    <text x="75" y="62" fontFamily="Arial, Helvetica, sans-serif" fontSize="14" fontWeight="600" fill="#0B2545" letterSpacing="0.5">Uniformes e Camisetas</text>
+  </svg>
+);
+
+/* ── Animated pulse ring ─────────────────────────────────────── */
+const PulseRing = () => (
+  <span className="ct-pulse-ring">
+    <span className="ct-pulse-ring-inner" />
+  </span>
+);
 
 export default function PublicTracking({ token }: { token: string | null }) {
   const [loading, setLoading] = useState(true);
@@ -48,44 +76,58 @@ export default function PublicTracking({ token }: { token: string | null }) {
     fetchOrder();
   }, [token]);
 
+  /* ── Loading state ─────────────────────────────────────── */
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
-        <Loader2 className="animate-spin text-emerald-500 w-10 h-10 mb-4" />
-        <p className="text-zinc-400 text-sm font-medium">Carregando informações do pedido...</p>
-      </div>
-    );
-  }
-
-  if (error || !order) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-center">
-        <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl max-w-md w-full shadow-xl">
-          <AlertCircle className="text-rose-500 w-16 h-16 mx-auto mb-4" />
-          <h1 className="text-white text-xl font-bold mb-2">Link não encontrado</h1>
-          <p className="text-zinc-400 text-sm mb-6">
-            O link de acompanhamento que você tentou acessar é inválido, expirou ou o pedido foi arquivado.
-          </p>
-          <p className="text-zinc-500 text-xs font-mono">
-            Por favor, entre em contato com o atendimento para solicitar um novo link.
-          </p>
+      <div className="ct-page ct-center">
+        <style>{trackingStyles}</style>
+        <div className="ct-loading-card">
+          <ComfortLogo className="ct-logo-loading" />
+          <div className="ct-spinner-wrapper">
+            <Loader2 className="ct-spinner" />
+          </div>
+          <p className="ct-loading-text">Carregando informações do seu pedido...</p>
         </div>
       </div>
     );
   }
 
-  // Calculate statistics
+  /* ── Error state ─────────────────────────────────────── */
+  if (error || !order) {
+    return (
+      <div className="ct-page ct-center">
+        <style>{trackingStyles}</style>
+        <div className="ct-error-card">
+          <ComfortLogo className="ct-logo-error" />
+          <div className="ct-error-icon-wrapper">
+            <AlertCircle className="ct-error-icon" />
+          </div>
+          <h1 className="ct-error-title">Link não encontrado</h1>
+          <p className="ct-error-desc">
+            O link de acompanhamento que você tentou acessar é inválido, expirou ou o pedido foi arquivado.
+          </p>
+          <div className="ct-error-contact">
+            <p>Entre em contato conosco para solicitar um novo link de acompanhamento.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Calculate statistics ─────────────────────────────── */
   const totalStages = order.stages.length;
   const completedStages = order.stages.filter((s) => s.status === 'concluida').length;
+  const inProgressStages = order.stages.filter((s) => s.status === 'em_andamento').length;
   const progressPercent = totalStages > 0 ? Math.round((completedStages / totalStages) * 100) : 0;
+  const isAllDone = completedStages === totalStages && totalStages > 0;
 
-  // Format date
+  /* ── Format date ─────────────────────────────────────── */
   const formatDate = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
       return date.toLocaleDateString('pt-BR', {
         day: '2-digit',
-        month: '2-digit',
+        month: 'long',
         year: 'numeric',
       });
     } catch (e) {
@@ -93,142 +135,711 @@ export default function PublicTracking({ token }: { token: string | null }) {
     }
   };
 
+  /* ── Greeting based on time ──────────────────────────── */
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  const getStatusMessage = () => {
+    if (isAllDone) return '🎉 Seu pedido está pronto!';
+    if (inProgressStages > 0) return 'Seu pedido está sendo produzido com carinho!';
+    return 'Seu pedido está na fila de produção.';
+  };
+
+  /* ── Main render ─────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col antialiased">
-      {/* Header Sleek Dark */}
-      <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-4 sticky top-0 z-50">
-        <div className="max-w-xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-emerald-400 font-black text-lg tracking-wider">COMFORTPRO</span>
-            <span className="bg-zinc-800 text-[10px] text-zinc-400 px-2 py-0.5 rounded font-medium">ACOMPANHAMENTO</span>
-          </div>
+    <div className="ct-page">
+      <style>{trackingStyles}</style>
+
+      {/* ── Header ─────────────────────────────────────── */}
+      <header className="ct-header">
+        <div className="ct-header-inner">
+          <ComfortLogo className="ct-logo" />
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Order Meta Information Card */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-xl space-y-4">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Pedido</span>
-            <h1 className="text-xl font-black text-white leading-tight mt-0.5">
-              {order.order_number}
-            </h1>
+      {/* ── Main ─────────────────────────────────────── */}
+      <main className="ct-main">
+        {/* ── Welcome Card ───────────────────────────── */}
+        <section className="ct-welcome-card">
+          <div className="ct-welcome-bg" />
+          <div className="ct-welcome-content">
+            <p className="ct-greeting">{getGreeting()}, <strong>{order.client_name}</strong>!</p>
+            <p className="ct-status-message">{getStatusMessage()}</p>
           </div>
+        </section>
 
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-800">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Cliente</span>
-              <p className="text-sm font-semibold text-zinc-200 mt-0.5">{order.client_name}</p>
+        {/* ── Order Info ─────────────────────────────── */}
+        <section className="ct-info-card">
+          <div className="ct-info-row">
+            <div className="ct-info-item">
+              <span className="ct-info-label">Pedido</span>
+              <span className="ct-info-value ct-order-number">{order.order_number}</span>
             </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Prazo de Entrega</span>
-              <p className="text-sm font-semibold text-zinc-200 mt-0.5 flex items-center gap-1.5">
-                <Clock size={14} className="text-emerald-400" />
+            <div className="ct-info-item">
+              <span className="ct-info-label">Previsão de Entrega</span>
+              <span className="ct-info-value ct-deadline">
+                <Clock size={15} />
                 {formatDate(order.deadline)}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Produto</span>
-              <p className="text-sm font-semibold text-zinc-200 mt-0.5">
-                {order.product_type} <span className="text-zinc-500 text-xs font-normal">({order.print_type})</span>
-              </p>
-            </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Quantidade</span>
-              <p className="text-sm font-semibold text-zinc-200 mt-0.5">{order.quantity} pçs</p>
+              </span>
             </div>
           </div>
         </section>
 
-        {/* Progress Tracker Card */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-xl space-y-5">
-          {/* Header Progress */}
-          <div className="flex justify-between items-end">
+        {/* ── Progress Card ──────────────────────────── */}
+        <section className="ct-progress-card">
+          <div className="ct-progress-header">
             <div>
-              <h2 className="text-sm font-bold text-zinc-400">Progresso de Produção</h2>
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <h2 className="ct-progress-title">Progresso da Produção</h2>
+              <p className="ct-progress-subtitle">
                 {completedStages} de {totalStages} etapas concluídas
               </p>
             </div>
-            <span className="text-lg font-black text-emerald-400">{progressPercent}%</span>
+            <div className={`ct-progress-percent ${isAllDone ? 'ct-done' : ''}`}>
+              {progressPercent}%
+            </div>
           </div>
 
-          {/* Bar Chart Visual progress */}
-          <div className="w-full bg-zinc-800 h-2.5 rounded-full overflow-hidden">
+          {/* Progress Bar */}
+          <div className="ct-progress-bar-track">
             <div
-              className="bg-emerald-500 h-full rounded-full transition-all duration-500 ease-out"
+              className={`ct-progress-bar-fill ${isAllDone ? 'ct-bar-done' : ''}`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
 
-          {/* Steps list */}
-          <div className="relative pl-1 pt-4 space-y-6">
-            {/* Vertical timeline line */}
-            <div className="absolute left-[13px] top-6 bottom-6 w-[2px] bg-zinc-800" />
-
+          {/* ── Stage Cards (non-sequential) ─────────── */}
+          <div className="ct-stages-grid">
             {order.stages.map((stage) => {
               const isConcluida = stage.status === 'concluida';
               const isEmAndamento = stage.status === 'em_andamento';
 
               return (
-                <div key={stage.id} className="relative flex items-start gap-4">
-                  {/* Visual bullet/status icon */}
-                  <div className="z-10 flex items-center justify-center bg-zinc-900 w-7 h-7 rounded-full">
+                <div
+                  key={stage.id}
+                  className={`ct-stage-card ${
+                    isConcluida ? 'ct-stage-done' : isEmAndamento ? 'ct-stage-active' : 'ct-stage-pending'
+                  }`}
+                >
+                  <div className="ct-stage-icon">
                     {isConcluida ? (
-                      <CheckCircle2 className="w-6 h-6 text-emerald-500 fill-emerald-950/40" />
+                      <CheckCircle2 className="ct-icon-done" />
                     ) : isEmAndamento ? (
-                      <div className="w-6 h-6 rounded-full border-2 border-emerald-400 flex items-center justify-center animate-pulse">
-                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full" />
+                      <div className="ct-icon-active-wrapper">
+                        <PulseRing />
+                        <div className="ct-icon-active-dot" />
                       </div>
                     ) : (
-                      <Circle className="w-5 h-5 text-zinc-700" />
+                      <Circle className="ct-icon-pending" />
                     )}
                   </div>
-
-                  {/* Stage text */}
-                  <div className="flex-1 pt-0.5">
-                    <div className="flex items-center justify-between">
-                      <h3
-                        className={`text-sm font-bold transition-colors ${
-                          isConcluida
-                            ? 'text-zinc-400 line-through decoration-zinc-850'
-                            : isEmAndamento
-                            ? 'text-white font-extrabold'
-                            : 'text-zinc-650'
-                        }`}
-                      >
-                        {stage.name}
-                      </h3>
-                      <span
-                        className={`text-[9px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded ${
-                          isConcluida
-                            ? 'bg-zinc-800/40 text-zinc-500'
-                            : isEmAndamento
-                            ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-800/50'
-                            : 'bg-zinc-900/20 text-zinc-700'
-                        }`}
-                      >
-                        {isConcluida ? 'Concluída' : isEmAndamento ? 'Em Andamento' : 'Pendente'}
-                      </span>
-                    </div>
+                  <div className="ct-stage-info">
+                    <h3 className={`ct-stage-name ${
+                      isConcluida ? 'ct-name-done' : isEmAndamento ? 'ct-name-active' : 'ct-name-pending'
+                    }`}>
+                      {stage.name}
+                    </h3>
+                    <span className={`ct-stage-badge ${
+                      isConcluida ? 'ct-badge-done' : isEmAndamento ? 'ct-badge-active' : 'ct-badge-pending'
+                    }`}>
+                      {isConcluida ? '✓ Concluída' : isEmAndamento ? '● Em Andamento' : 'Aguardando'}
+                    </span>
                   </div>
                 </div>
               );
             })}
           </div>
         </section>
+
+        {/* ── All done celebration ───────────────────── */}
+        {isAllDone && (
+          <section className="ct-celebration-card">
+            <div className="ct-celebration-stars">
+              <Star className="ct-star ct-star-1" />
+              <Star className="ct-star ct-star-2" />
+              <Star className="ct-star ct-star-3" />
+            </div>
+            <h2 className="ct-celebration-title">Pedido Finalizado!</h2>
+            <p className="ct-celebration-desc">
+              Todas as etapas de produção foram concluídas. Em breve entraremos em contato para combinar a entrega.
+            </p>
+          </section>
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="py-8 px-4 text-center border-t border-zinc-900 bg-zinc-950/50">
-        <p className="text-[10px] text-zinc-600 font-mono">
-          ComfortPro Uniformes © 2026. Todos os direitos reservados.
+      {/* ── Footer ─────────────────────────────────────── */}
+      <footer className="ct-footer">
+        <p className="ct-footer-text">
+          Comfort Uniformes e Camisetas © {new Date().getFullYear()}
         </p>
+        <p className="ct-footer-sub">Produzindo com qualidade e carinho</p>
       </footer>
     </div>
   );
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   CSS-in-JS Styles — warm, welcoming, Comfort brand identity
+   ════════════════════════════════════════════════════════════════════ */
+const trackingStyles = `
+  /* ── Fonts ──────────────────────────────────────────────────── */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  /* ── Base / Page ───────────────────────────────────────────── */
+  .ct-page {
+    min-height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #FFF8F0 0%, #FFF0E0 30%, #F0F4FF 100%);
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .ct-center {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* ── Header ────────────────────────────────────────────────── */
+  .ct-header {
+    background: #fff;
+    border-bottom: 1px solid rgba(11,37,69,0.08);
+    padding: 16px 24px;
+    box-shadow: 0 1px 8px rgba(11,37,69,0.04);
+  }
+
+  .ct-header-inner {
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ct-logo {
+    width: 200px;
+    height: auto;
+  }
+
+  .ct-logo-loading {
+    width: 220px;
+    height: auto;
+    margin-bottom: 32px;
+  }
+
+  .ct-logo-error {
+    width: 200px;
+    height: auto;
+    margin-bottom: 24px;
+  }
+
+  /* ── Main ───────────────────────────────────────────────────── */
+  .ct-main {
+    flex: 1;
+    max-width: 560px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── Welcome Card ──────────────────────────────────────────── */
+  .ct-welcome-card {
+    position: relative;
+    background: linear-gradient(135deg, #0B2545 0%, #13315C 50%, #1B4175 100%);
+    border-radius: 20px;
+    overflow: hidden;
+    padding: 28px 24px;
+    box-shadow: 0 8px 32px rgba(11,37,69,0.18);
+  }
+
+  .ct-welcome-bg {
+    position: absolute;
+    top: -40px;
+    right: -30px;
+    width: 160px;
+    height: 160px;
+    background: radial-gradient(circle, rgba(242,123,32,0.2) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .ct-welcome-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .ct-greeting {
+    color: rgba(255,255,255,0.85);
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0 0 6px;
+  }
+
+  .ct-greeting strong {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .ct-status-message {
+    color: #F2A95B;
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.3;
+  }
+
+  /* ── Info Card ─────────────────────────────────────────────── */
+  .ct-info-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(11,37,69,0.06);
+    border: 1px solid rgba(11,37,69,0.06);
+  }
+
+  .ct-info-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .ct-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ct-info-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #8899AA;
+  }
+
+  .ct-info-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0B2545;
+  }
+
+  .ct-order-number {
+    font-family: 'Inter', monospace;
+    font-size: 18px;
+    font-weight: 900;
+    color: #0B2545;
+  }
+
+  .ct-deadline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #0B2545;
+  }
+
+  .ct-deadline svg {
+    color: #F27B20;
+    flex-shrink: 0;
+  }
+
+  /* ── Progress Card ─────────────────────────────────────────── */
+  .ct-progress-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 24px 20px;
+    box-shadow: 0 2px 12px rgba(11,37,69,0.06);
+    border: 1px solid rgba(11,37,69,0.06);
+  }
+
+  .ct-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+
+  .ct-progress-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: #0B2545;
+    margin: 0 0 2px;
+  }
+
+  .ct-progress-subtitle {
+    font-size: 12px;
+    color: #8899AA;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  .ct-progress-percent {
+    font-size: 28px;
+    font-weight: 900;
+    color: #F27B20;
+    line-height: 1;
+  }
+
+  .ct-progress-percent.ct-done {
+    color: #16A34A;
+  }
+
+  /* ── Progress Bar ──────────────────────────────────────────── */
+  .ct-progress-bar-track {
+    width: 100%;
+    height: 10px;
+    background: #F0F2F5;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .ct-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #F27B20, #F2A95B);
+    border-radius: 10px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .ct-progress-bar-fill.ct-bar-done {
+    background: linear-gradient(90deg, #16A34A, #22C55E);
+  }
+
+  /* ── Stages Grid (non-sequential) ──────────────────────────── */
+  .ct-stages-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ct-stage-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .ct-stage-done {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+  }
+
+  .ct-stage-active {
+    background: linear-gradient(135deg, #FFF7ED, #FFEDD5);
+    border: 1px solid #FED7AA;
+    box-shadow: 0 2px 12px rgba(242,123,32,0.1);
+  }
+
+  .ct-stage-pending {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+  }
+
+  /* ── Stage Icons ───────────────────────────────────────────── */
+  .ct-stage-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ct-icon-done {
+    width: 28px;
+    height: 28px;
+    color: #16A34A;
+  }
+
+  .ct-icon-active-wrapper {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ct-icon-active-dot {
+    width: 12px;
+    height: 12px;
+    background: #F27B20;
+    border-radius: 50%;
+    position: relative;
+    z-index: 2;
+  }
+
+  .ct-pulse-ring {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ct-pulse-ring-inner {
+    width: 28px;
+    height: 28px;
+    border: 2px solid #F27B20;
+    border-radius: 50%;
+    animation: ctPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes ctPulse {
+    0%, 100% { transform: scale(0.8); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.4; }
+  }
+
+  .ct-icon-pending {
+    width: 24px;
+    height: 24px;
+    color: #CBD5E1;
+  }
+
+  /* ── Stage Info ────────────────────────────────────────────── */
+  .ct-stage-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .ct-stage-name {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .ct-name-done {
+    color: #166534;
+  }
+
+  .ct-name-active {
+    color: #0B2545;
+    font-weight: 800;
+  }
+
+  .ct-name-pending {
+    color: #94A3B8;
+  }
+
+  .ct-stage-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ct-badge-done {
+    background: #DCFCE7;
+    color: #166534;
+  }
+
+  .ct-badge-active {
+    background: #FFF7ED;
+    color: #C2410C;
+    border: 1px solid #FDBA74;
+  }
+
+  .ct-badge-pending {
+    background: #F1F5F9;
+    color: #94A3B8;
+  }
+
+  /* ── Celebration Card ──────────────────────────────────────── */
+  .ct-celebration-card {
+    position: relative;
+    background: linear-gradient(135deg, #F0FDF4, #DCFCE7);
+    border: 1px solid #BBF7D0;
+    border-radius: 16px;
+    padding: 28px 24px;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(22,163,74,0.1);
+  }
+
+  .ct-celebration-stars {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .ct-star {
+    color: #F27B20;
+    fill: #F27B20;
+  }
+
+  .ct-star-1 { width: 18px; height: 18px; animation: ctStarBounce 1.5s ease infinite 0s; }
+  .ct-star-2 { width: 24px; height: 24px; animation: ctStarBounce 1.5s ease infinite 0.2s; }
+  .ct-star-3 { width: 18px; height: 18px; animation: ctStarBounce 1.5s ease infinite 0.4s; }
+
+  @keyframes ctStarBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  .ct-celebration-title {
+    font-size: 20px;
+    font-weight: 900;
+    color: #166534;
+    margin: 0 0 8px;
+  }
+
+  .ct-celebration-desc {
+    font-size: 14px;
+    color: #15803D;
+    line-height: 1.5;
+    margin: 0;
+    font-weight: 500;
+  }
+
+  /* ── Loading ───────────────────────────────────────────────── */
+  .ct-loading-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    max-width: 360px;
+    width: 100%;
+  }
+
+  .ct-spinner-wrapper {
+    margin-bottom: 16px;
+  }
+
+  .ct-spinner {
+    width: 36px;
+    height: 36px;
+    color: #F27B20;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .ct-loading-text {
+    font-size: 14px;
+    color: #64748B;
+    font-weight: 500;
+  }
+
+  /* ── Error ─────────────────────────────────────────────────── */
+  .ct-error-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    background: #fff;
+    border-radius: 20px;
+    padding: 40px 32px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(11,37,69,0.08);
+    border: 1px solid rgba(11,37,69,0.06);
+  }
+
+  .ct-error-icon-wrapper {
+    margin-bottom: 16px;
+  }
+
+  .ct-error-icon {
+    width: 56px;
+    height: 56px;
+    color: #F27B20;
+  }
+
+  .ct-error-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #0B2545;
+    margin: 0 0 8px;
+  }
+
+  .ct-error-desc {
+    font-size: 14px;
+    color: #64748B;
+    line-height: 1.6;
+    margin: 0 0 20px;
+  }
+
+  .ct-error-contact {
+    background: #FFF7ED;
+    border: 1px solid #FED7AA;
+    border-radius: 12px;
+    padding: 14px 18px;
+  }
+
+  .ct-error-contact p {
+    font-size: 13px;
+    color: #9A3412;
+    font-weight: 500;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* ── Footer ────────────────────────────────────────────────── */
+  .ct-footer {
+    padding: 24px 16px;
+    text-align: center;
+    border-top: 1px solid rgba(11,37,69,0.06);
+    background: rgba(255,255,255,0.5);
+  }
+
+  .ct-footer-text {
+    font-size: 12px;
+    color: #0B2545;
+    font-weight: 600;
+    margin: 0 0 2px;
+  }
+
+  .ct-footer-sub {
+    font-size: 11px;
+    color: #94A3B8;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  /* ── Responsive ────────────────────────────────────────────── */
+  @media (max-width: 480px) {
+    .ct-info-row {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .ct-stage-info {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    .ct-progress-percent {
+      font-size: 24px;
+    }
+
+    .ct-welcome-card {
+      padding: 22px 18px;
+    }
+
+    .ct-status-message {
+      font-size: 16px;
+    }
+
+    .ct-logo {
+      width: 170px;
+    }
+  }
+`;
