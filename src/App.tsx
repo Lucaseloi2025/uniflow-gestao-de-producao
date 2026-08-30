@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Play,
   Pause,
+  Check,
   Square,
   BarChart3,
   Package,
@@ -590,6 +591,8 @@ export default function App() {
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [confirmingDtfOrderId, setConfirmingDtfOrderId] = useState<number | null>(null);
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
   const [orderStageObservations, setOrderStageObservations] = useState<any[]>([]);
@@ -1136,6 +1139,22 @@ export default function App() {
       alert('Erro ao atualizar status do DTF.');
     }
     fetchData();
+  };
+
+  const handleRequestToggleDtf = (orderId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+    }
+    
+    if (confirmingDtfOrderId === orderId) {
+      setConfirmingDtfOrderId(null);
+    } else {
+      setConfirmingDtfOrderId(orderId);
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmingDtfOrderId(null);
+      }, 4000); // 4 seconds auto-reset
+    }
   };
 
   const handleDeleteOrder = async (orderId: number) => {
@@ -2979,27 +2998,54 @@ export default function App() {
                       </td>
                       <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
                         {order.print_type === 'DTF' ? (
-                          <button
-                            onClick={() => handleToggleDtf(order.id, order.dtf_complete || false)}
-                            className={cn(
-                              "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
-                              order.dtf_complete
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                                : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
-                            )}
-                          >
-                            {order.dtf_complete ? (
-                              <>
-                                <CheckCircle size={12} className="stroke-[3]" />
-                                <span>Pronto</span>
-                              </>
-                            ) : (
-                              <>
-                                <Timer size={12} />
-                                <span>Pendente</span>
-                              </>
-                            )}
-                          </button>
+                          confirmingDtfOrderId === order.id ? (
+                            <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-lg p-1 w-max shadow-sm">
+                              <span className="text-[10px] font-bold text-zinc-500 px-1 animate-pulse">Confirmar?</span>
+                              <button
+                                onClick={() => {
+                                  if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                  setConfirmingDtfOrderId(null);
+                                  handleToggleDtf(order.id, order.dtf_complete || false);
+                                }}
+                                className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                title="Confirmar"
+                              >
+                                <Check size={12} className="stroke-[3]" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                  setConfirmingDtfOrderId(null);
+                                }}
+                                className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                title="Cancelar"
+                              >
+                                <X size={12} className="stroke-[2]" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => handleRequestToggleDtf(order.id, e)}
+                              className={cn(
+                                "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
+                                order.dtf_complete
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
+                              )}
+                            >
+                              {order.dtf_complete ? (
+                                <>
+                                  <CheckCircle size={12} className="stroke-[3]" />
+                                  <span>Pronto</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Timer size={12} />
+                                  <span>Pendente</span>
+                                </>
+                              )}
+                            </button>
+                          )
                         ) : (
                           <span className="text-zinc-300">-</span>
                         )}
@@ -5326,27 +5372,54 @@ export default function App() {
                                       <span className="text-[9px] font-bold text-zinc-400 uppercase block">DTF Feito</span>
                                       <span className="text-[10px] text-zinc-500">Checklist da Designer</span>
                                     </div>
-                                    <button
-                                      onClick={() => handleToggleDtf(selectedOrder.id, selectedOrder.dtf_complete || false)}
-                                      className={cn(
-                                        "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
-                                        selectedOrder.dtf_complete
-                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                                          : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
-                                      )}
-                                    >
-                                      {selectedOrder.dtf_complete ? (
-                                        <>
-                                          <CheckCircle size={12} className="stroke-[3]" />
-                                          <span>Pronto</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Timer size={12} />
-                                          <span>Pendente</span>
-                                        </>
-                                      )}
-                                    </button>
+                                    {confirmingDtfOrderId === selectedOrder.id ? (
+                                      <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-lg p-1 w-max shadow-sm">
+                                        <span className="text-[10px] font-bold text-zinc-500 px-1 animate-pulse">Confirmar?</span>
+                                        <button
+                                          onClick={() => {
+                                            if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                            setConfirmingDtfOrderId(null);
+                                            handleToggleDtf(selectedOrder.id, selectedOrder.dtf_complete || false);
+                                          }}
+                                          className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                          title="Confirmar"
+                                        >
+                                          <Check size={12} className="stroke-[3]" />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                            setConfirmingDtfOrderId(null);
+                                          }}
+                                          className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                          title="Cancelar"
+                                        >
+                                          <X size={12} className="stroke-[2]" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => handleRequestToggleDtf(selectedOrder.id, e)}
+                                        className={cn(
+                                          "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
+                                          selectedOrder.dtf_complete
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                            : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
+                                        )}
+                                      >
+                                        {selectedOrder.dtf_complete ? (
+                                          <>
+                                            <CheckCircle size={12} className="stroke-[3]" />
+                                            <span>Pronto</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Timer size={12} />
+                                            <span>Pendente</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
