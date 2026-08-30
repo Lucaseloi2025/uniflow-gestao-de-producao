@@ -2831,7 +2831,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
         // 1. Buscar pedido por token
         const { data: order, error: fetchErr } = await supabaseAdmin
             .from("orders")
-            .select("id, order_number")
+            .select("id, order_number, created_at")
             .eq("tracking_token", token)
             .is("deleted_at", null)
             .maybeSingle();
@@ -2884,6 +2884,36 @@ app.get("/api/public/orders/:token", async (req, res) => {
             };
         });
 
+        // 3. Buscar a última execução para obter a data de atualização
+        const { data: lastExec } = await supabaseAdmin
+            .from("stage_executions")
+            .select("start_time, end_time, status, stages(name)")
+            .eq("order_id", order.id)
+            .order("id", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let lastUpdatedAt = order.created_at || null;
+        let lastUpdateMessage = "Pedido recebido e na fila de produção.";
+
+        if (lastExec) {
+            const time = lastExec.end_time || lastExec.start_time;
+            if (time) lastUpdatedAt = time;
+
+            const stagesRel: any = lastExec.stages;
+            const stageName = Array.isArray(stagesRel)
+                ? (stagesRel[0]?.name || 'produção')
+                : (stagesRel?.name || 'produção');
+
+            if (lastExec.status === 'Em andamento') {
+                lastUpdateMessage = `Produção ativa na etapa de: ${stageName}.`;
+            } else if (lastExec.status === 'Pausado') {
+                lastUpdateMessage = `Trabalho pausado temporariamente na etapa de: ${stageName}.`;
+            } else if (lastExec.status === 'Finalizado') {
+                lastUpdateMessage = `Etapa concluída: ${stageName}.`;
+            }
+        }
+
         const publicData = {
             order_number: rpcOrder.order_number,
             client_name: rpcOrder.client_name,
@@ -2891,7 +2921,9 @@ app.get("/api/public/orders/:token", async (req, res) => {
             print_type: rpcOrder.print_type,
             quantity: rpcOrder.quantity,
             deadline: rpcOrder.deadline,
-            stages
+            stages,
+            last_updated_at: lastUpdatedAt,
+            last_update_message: lastUpdateMessage
         };
 
         return res.json(publicData);

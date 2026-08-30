@@ -15,6 +15,8 @@ interface PublicOrder {
   quantity: number;
   deadline: string;
   stages: PublicStage[];
+  last_updated_at?: string;
+  last_update_message?: string;
 }
 
 /* ── Comfort Logo Component ─────────────────────────────────────── */
@@ -135,6 +137,31 @@ export default function PublicTracking({ token }: { token: string | null }) {
     }
   };
 
+  const formatDateTime = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      
+      const today = new Date();
+      if (date.toDateString() === today.toDateString()) {
+        return `Hoje às ${hours}:${minutes}`;
+      }
+      const yesterday = new Date();
+      yesterday.setDate(today.getDate() - 1);
+      if (date.toDateString() === yesterday.toDateString()) {
+        return `Ontem às ${hours}:${minutes}`;
+      }
+      
+      return `${day}/${month}/${year} às ${hours}:${minutes}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   /* ── Greeting based on time ──────────────────────────── */
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -172,9 +199,25 @@ export default function PublicTracking({ token }: { token: string | null }) {
           </div>
         </section>
 
+        {/* ── Última Atualização ─────────────────────── */}
+        {order.last_updated_at && (
+          <section className="ct-update-card">
+            <div className="ct-update-header">
+              <span className="ct-update-pulse-dot">
+                <span className="ct-update-pulse-ring" />
+              </span>
+              <span className="ct-update-title">Status da Produção</span>
+            </div>
+            <p className="ct-update-message">{order.last_update_message}</p>
+            <p className="ct-update-time">
+              Atualizado: {formatDateTime(order.last_updated_at)}
+            </p>
+          </section>
+        )}
+
         {/* ── Order Info ─────────────────────────────── */}
         <section className="ct-info-card">
-          <div className="ct-info-row">
+          <div className="ct-info-grid">
             <div className="ct-info-item">
               <span className="ct-info-label">Pedido</span>
               <span className="ct-info-value ct-order-number">{order.order_number}</span>
@@ -186,6 +229,14 @@ export default function PublicTracking({ token }: { token: string | null }) {
                 {formatDate(order.deadline)}
               </span>
             </div>
+            <div className="ct-info-item ct-info-divider">
+              <span className="ct-info-label">Produto</span>
+              <span className="ct-info-value">{order.product_type}</span>
+            </div>
+            <div className="ct-info-item ct-info-divider">
+              <span className="ct-info-label">Volume do Lote</span>
+              <span className="ct-info-value">{order.quantity} unidades</span>
+            </div>
           </div>
         </section>
 
@@ -193,7 +244,7 @@ export default function PublicTracking({ token }: { token: string | null }) {
         <section className="ct-progress-card">
           <div className="ct-progress-header">
             <div>
-              <h2 className="ct-progress-title">Progresso da Produção</h2>
+              <h2 className="ct-progress-title">Etapas da Confecção</h2>
               <p className="ct-progress-subtitle">
                 {completedStages} de {totalStages} etapas concluídas
               </p>
@@ -245,13 +296,29 @@ export default function PublicTracking({ token }: { token: string | null }) {
                     <span className={`ct-stage-badge ${
                       isConcluida ? 'ct-badge-done' : isEmAndamento ? 'ct-badge-active' : 'ct-badge-pending'
                     }`}>
-                      {isConcluida ? '✓ Concluída' : isEmAndamento ? '● Em Andamento' : 'Aguardando'}
+                      {isConcluida ? 'Concluída' : isEmAndamento ? 'Em Andamento' : 'Aguardando'}
                     </span>
                   </div>
                 </div>
               );
             })}
           </div>
+        </section>
+
+        {/* ── Help / Contact Section ─────────────────── */}
+        <section className="ct-help-card">
+          <h3 className="ct-help-title">Precisa de suporte comercial?</h3>
+          <p className="ct-help-desc">
+            Se precisar fazer qualquer alteração no pedido ou esclarecer dúvidas, fale diretamente com nossa equipe de atendimento.
+          </p>
+          <a
+            href="https://wa.me/5547996538356" // Default mock or customer service contact if available
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ct-help-btn"
+          >
+            Conversar no WhatsApp
+          </a>
         </section>
 
         {/* ── All done celebration ───────────────────── */}
@@ -394,19 +461,90 @@ const trackingStyles = `
     line-height: 1.3;
   }
 
+  /* ── Update Card ───────────────────────────────────────────── */
+  .ct-update-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(11,37,69,0.05);
+    border: 1px solid rgba(11,37,69,0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ct-update-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ct-update-pulse-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    background: #16A34A;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .ct-update-pulse-ring {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #16A34A;
+    border-radius: 50%;
+    opacity: 0;
+    animation: ctPulseSlow 2s cubic-bezier(0.25, 0, 0, 1) infinite;
+  }
+
+  @keyframes ctPulseSlow {
+    0% { transform: scale(0.6); opacity: 1; }
+    100% { transform: scale(1.4); opacity: 0; }
+  }
+
+  .ct-update-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 850;
+    letter-spacing: 0.8px;
+    color: #8899AA;
+  }
+
+  .ct-update-message {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0B2545;
+    margin: 0;
+  }
+
+  .ct-update-time {
+    font-size: 11px;
+    font-weight: 500;
+    color: #8899AA;
+    margin: 0;
+  }
+
   /* ── Info Card ─────────────────────────────────────────────── */
   .ct-info-card {
     background: #fff;
     border-radius: 16px;
     padding: 20px;
-    box-shadow: 0 2px 12px rgba(11,37,69,0.06);
+    box-shadow: 0 4px 20px rgba(11,37,69,0.05);
     border: 1px solid rgba(11,37,69,0.06);
   }
 
-  .ct-info-row {
+  .ct-info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
+  }
+
+  .ct-info-divider {
+    border-top: 1px solid #F1F5F9;
+    padding-top: 12px;
   }
 
   .ct-info-item {
@@ -510,14 +648,28 @@ const trackingStyles = `
     background: linear-gradient(90deg, #16A34A, #22C55E);
   }
 
-  /* ── Stages Grid (non-sequential) ──────────────────────────── */
+  /* ── Stages Grid (connected timeline) ───────────────────────── */
   .ct-stages-grid {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+  }
+
+  .ct-stages-grid::before {
+    content: '';
+    position: absolute;
+    top: 24px;
+    bottom: 24px;
+    left: 32px; /* Center of 32px icon (16px padding + 16px radius) */
+    width: 2px;
+    background: #E2E8F0;
+    z-index: 1;
   }
 
   .ct-stage-card {
+    position: relative;
+    z-index: 2;
     display: flex;
     align-items: center;
     gap: 14px;
@@ -550,6 +702,21 @@ const trackingStyles = `
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    z-index: 10;
+    border-radius: 50%;
+  }
+
+  .ct-stage-done .ct-stage-icon {
+    background-color: #F0FDF4;
+  }
+
+  .ct-stage-active .ct-stage-icon {
+    background-color: #FFEDD5;
+  }
+
+  .ct-stage-pending .ct-stage-icon {
+    background-color: #F8FAFC;
   }
 
   .ct-icon-done {
@@ -610,6 +777,7 @@ const trackingStyles = `
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    z-index: 10;
   }
 
   .ct-stage-name {
@@ -656,6 +824,58 @@ const trackingStyles = `
   .ct-badge-pending {
     background: #F1F5F9;
     color: #94A3B8;
+  }
+
+  /* ── Help / Support Card ───────────────────────────────────── */
+  .ct-help-card {
+    background: linear-gradient(135deg, #FFF8F0 0%, #FFF0E0 100%);
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-align: center;
+    border: 1px solid #FED7AA;
+    box-shadow: 0 4px 20px rgba(242,123,32,0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ct-help-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #7C2D12;
+    margin: 0;
+  }
+
+  .ct-help-desc {
+    font-size: 13px;
+    color: #9A3412;
+    line-height: 1.5;
+    margin: 0 0 8px;
+    max-width: 440px;
+  }
+
+  .ct-help-btn {
+    display: inline-block;
+    background: #16A34A;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 24px;
+    border-radius: 10px;
+    text-decoration: none;
+    box-shadow: 0 4px 12px rgba(22,163,74,0.2);
+    transition: all 0.2s ease;
+  }
+
+  .ct-help-btn:hover {
+    background: #15803D;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(22,163,74,0.25);
+  }
+
+  .ct-help-btn:active {
+    transform: translateY(0);
   }
 
   /* ── Celebration Card ──────────────────────────────────────── */
