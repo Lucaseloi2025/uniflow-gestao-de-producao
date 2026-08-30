@@ -51,9 +51,6 @@ import {
   EyeOff,
   Printer,
   Loader2,
-  Sliders,
-  Maximize2,
-  Minimize2,
   Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -566,7 +563,6 @@ export default function App() {
   const [printOpen, setPrintOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isCompactView, setIsCompactView] = useState(() => localStorage.getItem('uniflow_compact') === 'true');
   const [orders, setOrders] = useState<Order[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [templates, setTemplates] = useState<OrderTemplate[]>([]);
@@ -2057,16 +2053,10 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className={cn(
-        "flex-1 flex flex-col min-h-0 overflow-y-auto transition-all",
-        isCompactView ? "p-2 sm:p-3 lg:p-4" : "p-4 lg:p-6"
-      )}>
+      <main className="flex-1 overflow-y-auto p-4 lg:p-8">
         
         {/* Banner Operador Ativo */}
-        <div className={cn(
-          "bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between shadow-xs transition-all",
-          isCompactView ? "p-2 mb-3" : "p-3 mb-5"
-        )}>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-6 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
@@ -2079,7 +2069,7 @@ export default function App() {
 
         <AnimatePresence>
           {activeExecutions.length > 0 && (
-            <div className={cn("flex flex-col gap-2.5", isCompactView ? "mb-3" : "mb-5")}>
+            <div className="flex flex-col gap-3 mb-6">
               {activeExecutions.length > 1 && (
                 <div className="flex items-center gap-2 px-1">
                   <Activity size={16} className="text-zinc-400" />
@@ -2106,10 +2096,10 @@ export default function App() {
             </div>
           )}
         </AnimatePresence>
-        <header className={cn("flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3", isCompactView ? "mb-4" : "mb-6")}>
-          <div className="flex items-center justify-between w-full lg:w-auto">
+        <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
+          <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg lg:text-xl font-bold tracking-tight">
+              <h2 className="text-xl lg:text-2xl font-bold tracking-tight">
                 {activeTab === 'dashboard' && 'Visão Geral'}
                 {activeTab === 'kanban' && 'Fluxo de Produção'}
                 {activeTab === 'orders' && 'Todos os Pedidos'}
@@ -2119,37 +2109,16 @@ export default function App() {
                 {activeTab === 'settings' && 'Configurações do Sistema'}
                 {activeTab === 'monitor' && 'Monitor de Tarefas (Tempo Real)'}
               </h2>
-              <p className="text-zinc-500 text-xs">
+              <p className="text-zinc-500 text-xs lg:text-sm">
                 {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setIsCompactView(prev => {
-                    const val = !prev;
-                    localStorage.setItem('uniflow_compact', String(val));
-                    return val;
-                  });
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-xs active:scale-95",
-                  isCompactView 
-                    ? "bg-zinc-900 text-white border-zinc-900" 
-                    : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
-                )}
-                title={isCompactView ? "Modo Confortável (Expandido)" : "Modo Compacto (Produção)"}
-              >
-                <Sliders size={13} />
-                <span className="hidden sm:inline">{isCompactView ? 'Visão Padrão' : 'Modo Compacto'}</span>
-              </button>
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="lg:hidden p-2 bg-white border border-zinc-200 rounded-lg text-zinc-600"
-              >
-                <Menu size={20} />
-              </button>
-            </div>
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 bg-white border border-zinc-200 rounded-lg text-zinc-600"
+            >
+              <Menu size={20} />
+            </button>
           </div>
 
           <div className="flex flex-col lg:flex-row lg:items-center gap-4">
@@ -2733,22 +2702,16 @@ export default function App() {
         )}
 
         {activeTab === 'kanban' && (
-          <div className={cn(
-            "flex-1 min-h-0 flex lg:grid lg:grid-cols-4 overflow-x-auto pb-2 lg:overflow-x-visible",
-            isCompactView ? "gap-3" : "gap-5"
-          )}>
+          <div className="flex lg:grid lg:grid-cols-4 gap-6 h-[calc(100vh-250px)] overflow-x-auto pb-4 lg:overflow-x-visible">
             {['Entrada', 'Em Produção', 'Finalização', 'Entregue'].map((status) => (
-              <div key={status} className="flex flex-col h-full min-h-0 gap-3 min-w-[260px] lg:min-w-0">
+              <div key={status} className="flex flex-col gap-4 min-w-[280px] lg:min-w-0">
                 <div className="flex items-center justify-between px-2">
-                  <h3 className="font-bold text-xs uppercase tracking-widest text-zinc-500">{status}</h3>
+                  <h3 className="font-bold text-sm uppercase tracking-widest text-zinc-500">{status}</h3>
                   <span className="bg-zinc-200 text-zinc-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
                     {orders.filter(o => o.status === status).length}
                   </span>
                 </div>
-                <div className={cn(
-                  "flex-1 bg-zinc-100/50 rounded-xl flex flex-col overflow-y-auto border border-zinc-200/50 custom-scrollbar",
-                  isCompactView ? "p-2 gap-2.5" : "p-3 gap-3"
-                )}>
+                <div className="flex-1 bg-zinc-100/50 rounded-xl p-3 flex flex-col gap-3 overflow-y-auto border border-zinc-200/50">
                   {orders
                     .filter(o => o.status === status)
                     .filter(o => {
@@ -5161,9 +5124,9 @@ export default function App() {
                   initial={{ x: '100%' }}
                   animate={{ x: 0 }}
                   exit={{ x: '100%' }}
-                  className="bg-white w-full h-full shadow-2xl flex flex-col overflow-hidden"
+                  className="bg-white w-full h-full shadow-2xl overflow-y-auto"
                 >
-                  <div className="shrink-0 bg-white border-b border-zinc-100 p-3 sm:p-4 flex justify-between items-center px-4 sm:px-6 lg:px-8 z-10">
+                  <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-3 sm:p-4 border-b border-zinc-100 flex justify-between items-center px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-4">
                       <button
                         onClick={() => setSelectedOrder(null)}
@@ -5245,11 +5208,11 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                  <div className="flex-1 min-h-0 p-3 sm:p-4 lg:p-5 max-w-full mx-auto w-full overflow-hidden">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 lg:gap-5 h-full min-h-0">
+                  <div className="p-4 sm:p-5 lg:p-6 max-w-full mx-auto h-[calc(100vh-64px)] overflow-hidden">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 h-full">
                           
                           {/* Left Column: Order Information */}
-                          <div className="md:col-span-4 xl:col-span-3 h-full overflow-y-auto pr-1.5 custom-scrollbar space-y-3">
+                          <div className="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
                             <section>
                               <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
                                 <Package size={14} /> INFORMAÇÕES GERAIS
@@ -5318,8 +5281,8 @@ export default function App() {
                           </div>
 
                           {/* Middle Column: Stage Management */}
-                          <div className="md:col-span-8 xl:col-span-6 h-full flex flex-col min-h-0 border-x border-zinc-100 px-2 lg:px-4 space-y-3">
-                            <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between shrink-0">
+                          <div className="space-y-4 flex flex-col h-full border-x lg:border-zinc-100 px-4">
+                            <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
                               </div>
@@ -5333,7 +5296,7 @@ export default function App() {
                               })()}
                             </h3>
 
-                            <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar space-y-2.5">
+                            <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
                               {(() => {
                                 const stagesStatusList = selectedOrder.stages_status || [];
                                 const firstUnfinishedId = stagesStatusList.find(s => !s.finished)?.id;
@@ -5499,8 +5462,8 @@ export default function App() {
                           </div>
 
                       {/* Right Column: Files & Attachments */}
-                      <div className="md:col-span-12 xl:col-span-3 h-full flex flex-col min-h-0 space-y-3 pt-3 md:pt-0 border-t md:border-t-0 border-zinc-100">
-                        <div className="flex items-center justify-between shrink-0">
+                      <div className="space-y-4 flex flex-col h-full">
+                        <div className="flex items-center justify-between">
                           <h3 className="text-xs font-black text-zinc-900 flex items-center gap-2">
                             <ImageIcon size={16} className="text-sky-500" /> FICHAS E ARQUIVOS
                           </h3>
@@ -5526,7 +5489,7 @@ export default function App() {
                           </label>
                         </div>
 
-                        <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar space-y-3">
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4">
                           {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
                             <div className="grid grid-cols-1 gap-4">
                               {selectedOrder.art_urls.map((url, i) => (
