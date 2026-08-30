@@ -108,6 +108,7 @@ export interface Order {
   deleted_at?: string | null;
   cancelled_at?: string | null;
   current_operator?: string | null;
+  dtf_complete?: boolean;
 }
 
 export interface OrderHistory {

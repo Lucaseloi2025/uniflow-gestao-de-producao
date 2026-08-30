@@ -1104,6 +1104,40 @@ export default function App() {
     }
   };
 
+  const handleToggleDtf = async (orderId: number, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    
+    // Optimistic UI updates
+    if (selectedOrder && selectedOrder.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, dtf_complete: nextStatus });
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_complete: nextStatus } : o));
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/dtf`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        },
+        body: JSON.stringify({ dtf_complete: nextStatus })
+      });
+      if (!res.ok) {
+        throw new Error('Falha ao atualizar status do DTF');
+      }
+    } catch (e) {
+      console.error(e);
+      // Revert status on failure
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_complete: currentStatus } : o));
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder({ ...selectedOrder, dtf_complete: currentStatus });
+      }
+      alert('Erro ao atualizar status do DTF.');
+    }
+    fetchData();
+  };
+
   const handleDeleteOrder = async (orderId: number) => {
     if (!window.confirm('⚠️ EXCLUIR PEDIDO\n\nO pedido será ocultado do sistema mas o histórico de execuções será mantido para auditoria.\n\nDeseja continuar?')) return;
 
@@ -2863,6 +2897,7 @@ export default function App() {
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">DTF</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Observação da Etapa</th>
@@ -2894,7 +2929,7 @@ export default function App() {
                   if (filteredOrders.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={9} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
+                        <td colSpan={10} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
                           Nenhum pedido encontrado. {(orders || []).length > 0 ? `(${orders.length} pedidos no total, mas nenhum atende aos filtros aplicados)` : 'Nenhum pedido cadastrado no sistema.'}
                         </td>
                       </tr>
@@ -2941,6 +2976,33 @@ export default function App() {
                           </span>
                           <span className="text-[10px] text-zinc-500">{order.print_type} • {order.quantity} un</span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                        {order.print_type === 'DTF' ? (
+                          <button
+                            onClick={() => handleToggleDtf(order.id, order.dtf_complete || false)}
+                            className={cn(
+                              "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
+                              order.dtf_complete
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
+                            )}
+                          >
+                            {order.dtf_complete ? (
+                              <>
+                                <CheckCircle size={12} className="stroke-[3]" />
+                                <span>Pronto</span>
+                              </>
+                            ) : (
+                              <>
+                                <Timer size={12} />
+                                <span>Pendente</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-zinc-300">-</span>
+                        )}
                       </td>
                       <td className={cn("px-6 py-4 text-sm", isOverdue && "text-rose-600 font-bold")}>
                         {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') ? (
@@ -5258,6 +5320,35 @@ export default function App() {
                                     {selectedOrder.print_type}
                                   </Badge>
                                 </div>
+                                {selectedOrder.print_type === 'DTF' && (
+                                  <div className="col-span-2 pt-2 border-t border-zinc-50 flex items-center justify-between">
+                                    <div>
+                                      <span className="text-[9px] font-bold text-zinc-400 uppercase block">DTF Feito</span>
+                                      <span className="text-[10px] text-zinc-500">Checklist da Designer</span>
+                                    </div>
+                                    <button
+                                      onClick={() => handleToggleDtf(selectedOrder.id, selectedOrder.dtf_complete || false)}
+                                      className={cn(
+                                        "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
+                                        selectedOrder.dtf_complete
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                          : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
+                                      )}
+                                    >
+                                      {selectedOrder.dtf_complete ? (
+                                        <>
+                                          <CheckCircle size={12} className="stroke-[3]" />
+                                          <span>Pronto</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Timer size={12} />
+                                          <span>Pendente</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </section>
 

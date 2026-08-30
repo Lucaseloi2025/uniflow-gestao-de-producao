@@ -1105,13 +1105,52 @@ app.patch("/api/orders/:id/status", async (req, res) => {
     return res.json({ success: true });
 });
 
+// Update DTF checklist status (accessible to anyone)
+app.patch("/api/orders/:id/dtf", async (req, res) => {
+    const orderId = Number(req.params.id);
+    const { dtf_complete } = req.body;
+
+    if (dtf_complete === undefined) {
+        return res.status(400).json({ error: "Falta o campo dtf_complete" });
+    }
+
+    // 1. Fetch current order for audit log
+    const { data: currentOrder, error: fetchErr } = await supabaseAdmin
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido não encontrado" });
+
+    // 2. Perform update
+    const { error: updateErr } = await supabaseAdmin
+        .from("orders")
+        .update({ dtf_complete })
+        .eq("id", orderId);
+
+    if (checkError(updateErr, res, "Erro ao atualizar status do DTF")) return;
+
+    // 3. Log to order_history
+    const usuario = (req.headers["x-user-name"] as string) || "Operador";
+    await supabaseAdmin.from("order_history").insert({
+        order_id: orderId,
+        usuario,
+        acao: "editou",
+        antes: { dtf_complete: currentOrder.dtf_complete },
+        depois: { dtf_complete },
+    });
+
+    return res.json({ success: true });
+});
+
 // Full order edit with validation and audit log
 app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     const orderId = Number(req.params.id);
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
     const confirmFinalized = req.headers["x-confirm-finalized"] === "true";
 
-    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url } = req.body;
+    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url, dtf_complete } = req.body;
 
     // ── Validations ──────────────────────────────────────────────────────────
     if (quantity !== undefined && Number(quantity) <= 0) {
@@ -1146,6 +1185,7 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     if (num_colors !== undefined) updates.num_colors = Number(num_colors);
     if (art_urls !== undefined) updates.art_urls = art_urls;
     if (art_url !== undefined) updates.art_url = art_url;
+    if (dtf_complete !== undefined) updates.dtf_complete = dtf_complete;
 
     if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: "Nenhum campo para atualizar" });
