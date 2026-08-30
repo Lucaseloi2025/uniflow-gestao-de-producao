@@ -229,14 +229,6 @@ export default function PublicTracking({ token }: { token: string | null }) {
                 {formatDate(order.deadline)}
               </span>
             </div>
-            <div className="ct-info-item ct-info-divider">
-              <span className="ct-info-label">Produto</span>
-              <span className="ct-info-value">{order.product_type}</span>
-            </div>
-            <div className="ct-info-item ct-info-divider">
-              <span className="ct-info-label">Volume do Lote</span>
-              <span className="ct-info-value">{order.quantity} unidades</span>
-            </div>
           </div>
         </section>
 
@@ -305,21 +297,7 @@ export default function PublicTracking({ token }: { token: string | null }) {
           </div>
         </section>
 
-        {/* ── Help / Contact Section ─────────────────── */}
-        <section className="ct-help-card">
-          <h3 className="ct-help-title">Precisa de suporte comercial?</h3>
-          <p className="ct-help-desc">
-            Se precisar fazer qualquer alteração no pedido ou esclarecer dúvidas, fale diretamente com nossa equipe de atendimento.
-          </p>
-          <a
-            href="https://wa.me/5547996538356" // Default mock or customer service contact if available
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ct-help-btn"
-          >
-            Conversar no WhatsApp
-          </a>
-        </section>
+
 
         {/* ── All done celebration ───────────────────── */}
         {isAllDone && (
