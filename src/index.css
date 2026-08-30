@@ -10,6 +10,13 @@
   body {
     @apply font-sans antialiased;
   }
+  
+  /* Zoom padrão de 67% para telas desktop e notebooks */
+  @media (min-width: 1024px) {
+    body {
+      zoom: 67%;
+    }
+  }
 }
 
 @media print {
