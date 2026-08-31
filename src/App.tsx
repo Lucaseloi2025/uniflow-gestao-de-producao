@@ -1198,8 +1198,8 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || '',
-          'x-user-name': currentUser?.name || 'Admin',
+          'x-user-role': currentUser?.role || 'Produção',
+          'x-user-name': currentUser?.name || 'Operador',
         }
       });
       const data = await res.json();

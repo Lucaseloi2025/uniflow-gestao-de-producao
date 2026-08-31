@@ -2790,7 +2790,7 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
 });
 
 // ── Geração de Token & Acompanhamento Público de Pedido ─────────────────────
-app.post("/api/orders/:id/tracking-token", isAuthenticated, async (req, res) => {
+app.post("/api/orders/:id/tracking-token", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         
