@@ -333,6 +333,14 @@ const isAdminOrComercial = (req: express.Request, res: express.Response, next: e
     next();
 };
 
+const isAuthenticated = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const role = req.headers['x-user-role'];
+    if (role !== 'Admin' && role !== 'Comercial' && role !== 'Produção') {
+        return res.status(403).json({ error: "Acesso negado. Login necessário." });
+    }
+    next();
+};
+
 // ── Supabase status (health check) ────────────────────────────────────────
 app.get("/api/supabase/status", async (_req, res) => {
     const { data, error } = await supabase
@@ -2782,7 +2790,7 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
 });
 
 // ── Geração de Token & Acompanhamento Público de Pedido ─────────────────────
-app.post("/api/orders/:id/tracking-token", isAdminOrComercial, async (req, res) => {
+app.post("/api/orders/:id/tracking-token", isAuthenticated, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         

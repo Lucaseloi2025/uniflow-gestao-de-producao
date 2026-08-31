@@ -5256,7 +5256,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                      {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado' && (
+                      {((currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado') && (
                         <>
                           <button
                             onClick={() => openEditOrderModal(selectedOrder)}
@@ -5277,17 +5277,19 @@ export default function App() {
                             {isCancellingOrder ? <RefreshCw size={13} className="animate-spin" /> : <X size={13} />}
                             <span className="hidden xl:inline">Cancelar</span>
                           </button>
-                          <button
-                            onClick={() => handleGenerateTrackingLink(selectedOrder)}
-                            disabled={isGeneratingLink}
-                            className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-all font-bold text-xs active:scale-95"
-                            title="Gerar e copiar link de acompanhamento do cliente"
-                          >
-                            {isGeneratingLink ? <RefreshCw size={13} className="animate-spin" /> : <LinkIcon size={13} />}
-                            <span className="hidden xl:inline">Link Cliente</span>
-                            <span className="xl:hidden">Link</span>
-                          </button>
                         </>
+                      )}
+                      {selectedOrder.status !== 'Cancelado' && (
+                        <button
+                          onClick={() => handleGenerateTrackingLink(selectedOrder)}
+                          disabled={isGeneratingLink}
+                          className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-all font-bold text-xs active:scale-95"
+                          title="Gerar e copiar link de acompanhamento do cliente"
+                        >
+                          {isGeneratingLink ? <RefreshCw size={13} className="animate-spin" /> : <LinkIcon size={13} />}
+                          <span className="hidden xl:inline">Link Cliente</span>
+                          <span className="xl:hidden">Link</span>
+                        </button>
                       )}
                       <button
                         onClick={() => handleViewHistory(selectedOrder.id)}
