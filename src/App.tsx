@@ -1255,7 +1255,10 @@ export default function App() {
       quantity: order.quantity,
       deadline: order.deadline ? order.deadline.split('T')[0] : '',
       observations: order.observations,
-      required_stages: order.required_stages || [],
+      required_stages: (order.required_stages || []).filter(id => {
+        const stage = stages.find(s => s.id === id);
+        return stage ? stage.active : false;
+      }),
       num_colors: order.num_colors || 1,
       art_urls: order.art_urls || (order.art_url ? [order.art_url] : []),
       art_url: order.art_url,
@@ -1836,7 +1839,10 @@ export default function App() {
 
     // Fallback: Se o template não tiver etapas, carrega todas as ativas
     if (template.required_stages && template.required_stages.length > 0) {
-      setNewOrderRequiredStages(template.required_stages);
+      setNewOrderRequiredStages(template.required_stages.filter(id => {
+        const stage = stages.find(s => s.id === id);
+        return stage ? stage.active : false;
+      }));
     } else {
       setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
     }
