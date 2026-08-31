@@ -2871,18 +2871,15 @@ app.get("/api/public/orders/:token", async (req, res) => {
 
         const stagesList = rpcOrder.stages_status || [];
 
-        // Identificar etapa ativa
-        let activeStageId = stagesList.find((s: any) => s.in_progress)?.id;
-        if (!activeStageId) {
-            activeStageId = stagesList.find((s: any) => !s.finished)?.id;
-        }
+        // Identificar etapa ativa (apenas se houver uma etapa realmente em andamento)
+        const activeStageId = stagesList.find((s: any) => s.in_progress)?.id;
 
         // Filtrar e mapear apenas dados públicos permitidos
         const stages = stagesList.map((st: any) => {
             let status: 'concluida' | 'em_andamento' | 'pendente' = 'pendente';
             if (st.finished) {
                 status = 'concluida';
-            } else if (st.id === activeStageId) {
+            } else if (activeStageId && st.id === activeStageId) {
                 status = 'em_andamento';
             }
             return {
