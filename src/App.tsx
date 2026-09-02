@@ -1141,6 +1141,32 @@ export default function App() {
     fetchData();
   };
 
+  const handleUpdateDtfLocation = async (orderId: number, location: string) => {
+    if (selectedOrder && selectedOrder.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, dtf_location: location });
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_location: location } : o));
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/dtf`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        },
+        body: JSON.stringify({ dtf_location: location })
+      });
+      if (!res.ok) {
+        throw new Error('Falha ao atualizar gaveteiro do DTF');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao atualizar gaveteiro do DTF.');
+      fetchData();
+    }
+  };
+
   const handleRequestToggleDtf = (orderId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirmTimeoutRef.current) {
@@ -2923,6 +2949,7 @@ export default function App() {
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">DTF</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Gaveteiro</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Observação da Etapa</th>
@@ -2954,7 +2981,7 @@ export default function App() {
                   if (filteredOrders.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={10} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
+                        <td colSpan={11} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
                           Nenhum pedido encontrado. {(orders || []).length > 0 ? `(${orders.length} pedidos no total, mas nenhum atende aos filtros aplicados)` : 'Nenhum pedido cadastrado no sistema.'}
                         </td>
                       </tr>
@@ -3052,6 +3079,36 @@ export default function App() {
                               )}
                             </button>
                           )
+                        ) : (
+                          <span className="text-zinc-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                        {order.print_type === 'DTF' ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="relative flex items-center">
+                              <Archive size={13} className="absolute left-2 text-zinc-400 pointer-events-none" />
+                              <input
+                                type="text"
+                                placeholder="Ex: Gaveta 1"
+                                defaultValue={order.dtf_location || ''}
+                                key={`dtf-loc-${order.id}-${order.dtf_location || ''}`}
+                                onBlur={(e) => {
+                                  const val = e.target.value.trim();
+                                  if (val !== (order.dtf_location || '')) {
+                                    handleUpdateDtfLocation(order.id, val);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    (e.target as HTMLInputElement).blur();
+                                  }
+                                }}
+                                className="pl-7 pr-2 py-1 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 bg-white hover:bg-zinc-50 text-zinc-800 placeholder:text-zinc-300 w-28 shadow-sm transition-all"
+                                title="Localização do DTF no gaveteiro"
+                              />
+                            </div>
+                          </div>
                         ) : (
                           <span className="text-zinc-300">-</span>
                         )}
@@ -5375,60 +5432,89 @@ export default function App() {
                                   </Badge>
                                 </div>
                                 {selectedOrder.print_type === 'DTF' && (
-                                  <div className="col-span-2 pt-2 border-t border-zinc-50 flex items-center justify-between">
-                                    <div>
-                                      <span className="text-[9px] font-bold text-zinc-400 uppercase block">DTF Feito</span>
-                                      <span className="text-[10px] text-zinc-500">Checklist da Designer</span>
-                                    </div>
-                                    {confirmingDtfOrderId === selectedOrder.id ? (
-                                      <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-lg p-1 w-max shadow-sm">
-                                        <span className="text-[10px] font-bold text-zinc-500 px-1 animate-pulse">Confirmar?</span>
-                                        <button
-                                          onClick={() => {
-                                            if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
-                                            setConfirmingDtfOrderId(null);
-                                            handleToggleDtf(selectedOrder.id, selectedOrder.dtf_complete || false);
-                                          }}
-                                          className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
-                                          title="Confirmar"
-                                        >
-                                          <Check size={12} className="stroke-[3]" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
-                                            setConfirmingDtfOrderId(null);
-                                          }}
-                                          className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
-                                          title="Cancelar"
-                                        >
-                                          <X size={12} className="stroke-[2]" />
-                                        </button>
+                                  <>
+                                    <div className="col-span-2 pt-2 border-t border-zinc-50 flex items-center justify-between">
+                                      <div>
+                                        <span className="text-[9px] font-bold text-zinc-400 uppercase block">DTF Feito</span>
+                                        <span className="text-[10px] text-zinc-500">Checklist da Designer</span>
                                       </div>
-                                    ) : (
-                                      <button
-                                        onClick={(e) => handleRequestToggleDtf(selectedOrder.id, e)}
-                                        className={cn(
-                                          "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
-                                          selectedOrder.dtf_complete
-                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                                            : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
-                                        )}
-                                      >
-                                        {selectedOrder.dtf_complete ? (
-                                          <>
-                                            <CheckCircle size={12} className="stroke-[3]" />
-                                            <span>Pronto</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Timer size={12} />
-                                            <span>Pendente</span>
-                                          </>
-                                        )}
-                                      </button>
-                                    )}
-                                  </div>
+                                      {confirmingDtfOrderId === selectedOrder.id ? (
+                                        <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-lg p-1 w-max shadow-sm">
+                                          <span className="text-[10px] font-bold text-zinc-500 px-1 animate-pulse">Confirmar?</span>
+                                          <button
+                                            onClick={() => {
+                                              if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                              setConfirmingDtfOrderId(null);
+                                              handleToggleDtf(selectedOrder.id, selectedOrder.dtf_complete || false);
+                                            }}
+                                            className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                            title="Confirmar"
+                                          >
+                                            <Check size={12} className="stroke-[3]" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                              setConfirmingDtfOrderId(null);
+                                            }}
+                                            className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                            title="Cancelar"
+                                          >
+                                            <X size={12} className="stroke-[2]" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => handleRequestToggleDtf(selectedOrder.id, e)}
+                                          className={cn(
+                                            "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
+                                            selectedOrder.dtf_complete
+                                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                              : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
+                                          )}
+                                        >
+                                          {selectedOrder.dtf_complete ? (
+                                            <>
+                                              <CheckCircle size={12} className="stroke-[3]" />
+                                              <span>Pronto</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Timer size={12} />
+                                              <span>Pendente</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="col-span-2 pt-2 border-t border-zinc-50 flex items-center justify-between">
+                                      <div>
+                                        <span className="text-[9px] font-bold text-zinc-400 uppercase block">Gaveteiro DTF</span>
+                                        <span className="text-[10px] text-zinc-500">Local de armazenamento</span>
+                                      </div>
+                                      <div className="relative flex items-center">
+                                        <Archive size={13} className="absolute left-2 text-zinc-400 pointer-events-none" />
+                                        <input
+                                          type="text"
+                                          placeholder="Ex: Gaveta 1"
+                                          defaultValue={selectedOrder.dtf_location || ''}
+                                          key={`modal-dtf-loc-${selectedOrder.id}-${selectedOrder.dtf_location || ''}`}
+                                          onBlur={(e) => {
+                                            const val = e.target.value.trim();
+                                            if (val !== (selectedOrder.dtf_location || '')) {
+                                              handleUpdateDtfLocation(selectedOrder.id, val);
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              (e.target as HTMLInputElement).blur();
+                                            }
+                                          }}
+                                          className="pl-7 pr-2 py-1 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 bg-white hover:bg-zinc-50 text-zinc-800 placeholder:text-zinc-300 w-32 shadow-sm transition-all"
+                                        />
+                                      </div>
+                                    </div>
+                                  </>
                                 )}
                               </div>
                             </section>

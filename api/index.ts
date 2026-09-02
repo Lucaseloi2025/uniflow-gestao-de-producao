@@ -1113,13 +1113,13 @@ app.patch("/api/orders/:id/status", async (req, res) => {
     return res.json({ success: true });
 });
 
-// Update DTF checklist status (accessible to anyone)
+// Update DTF checklist status and drawer location (accessible to anyone)
 app.patch("/api/orders/:id/dtf", async (req, res) => {
     const orderId = Number(req.params.id);
-    const { dtf_complete } = req.body;
+    const { dtf_complete, dtf_location } = req.body;
 
-    if (dtf_complete === undefined) {
-        return res.status(400).json({ error: "Falta o campo dtf_complete" });
+    if (dtf_complete === undefined && dtf_location === undefined) {
+        return res.status(400).json({ error: "Falta o campo dtf_complete ou dtf_location" });
     }
 
     // 1. Fetch current order for audit log
@@ -1132,12 +1132,16 @@ app.patch("/api/orders/:id/dtf", async (req, res) => {
     if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido não encontrado" });
 
     // 2. Perform update
+    const updates: any = {};
+    if (dtf_complete !== undefined) updates.dtf_complete = dtf_complete;
+    if (dtf_location !== undefined) updates.dtf_location = dtf_location;
+
     const { error: updateErr } = await supabaseAdmin
         .from("orders")
-        .update({ dtf_complete })
+        .update(updates)
         .eq("id", orderId);
 
-    if (checkError(updateErr, res, "Erro ao atualizar status do DTF")) return;
+    if (checkError(updateErr, res, "Erro ao atualizar status ou gaveteiro do DTF")) return;
 
     // 3. Log to order_history
     const usuario = (req.headers["x-user-name"] as string) || "Operador";
@@ -1145,8 +1149,8 @@ app.patch("/api/orders/:id/dtf", async (req, res) => {
         order_id: orderId,
         usuario,
         acao: "editou",
-        antes: { dtf_complete: currentOrder.dtf_complete },
-        depois: { dtf_complete },
+        antes: { dtf_complete: currentOrder.dtf_complete, dtf_location: currentOrder.dtf_location },
+        depois: updates,
     });
 
     return res.json({ success: true });
@@ -1158,7 +1162,7 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
     const confirmFinalized = req.headers["x-confirm-finalized"] === "true";
 
-    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url, dtf_complete } = req.body;
+    const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url, dtf_complete, dtf_location } = req.body;
 
     // ── Validations ──────────────────────────────────────────────────────────
     if (quantity !== undefined && Number(quantity) <= 0) {
@@ -1194,6 +1198,7 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     if (art_urls !== undefined) updates.art_urls = art_urls;
     if (art_url !== undefined) updates.art_url = art_url;
     if (dtf_complete !== undefined) updates.dtf_complete = dtf_complete;
+    if (dtf_location !== undefined) updates.dtf_location = dtf_location;
 
     if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: "Nenhum campo para atualizar" });

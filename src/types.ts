@@ -109,6 +109,7 @@ export interface Order {
   cancelled_at?: string | null;
   current_operator?: string | null;
   dtf_complete?: boolean;
+  dtf_location?: string;
 }
 
 export interface OrderHistory {
