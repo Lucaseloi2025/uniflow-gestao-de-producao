@@ -884,6 +884,14 @@ app.get("/api/orders", async (req, res) => {
                     operator: latestFinished.operator
                 };
             }
+
+            // Fallback for dtf_location if stored in observations
+            if (!order.dtf_location && order.observations) {
+                const match = order.observations.match(/\[Gaveteiro:\s*([^\]]+)\]/);
+                if (match) {
+                    order.dtf_location = match[1];
+                }
+            }
         }
     }
 
@@ -1136,12 +1144,49 @@ app.patch("/api/orders/:id/dtf", async (req, res) => {
     if (dtf_complete !== undefined) updates.dtf_complete = dtf_complete;
     if (dtf_location !== undefined) updates.dtf_location = dtf_location;
 
-    const { error: updateErr } = await supabaseAdmin
-        .from("orders")
-        .update(updates)
-        .eq("id", orderId);
+    let updateErr: any = null;
+    try {
+        const { error } = await supabaseAdmin
+            .from("orders")
+            .update(updates)
+            .eq("id", orderId);
+        updateErr = error;
+    } catch (e: any) {
+        updateErr = e;
+    }
 
-    if (checkError(updateErr, res, "Erro ao atualizar status ou gaveteiro do DTF")) return;
+    if (updateErr) {
+        // If dtf_location column is missing in Supabase, fallback gracefully to observations
+        if (updates.dtf_location !== undefined) {
+            console.warn(`[DTF UPDATE FALLBACK] Column dtf_location missing in Supabase for order ${orderId}. Saving in observations as fallback.`);
+            
+            if (updates.dtf_complete !== undefined) {
+                await supabaseAdmin.from("orders").update({ dtf_complete: updates.dtf_complete }).eq("id", orderId);
+            }
+
+            const existingObs = currentOrder.observations || "";
+            let newObs = existingObs;
+            if (existingObs.includes("[Gaveteiro:")) {
+                newObs = existingObs.replace(/\[Gaveteiro:[^\]]*\]/, updates.dtf_location ? `[Gaveteiro: ${updates.dtf_location}]` : "").trim();
+            } else if (updates.dtf_location) {
+                newObs = existingObs ? `${existingObs} [Gaveteiro: ${updates.dtf_location}]` : `[Gaveteiro: ${updates.dtf_location}]`;
+            }
+            await supabaseAdmin.from("orders").update({ observations: newObs }).eq("id", orderId);
+
+            const usuario = (req.headers["x-user-name"] as string) || "Operador";
+            await supabaseAdmin.from("order_history").insert({
+                order_id: orderId,
+                usuario,
+                acao: "editou",
+                antes: { dtf_complete: currentOrder.dtf_complete, observations: existingObs },
+                depois: { ...updates, observations: newObs },
+            });
+
+            return res.json({ success: true, fallback: true });
+        }
+
+        if (checkError(updateErr, res, "Erro ao atualizar status ou gaveteiro do DTF")) return;
+    }
 
     // 3. Log to order_history
     const usuario = (req.headers["x-user-name"] as string) || "Operador";

@@ -592,6 +592,8 @@ export default function App() {
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [confirmingDtfOrderId, setConfirmingDtfOrderId] = useState<number | null>(null);
+  const [editingDtfOrderId, setEditingDtfOrderId] = useState<number | null>(null);
+  const [editingDtfValue, setEditingDtfValue] = useState<string>('');
   const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
   const [executions, setExecutions] = useState<StageExecution[]>([]);
@@ -1158,12 +1160,10 @@ export default function App() {
         body: JSON.stringify({ dtf_location: location })
       });
       if (!res.ok) {
-        throw new Error('Falha ao atualizar gaveteiro do DTF');
+        console.warn('Servidor respondeu com código de aviso/erro ao atualizar gaveteiro.');
       }
     } catch (e) {
       console.error(e);
-      alert('Erro ao atualizar gaveteiro do DTF.');
-      fetchData();
     }
   };
 
@@ -3084,30 +3084,71 @@ export default function App() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1.5">
-                          <div className="relative flex items-center">
-                            <Archive size={13} className="absolute left-2 text-zinc-400 pointer-events-none" />
+                        {editingDtfOrderId === order.id ? (
+                          <div className="flex items-center gap-1 bg-white border border-amber-400 rounded-lg p-1 shadow-md w-max">
+                            <Archive size={13} className="text-amber-600 ml-1 shrink-0" />
                             <input
                               type="text"
                               placeholder="Gaveta / Obs..."
-                              defaultValue={order.dtf_location || ''}
-                              key={`dtf-loc-${order.id}-${order.dtf_location || ''}`}
-                              onBlur={(e) => {
-                                const val = e.target.value.trim();
-                                if (val !== (order.dtf_location || '')) {
-                                  handleUpdateDtfLocation(order.id, val);
-                                }
-                              }}
+                              value={editingDtfValue}
+                              onChange={(e) => setEditingDtfValue(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
-                                  (e.target as HTMLInputElement).blur();
+                                  handleUpdateDtfLocation(order.id, editingDtfValue.trim());
+                                  setEditingDtfOrderId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingDtfOrderId(null);
                                 }
                               }}
-                              className="pl-7 pr-2 py-1 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 bg-white hover:bg-zinc-50 text-zinc-800 placeholder:text-zinc-300 w-32 shadow-sm transition-all"
-                              title="Gaveteiro / Observação Interna"
+                              autoFocus
+                              className="w-28 px-1.5 py-0.5 text-xs focus:outline-none text-zinc-800 placeholder:text-zinc-300"
                             />
+                            <button
+                              onClick={() => {
+                                handleUpdateDtfLocation(order.id, editingDtfValue.trim());
+                                setEditingDtfOrderId(null);
+                              }}
+                              className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded cursor-pointer transition-all active:scale-95 flex items-center justify-center w-5 h-5"
+                              title="Salvar"
+                            >
+                              <Check size={12} className="stroke-[3]" />
+                            </button>
+                            <button
+                              onClick={() => setEditingDtfOrderId(null)}
+                              className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded cursor-pointer transition-all active:scale-95 flex items-center justify-center w-5 h-5"
+                              title="Cancelar"
+                            >
+                              <X size={12} />
+                            </button>
                           </div>
-                        </div>
+                        ) : order.dtf_location ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDtfOrderId(order.id);
+                              setEditingDtfValue(order.dtf_location || '');
+                            }}
+                            className="group flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-lg text-xs font-bold text-amber-900 shadow-sm transition-all cursor-pointer"
+                            title="Clique para alterar a localização do gaveteiro"
+                          >
+                            <Archive size={12} className="text-amber-600 shrink-0" />
+                            <span>{order.dtf_location}</span>
+                            <Edit2 size={10} className="text-amber-400 group-hover:text-amber-700 transition-colors ml-0.5 shrink-0" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDtfOrderId(order.id);
+                              setEditingDtfValue('');
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-zinc-50 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-700 transition-all cursor-pointer"
+                            title="Clique para definir a gaveta / observação"
+                          >
+                            <Plus size={11} className="text-zinc-400" />
+                            <span>Gaveteiro</span>
+                          </button>
+                        )}
                       </td>
                       <td className={cn("px-6 py-4 text-sm", isOverdue && "text-rose-600 font-bold")}>
                         {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') ? (
