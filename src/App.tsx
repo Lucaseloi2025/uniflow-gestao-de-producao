@@ -2945,7 +2945,6 @@ export default function App() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-bottom border-zinc-200 bg-zinc-50">
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">DTF</th>
@@ -2953,8 +2952,6 @@ export default function App() {
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Observação da Etapa</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Operador</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Status</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-right">Tempo</th>
                 </tr>
               </thead>
@@ -2981,7 +2978,7 @@ export default function App() {
                   if (filteredOrders.length === 0) {
                     return (
                       <tr>
-                        <td colSpan={11} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
+                        <td colSpan={8} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
                           Nenhum pedido encontrado. {(orders || []).length > 0 ? `(${orders.length} pedidos no total, mas nenhum atende aos filtros aplicados)` : 'Nenhum pedido cadastrado no sistema.'}
                         </td>
                       </tr>
@@ -3016,7 +3013,6 @@ export default function App() {
                         fetchExecutions(order.id);
                       }}
                     >
-                      <td className="px-6 py-4 font-mono text-xs font-bold">{order.order_number}</td>
                       <td className="px-6 py-4 text-sm font-medium">{order.client_name}</td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
@@ -3225,14 +3221,6 @@ export default function App() {
                         ) : (
                           <span className="text-zinc-400 italic font-light">-</span>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium text-zinc-600">
-                        {order.current_operator || '-'}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge variant={hasPendingReplacements ? 'danger' : order.status === 'Entregue' ? 'success' : (isOverdue ? 'danger' : 'info')}>
-                          {hasPendingReplacements ? '⚠️ Reposição' : (order.status === 'Entrada' ? 'Em Fila' : order.status)}
-                        </Badge>
                       </td>
                       <td className="px-6 py-4 text-right font-mono text-xs">{formatSeconds(order.total_time_seconds)}</td>
                     </tr>
