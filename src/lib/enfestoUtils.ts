@@ -1219,7 +1219,10 @@ export function optimizeEnfestoPlan(params: {
     }
   }
 
-  // ── ORIGINAL TUBULAR ENGINE LOGIC (UNCHANGED) ────────────────────────────
+  // ── TUBULAR ENGINE v2 — "MATAR O PEDIDO TODO" ────────────────────────────
+  // Philosophy: Create a single marker containing ALL sizes proportionally.
+  // Maximize enfesto layers, minimize distinct markers.
+  // TUBULAR factor = 2 (each pass produces 2 effective layers).
   const fator = getFatorCamadasPorPassada(tipoTecido); // = 2
   const sizes = Object.keys(demandMap).filter(s => demandMap[s] > 0);
   const totalNecOverall = Object.values(demandMap).reduce((a, b) => a + b, 0);
@@ -1247,9 +1250,51 @@ export function optimizeEnfestoPlan(params: {
     return { recomendada: emptyResult, alternativas: [] };
   }
 
-  const createIndividualEnfesto = (size: string, qtyNeeded: number, customCompMetros?: number): EnfestoPlanItem => {
+  // ── Tubular-aware enfesto builder ──────────────────────────────────────────
+  const buildTubularEnfesto = (
+    enfSizes: string[],
+    pcsPerLayer: { [sz: string]: number }, // pieces of each size PER LAYER (1 layer = 1 side of tube)
+    passadas: number,
+    compMetros: number
+  ): EnfestoPlanItem => {
+    const producao_por_tamanho: { [sz: string]: number } = {};
+    const peças_por_passada: { [sz: string]: number } = {};
+    let totalPcsPerPass = 0;
+
+    enfSizes.forEach(sz => {
+      const pcsLayer = pcsPerLayer[sz] || 1;
+      // TUBULAR: each pass = fator layers, so production = pcsLayer * passadas * fator
+      producao_por_tamanho[sz] = pcsLayer * passadas * fator;
+      peças_por_passada[sz] = pcsLayer * fator; // pieces produced per pass = pcsLayer * 2
+      totalPcsPerPass += pcsLayer;
+    });
+
+    const totalProd = Object.values(producao_por_tamanho).reduce((a, b) => a + b, 0);
+    const compEstimated = compMetros > 0 ? compMetros : (totalPcsPerPass * 0.40 + 0.80);
+    const pcsKey = Object.entries(pcsPerLayer).map(([s, q]) => `${s}${q}`).join('');
+
+    return {
+      id: `enf-tub-${enfSizes.join('-')}-${pcsKey}-${Date.now()}`,
+      titulo: enfSizes.length === 1
+        ? `ENFESTO ${enfSizes[0]}`
+        : `ENFESTO MISTO (${enfSizes.join(' + ')})`,
+      tamanhos: enfSizes,
+      risco_name: `Risco ${enfSizes.map(s => `${s}=${pcsPerLayer[s] || 1}`).join(', ')} /camada (×${fator})`,
+      comprimento_metra: parseFloat(compEstimated.toFixed(2)),
+      peças_por_passada,
+      passadas,
+      camadas_efetivas: passadas * fator,
+      producao_por_tamanho,
+      producao_total: totalProd,
+      excedente_por_tamanho: {},
+      excedente_total: 0,
+      consumo_metros: parseFloat((compEstimated * passadas).toFixed(2))
+    };
+  };
+
+  const createIndividualTubularEnfesto = (size: string, qtyNeeded: number, customCompMetros?: number): EnfestoPlanItem => {
     const pcsPerLayer = 1;
-    const pcsPerPass = pcsPerLayer * fator;
+    const pcsPerPass = pcsPerLayer * fator; // 2 pieces per pass
     const passadas = Math.ceil(qtyNeeded / pcsPerPass);
     const prod = passadas * pcsPerPass;
     const exc = Math.max(0, prod - qtyNeeded);
@@ -1260,7 +1305,7 @@ export function optimizeEnfestoPlan(params: {
       id: `enf-${size}-${Date.now()}`,
       titulo: `ENFESTO ${size}`,
       tamanhos: [size],
-      risco_name: `Risco Individual (${size} = 1/camada)`,
+      risco_name: `Risco Individual (${size} = 1/camada ×${fator})`,
       comprimento_metra: compMetros,
       peças_por_passada: { [size]: pcsPerPass },
       passadas,
@@ -1273,213 +1318,305 @@ export function optimizeEnfestoPlan(params: {
     };
   };
 
-  const strategies: OptimizationStrategyResult[] = [];
+  // Helper: evaluate a list of enfestos against the demand and compute summary + score
+  const evaluateTubularStrategy = (
+    enfestos: EnfestoPlanItem[],
+    strategyId: string,
+    strategyName: string,
+    motivo: string
+  ): OptimizationStrategyResult => {
+    let totalPlan = 0;
+    let totalExc = 0;
+    let totalPassadas = 0;
+    let totalCamadas = 0;
+    let totalMetros = 0;
+    const prodMap: { [sz: string]: number } = {};
 
-  const separateEnfestos: EnfestoPlanItem[] = sizes.map(sz => createIndividualEnfesto(sz, demandMap[sz]));
-  
-  let sepTotalPlan = 0;
-  let sepTotalExc = 0;
-  let sepTotalPassadas = 0;
-  let sepTotalCamadas = 0;
-  let sepTotalMetros = 0;
-
-  separateEnfestos.forEach(enf => {
-    sepTotalPlan += enf.producao_total;
-    sepTotalExc += enf.excedente_total;
-    sepTotalPassadas += enf.passadas;
-    sepTotalCamadas += enf.camadas_efetivas;
-    sepTotalMetros += enf.consumo_metros;
-  });
-
-  const sepFaltante = Math.max(0, totalNecOverall - sepTotalPlan);
-  const sepScore = sepFaltante * 1000 + sepTotalExc * 50 + sepTotalMetros * 10 + separateEnfestos.length * 5;
-
-  let sepMotivo = 'Estratégia de enfestos individuais por tamanho para controle estrito de excedentes.';
-  if (sizes.length === 2) {
-    const q1 = demandMap[sizes[0]];
-    const q2 = demandMap[sizes[1]];
-    const diff = Math.abs(q1 - q2);
-    if (diff >= 4) {
-      sepMotivo = `${sizes[0]} (${q1}) e ${sizes[1]} (${q2}) foram separados porque as quantidades são muito diferentes e agrupá-los produziria excesso desnecessário de ${q1 < q2 ? sizes[0] : sizes[1]}.`;
-    }
-  }
-
-  strategies.push({
-    id: 'separado',
-    name: 'SEPARAR TAMANHOS (RISCOS INDIVIDUAIS)',
-    recomendada: false,
-    motivo: sepMotivo,
-    enfestos: separateEnfestos,
-    resumo: {
-      total_necessario: totalNecOverall,
-      total_planejado: sepTotalPlan,
-      total_faltante: sepFaltante,
-      total_excedente: sepTotalExc,
-      total_enfestos: separateEnfestos.length,
-      total_passadas: sepTotalPassadas,
-      total_camadas_efetivas: sepTotalCamadas,
-      total_metros_previstos: parseFloat(sepTotalMetros.toFixed(2)),
-      pode_aprovar: sepFaltante === 0
-    },
-    score: sepScore
-  });
-
-  if (agruparTamanhos && sizes.length > 1) {
-    const gcdTubularOptions = generateGcdMarkerCandidates(demandMap, 'Tubular', fator);
-    gcdTubularOptions.forEach((gcdOpt, gIdx) => {
-      let combTotalPlan = 0;
-      let combTotalExc = 0;
-      let combTotalPassadas = 0;
-      let combTotalCamadas = 0;
-      let combTotalMetros = 0;
-      const currentProdMap: { [sz: string]: number } = {};
-
-      gcdOpt.enfestos.forEach(enf => {
-        for (const [sz, prd] of Object.entries(enf.producao_por_tamanho)) {
-          currentProdMap[sz] = (currentProdMap[sz] || 0) + prd;
-        }
-        combTotalPassadas += enf.passadas;
-        combTotalCamadas += enf.camadas_efetivas;
-        combTotalMetros += enf.consumo_metros;
-      });
-
-      sizes.forEach(sz => {
-        const prd = currentProdMap[sz] || 0;
-        const nec = demandMap[sz] || 0;
-        combTotalPlan += prd;
-        if (prd > nec) combTotalExc += (prd - nec);
-      });
-
-      const combFaltante = Math.max(0, totalNecOverall - combTotalPlan);
-      const distinctMarkersCount = new Set(gcdOpt.enfestos.map(e => e.tamanhos.sort().join('+'))).size;
-      const combScore = combFaltante * 100000 + distinctMarkersCount * 5000 + combTotalExc * 100 + combTotalMetros * 10 + gcdOpt.enfestos.length * 500;
-
-      strategies.push({
-        id: `agrupado-gcd-${gIdx}`,
-        name: gcdOpt.name,
-        recomendada: false,
-        motivo: gcdOpt.motivo,
-        enfestos: gcdOpt.enfestos,
-        resumo: {
-          total_necessario: totalNecOverall,
-          total_planejado: combTotalPlan,
-          total_faltante: combFaltante,
-          total_excedente: combTotalExc,
-          total_enfestos: gcdOpt.enfestos.length,
-          total_passadas: combTotalPassadas,
-          total_camadas_efetivas: combTotalCamadas,
-          total_metros_previstos: parseFloat(combTotalMetros.toFixed(2)),
-          pode_aprovar: combFaltante === 0
-        },
-        score: combScore
-      });
+    enfestos.forEach(enf => {
+      for (const [sz, prd] of Object.entries(enf.producao_por_tamanho)) {
+        prodMap[sz] = (prodMap[sz] || 0) + prd;
+      }
+      totalPassadas += enf.passadas;
+      totalCamadas += enf.camadas_efetivas;
+      totalMetros += enf.consumo_metros;
     });
 
-    const combinedEnfestos: EnfestoPlanItem[] = [];
+    sizes.forEach(sz => {
+      const prd = prodMap[sz] || 0;
+      const nec = demandMap[sz] || 0;
+      totalPlan += prd;
+      if (prd > nec) totalExc += (prd - nec);
+    });
 
-    if (sizes.length === 2) {
-      const s1 = sizes[0];
-      const s2 = sizes[1];
-      const q1 = demandMap[s1];
-      const q2 = demandMap[s2];
-      const minQty = Math.min(q1, q2);
-      const maxQty = Math.max(q1, q2);
-      const diff = maxQty - minQty;
+    // Recalculate excedente on each enfesto
+    enfestos.forEach(enf => {
+      let enfExc = 0;
+      enf.tamanhos.forEach(sz => {
+        const prd = enf.producao_por_tamanho[sz] || 0;
+        const nec = demandMap[sz] || 0;
+        const exc = Math.max(0, prd - nec);
+        enf.excedente_por_tamanho[sz] = exc;
+        enfExc += exc;
+      });
+      enf.excedente_total = enfExc;
+    });
 
-      const pcsPerPassCombo = 1 * fator;
-      const passadasCombo = Math.floor(minQty / pcsPerPassCombo);
+    const totalFaltante = Math.max(0, totalNecOverall - totalPlan);
+    const distinctMarkers = new Set(enfestos.map(e => [...e.tamanhos].sort().join('+'))).size;
 
-      if (passadasCombo > 0) {
-        const prodS1Combo = passadasCombo * pcsPerPassCombo;
-        const prodS2Combo = passadasCombo * pcsPerPassCombo;
-        const totalProdCombo = prodS1Combo + prodS2Combo;
-        const compMetrosCombo = 1.80;
+    // Scoring: HEAVILY penalize missing pieces and multiple distinct markers
+    // Reward: fewer markers, fewer enfestos, less surplus
+    const score =
+      totalFaltante * 100000 +    // Missing pieces: absolutely forbidden
+      distinctMarkers * 10000 +    // Each distinct marker is very expensive operationally
+      enfestos.length * 5000 +     // More enfestos = more operational work
+      totalExc * 50 +              // Surplus: acceptable but penalized lightly
+      totalMetros * 1;             // Fabric consumption: minimal weight
 
-        combinedEnfestos.push({
-          id: `enf-combo-${Date.now()}`,
-          titulo: `ENFESTO MISTO (${s1} + ${s2})`,
-          tamanhos: [s1, s2],
-          risco_name: `Risco Misto (${s1}=1, ${s2}=1 /camada)`,
-          comprimento_metra: compMetrosCombo,
-          peças_por_passada: { [s1]: pcsPerPassCombo, [s2]: pcsPerPassCombo },
-          passadas: passadasCombo,
-          camadas_efetivas: passadasCombo * fator,
-          producao_por_tamanho: { [s1]: prodS1Combo, [s2]: prodS2Combo },
-          producao_total: totalProdCombo,
-          excedente_por_tamanho: { [s1]: 0, [s2]: 0 },
-          excedente_total: 0,
-          consumo_metros: parseFloat((compMetrosCombo * passadasCombo).toFixed(2))
+    return {
+      id: strategyId,
+      name: strategyName,
+      recomendada: false,
+      motivo,
+      enfestos,
+      resumo: {
+        total_necessario: totalNecOverall,
+        total_planejado: totalPlan,
+        total_faltante: totalFaltante,
+        total_excedente: totalExc,
+        total_enfestos: enfestos.length,
+        total_passadas: totalPassadas,
+        total_camadas_efetivas: totalCamadas,
+        total_metros_previstos: parseFloat(totalMetros.toFixed(2)),
+        pode_aprovar: totalFaltante === 0
+      },
+      score,
+      quantidade_riscos_distintos: distinctMarkers
+    };
+  };
+
+  const strategies: OptimizationStrategyResult[] = [];
+
+  // ── STRATEGY 0 (FALLBACK): Individual enfestos per size ──────────────────
+  const separateEnfestos: EnfestoPlanItem[] = sizes.map(sz => createIndividualTubularEnfesto(sz, demandMap[sz]));
+  strategies.push(evaluateTubularStrategy(
+    separateEnfestos,
+    'separado',
+    'SEPARAR TAMANHOS (RISCOS INDIVIDUAIS)',
+    'Estratégia de enfestos individuais por tamanho para controle estrito de excedentes.'
+  ));
+
+  if (agruparTamanhos && sizes.length > 1) {
+    // ── STRATEGY 1 (PRIORITY): SINGLE MARKER — ALL SIZES IN ONE RISCO ──────
+    // Goal: "Montar um risco que mate o pedido todo"
+    // For each size, determine how many molds per layer are needed.
+    // passadas = max(ceil(demandMap[sz] / (comp[sz] * fator))) across all sizes
+    // Then cut all sizes in a single enfesto.
+
+    // Method A: Use GCD to find the proportional composition
+    const quantities = sizes.map(sz => demandMap[sz]);
+    const overallGcd = gcdArray(quantities);
+
+    if (overallGcd >= 1) {
+      const comp: { [sz: string]: number } = {};
+      let totalPcsPerLayer = 0;
+      sizes.forEach(sz => {
+        comp[sz] = demandMap[sz] / overallGcd;
+        totalPcsPerLayer += comp[sz];
+      });
+
+      if (totalPcsPerLayer <= MAX_PECAS_POR_RISCO_MESA && Number.isInteger(totalPcsPerLayer)) {
+        // passadas = how many passes needed so that comp[sz] * passadas * fator >= demandMap[sz]
+        const passadas = Math.ceil(overallGcd / fator);
+        const singleEnf = buildTubularEnfesto(sizes, comp, passadas, totalPcsPerLayer * 0.35 + 0.90);
+
+        // Verify production meets demand
+        let allMet = true;
+        sizes.forEach(sz => {
+          if (singleEnf.producao_por_tamanho[sz] < demandMap[sz]) allMet = false;
         });
 
-        const remS1 = q1 - prodS1Combo;
-        if (remS1 > 0) {
-          combinedEnfestos.push(createIndividualEnfesto(s1, remS1));
+        if (allMet) {
+          const compStr = sizes.map(sz => `${comp[sz]}× ${sz}`).join(' + ');
+          strategies.push(evaluateTubularStrategy(
+            [singleEnf],
+            'tubular-unico-mdc',
+            `RISCO ÚNICO PROPORCIONAL MDC (${compStr})`,
+            `MDC=${overallGcd}: 1 único risco (${compStr}) cortado em ${passadas} passada(s) (${passadas * fator} camadas efetivas). Mata o pedido inteiro com mínima troca de risco.`
+          ));
         }
-        const remS2 = q2 - prodS2Combo;
-        if (remS2 > 0) {
-          combinedEnfestos.push(createIndividualEnfesto(s2, remS2));
-        }
-      } else {
-        combinedEnfestos.push(...sizes.map(sz => createIndividualEnfesto(sz, demandMap[sz])));
       }
+    }
 
-      let combTotalPlan = 0;
-      let combTotalExc = 0;
-      let combTotalPassadas = 0;
-      let combTotalCamadas = 0;
-      let combTotalMetros = 0;
+    // Method B: "Waterfall" — group all sizes with 1 mold each per layer,
+    // using the maximum required passes to cover ALL sizes, then subtract fulfilled demand
+    if (sizes.length <= MAX_PECAS_POR_RISCO_MESA) {
+      const comp: { [sz: string]: number } = {};
+      sizes.forEach(sz => { comp[sz] = 1; });
 
-      const currentProdMap: { [sz: string]: number } = {};
-      combinedEnfestos.forEach(enf => {
-        for (const [sz, prd] of Object.entries(enf.producao_por_tamanho)) {
-          currentProdMap[sz] = (currentProdMap[sz] || 0) + prd;
-        }
-        combTotalPassadas += enf.passadas;
-        combTotalCamadas += enf.camadas_efetivas;
-        combTotalMetros += enf.consumo_metros;
-      });
+      // Calculate passes needed: for each size, need ceil(demandMap[sz] / fator) passes
+      // Use the MAXIMUM across all sizes to ensure every size is fulfilled
+      const maxPassadas = Math.max(...sizes.map(sz => Math.ceil(demandMap[sz] / fator)));
+      const waterfallEnf = buildTubularEnfesto(sizes, comp, maxPassadas, sizes.length * 0.35 + 0.90);
 
+      // This will produce surplus for sizes with lower demand — that's acceptable
+      // to achieve the goal of "1 risco que mata o pedido todo"
+      let waterfallAllMet = true;
       sizes.forEach(sz => {
-        const prd = currentProdMap[sz] || 0;
-        const nec = demandMap[sz] || 0;
-        combTotalPlan += prd;
-        if (prd > nec) combTotalExc += (prd - nec);
+        if (waterfallEnf.producao_por_tamanho[sz] < demandMap[sz]) waterfallAllMet = false;
       });
 
-      const combFaltante = Math.max(0, totalNecOverall - combTotalPlan);
-      const combScore = combFaltante * 1000 + combTotalExc * 50 + combTotalMetros * 10 + combinedEnfestos.length * 5;
+      if (waterfallAllMet) {
+        const compStr = sizes.map(sz => `1× ${sz}`).join(' + ');
+        strategies.push(evaluateTubularStrategy(
+          [waterfallEnf],
+          'tubular-unico-waterfall',
+          `RISCO ÚNICO COMPLETO (${compStr})`,
+          `1 único risco contendo todos os tamanhos (${compStr}) cortado em ${maxPassadas} passada(s) (${maxPassadas * fator} camadas). Mata o pedido inteiro em 1 única operação de corte.`
+        ));
+      }
+    }
 
-      let combMotivo = `${s1} e ${s2} foram agrupados porque possuem demandas próximas (${q1} e ${q2} un) e o risco combinado reduz operações e otimiza o encaixe.`;
-      if (diff >= 4) {
-        combMotivo = `Tentativa de risco misto (${s1}+${s2}), mas com alta diferença de demanda (${q1} vs ${q2}).`;
+    // Method C: "Proportional best-fit" — find optimal molds per size to minimize passes and surplus
+    // Try different compositions where sum of molds <= MAX_PECAS_POR_RISCO_MESA
+    if (sizes.length >= 2 && sizes.length <= 6) {
+      const bestFitCandidates: EnfestoPlanItem[][] = [];
+
+      // For each size, try 1 to 3 molds per layer
+      const maxMoldsPerSize = 3;
+      const tryCompositions = (
+        sizeIdx: number,
+        currentComp: { [sz: string]: number },
+        currentTotalMolds: number
+      ): void => {
+        if (sizeIdx === sizes.length) {
+          if (currentTotalMolds === 0) return;
+          // Calculate passadas needed to fulfill ALL sizes
+          let maxPass = 0;
+          for (const sz of sizes) {
+            const moldsForSz = currentComp[sz] || 0;
+            if (moldsForSz === 0) return; // every size must have at least 1 mold
+            const passNeeded = Math.ceil(demandMap[sz] / (moldsForSz * fator));
+            if (passNeeded > maxPass) maxPass = passNeeded;
+          }
+          if (maxPass > 0 && maxPass <= 100) { // reasonable limit
+            const enf = buildTubularEnfesto(sizes, { ...currentComp }, maxPass, currentTotalMolds * 0.35 + 0.90);
+            bestFitCandidates.push([enf]);
+          }
+          return;
+        }
+
+        const sz = sizes[sizeIdx];
+        for (let molds = 1; molds <= maxMoldsPerSize; molds++) {
+          if (currentTotalMolds + molds + (sizes.length - sizeIdx - 1) > MAX_PECAS_POR_RISCO_MESA) continue;
+          currentComp[sz] = molds;
+          tryCompositions(sizeIdx + 1, currentComp, currentTotalMolds + molds);
+        }
+        delete currentComp[sz];
+      };
+
+      tryCompositions(0, {}, 0);
+
+      // Score and keep top candidates
+      const scoredCandidates = bestFitCandidates.map(enfestos => {
+        return evaluateTubularStrategy(
+          enfestos,
+          `tubular-bestfit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          'RISCO ÚNICO OTIMIZADO',
+          ''
+        );
+      });
+
+      // Filter: only keep strategies that fulfill all demand (faltante === 0)
+      const validCandidates = scoredCandidates.filter(s => s.resumo.total_faltante === 0);
+      validCandidates.sort((a, b) => {
+        // Primary: fewer distinct markers
+        const markersA = a.quantidade_riscos_distintos || a.enfestos.length;
+        const markersB = b.quantidade_riscos_distintos || b.enfestos.length;
+        if (markersA !== markersB) return markersA - markersB;
+        // Secondary: less surplus
+        if (a.resumo.total_excedente !== b.resumo.total_excedente) return a.resumo.total_excedente - b.resumo.total_excedente;
+        // Tertiary: fewer passes
+        return a.resumo.total_passadas - b.resumo.total_passadas;
+      });
+
+      // Add top 2 best-fit candidates
+      validCandidates.slice(0, 2).forEach((strat, idx) => {
+        const enf = strat.enfestos[0];
+        const compStr = sizes.map(sz => `${(enf.peças_por_passada[sz] || 0) / fator}× ${sz}`).join(' + ');
+        strat.id = `tubular-bestfit-${idx}`;
+        strat.name = `RISCO ÚNICO OTIMIZADO (${compStr})`;
+        strat.motivo = `Composição otimizada (${compStr} /camada) em ${enf.passadas} passada(s) (${enf.camadas_efetivas} camadas). Minimiza excedente e mata o pedido todo em 1 risco.`;
+        strategies.push(strat);
+      });
+    }
+
+    // Method D: Subgroup GCD — if we can't fit all sizes in 1 marker, group by compatible subsets
+    if (sizes.length > MAX_PECAS_POR_RISCO_MESA) {
+      const remMap = { ...demandMap };
+      let remSizes = sizes.filter(sz => remMap[sz] > 0);
+      const subgroupEnfestos: EnfestoPlanItem[] = [];
+
+      while (remSizes.length > 0) {
+        // Try to fit as many sizes as possible (up to MAX_PECAS_POR_RISCO_MESA) in one marker
+        const groupSize = Math.min(remSizes.length, MAX_PECAS_POR_RISCO_MESA);
+        const group = remSizes.slice(0, groupSize);
+        const groupQuantities = group.map(sz => remMap[sz]);
+        const groupGcd = gcdArray(groupQuantities);
+
+        const comp: { [sz: string]: number } = {};
+        let totalMolds = 0;
+        group.forEach(sz => {
+          comp[sz] = remMap[sz] / groupGcd;
+          totalMolds += comp[sz];
+        });
+
+        if (totalMolds <= MAX_PECAS_POR_RISCO_MESA && groupGcd >= 1) {
+          const passadas = Math.ceil(groupGcd / fator);
+          const enf = buildTubularEnfesto(group, comp, passadas, totalMolds * 0.35 + 0.90);
+          subgroupEnfestos.push(enf);
+          group.forEach(sz => { remMap[sz] = 0; });
+        } else {
+          // Fallback: use 1 mold per size, max passes
+          const maxPass = Math.max(...group.map(sz => Math.ceil(remMap[sz] / fator)));
+          const simpleComp: { [sz: string]: number } = {};
+          group.forEach(sz => { simpleComp[sz] = 1; });
+          const enf = buildTubularEnfesto(group, simpleComp, maxPass, group.length * 0.35 + 0.90);
+          subgroupEnfestos.push(enf);
+          group.forEach(sz => { remMap[sz] = 0; });
+        }
+
+        remSizes = Object.keys(remMap).filter(sz => remMap[sz] > 0);
       }
 
-      strategies.push({
-        id: 'agrupado',
-        name: 'AGRUPAR TAMANHOS PRÓXIMOS (RISCO MISTO + COMPLEMENTO)',
-        recomendada: false,
-        motivo: combMotivo,
-        enfestos: combinedEnfestos,
-        resumo: {
-          total_necessario: totalNecOverall,
-          total_planejado: combTotalPlan,
-          total_faltante: combFaltante,
-          total_excedente: combTotalExc,
-          total_enfestos: combinedEnfestos.length,
-          total_passadas: combTotalPassadas,
-          total_camadas_efetivas: combTotalCamadas,
-          total_metros_previstos: parseFloat(combTotalMetros.toFixed(2)),
-          pode_aprovar: combFaltante === 0
-        },
-        score: combScore
-      });
+      if (subgroupEnfestos.length > 0) {
+        const compSummary = subgroupEnfestos.map(e => e.tamanhos.join('+')).join(' | ');
+        strategies.push(evaluateTubularStrategy(
+          subgroupEnfestos,
+          'tubular-subgrupo',
+          `AGRUPAMENTO POR SUBCONJUNTO (${compSummary})`,
+          `Tamanhos divididos em ${subgroupEnfestos.length} grupo(s) (${compSummary}) para caber na mesa de corte (máx ${MAX_PECAS_POR_RISCO_MESA} pcs/risco).`
+        ));
+      }
     }
   }
 
-  strategies.sort((a, b) => a.score - b.score);
-  if (strategies.length > 0) {
-    strategies[0].recomendada = true;
+  // ── SELECT BEST STRATEGY ─────────────────────────────────────────────────
+  // Filter strategies that fulfill all demand first
+  const validStrategies = strategies.filter(s => s.resumo.total_faltante === 0);
+  const poolToSort = validStrategies.length > 0 ? validStrategies : strategies;
+
+  poolToSort.sort((a, b) => a.score - b.score);
+
+  // Set recommended flag
+  strategies.forEach(s => { s.recomendada = false; });
+  if (poolToSort.length > 0) {
+    poolToSort[0].recomendada = true;
   }
 
-  return { recomendada: strategies[0], alternativas: strategies.slice(1) };
+  // Build final result: recommended = best strategy, alternatives = rest
+  const recommended = poolToSort[0] || strategies[0];
+  const alternatives = strategies.filter(s => s.id !== recommended.id);
+
+  return { recomendada: recommended, alternativas: alternatives };
 }

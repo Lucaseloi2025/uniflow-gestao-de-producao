@@ -287,6 +287,73 @@ const resGcd3 = optimizeRamadoPlan({
 
 assert(resGcd3.plano_exato.enfestos.length < 7, 'Test 14.3a: Não deve isolar todos os 7 tamanhos individualmente quando houver subgrupos compatíveis');
 
+// ── TEST SUITE 15: MANDATORY TUBULAR GROUPING — "MATAR O PEDIDO TODO" ──────
+// Test 15.1: G1:4, P:2, M:2 with TUBULAR must produce 1 single marker (not 3 separate enfestos)
+const resTubGroup1 = optimizeEnfestoPlan({
+  model: 'Camiseta Básica',
+  fabric: 'Algodão Tubular',
+  tipoTecido: 'TUBULAR',
+  larguraUtil: '1,20 m',
+  agruparTamanhos: true,
+  demandMap: { G1: 4, P: 2, M: 2 }
+});
+
+assert(resTubGroup1.recomendada.enfestos.length === 1, 'Test 15.1a: TUBULAR G1:4, P:2, M:2 deve gerar 1 ÚNICO risco (não 3 separados)');
+assert(resTubGroup1.recomendada.resumo.total_faltante === 0, 'Test 15.1b: TUBULAR G1:4, P:2, M:2 - 0 peças faltantes');
+
+// Verify production meets or exceeds demand for each size
+const tubEnf1 = resTubGroup1.recomendada.enfestos[0];
+assert(tubEnf1.producao_por_tamanho.G1 >= 4, 'Test 15.1c: TUBULAR produz >= 4 G1');
+assert(tubEnf1.producao_por_tamanho.P >= 2, 'Test 15.1d: TUBULAR produz >= 2 P');
+assert(tubEnf1.producao_por_tamanho.M >= 2, 'Test 15.1e: TUBULAR produz >= 2 M');
+
+// Test 15.2: G:7, GG:6 with TUBULAR must produce 1 marker (not 2 separate)
+const resTubGroup2 = optimizeEnfestoPlan({
+  model: 'Camiseta Básica',
+  fabric: 'Algodão Tubular',
+  tipoTecido: 'TUBULAR',
+  larguraUtil: '1,60 m',
+  agruparTamanhos: true,
+  demandMap: { G: 7, GG: 6 }
+});
+
+assert(resTubGroup2.recomendada.enfestos.length === 1, 'Test 15.2a: TUBULAR G:7, GG:6 deve gerar 1 ÚNICO risco');
+assert(resTubGroup2.recomendada.resumo.total_faltante === 0, 'Test 15.2b: TUBULAR G:7, GG:6 - 0 peças faltantes');
+const tubEnf2 = resTubGroup2.recomendada.enfestos[0];
+assert(tubEnf2.producao_por_tamanho.G >= 7, 'Test 15.2c: TUBULAR produz >= 7 G');
+assert(tubEnf2.producao_por_tamanho.GG >= 6, 'Test 15.2d: TUBULAR produz >= 6 GG');
+
+// Test 15.3: Single size with odd number should still work correctly
+const resTubGroup3 = optimizeEnfestoPlan({
+  model: 'Camiseta Básica',
+  fabric: 'Algodão Tubular',
+  tipoTecido: 'TUBULAR',
+  larguraUtil: '1,20 m',
+  agruparTamanhos: true,
+  demandMap: { M: 5 }
+});
+
+assert(resTubGroup3.recomendada.enfestos.length === 1, 'Test 15.3a: TUBULAR M:5 deve gerar 1 enfesto');
+assert(resTubGroup3.recomendada.enfestos[0].producao_por_tamanho.M >= 5, 'Test 15.3b: TUBULAR M:5 produz >= 5');
+assert(resTubGroup3.recomendada.enfestos[0].passadas === 3, 'Test 15.3c: TUBULAR M:5 → 3 passadas (3*2=6, excedente 1)');
+
+// Test 15.4: Verify the recommended strategy has fewer markers than the separated strategy
+const resTubGroup4 = optimizeEnfestoPlan({
+  model: 'Camiseta Polo',
+  fabric: 'Dry Comfort Tubular',
+  tipoTecido: 'TUBULAR',
+  larguraUtil: '1,60 m',
+  agruparTamanhos: true,
+  demandMap: { P: 6, M: 8, G: 4, GG: 2 }
+});
+
+const tubRecEnfCount = resTubGroup4.recomendada.enfestos.length;
+const tubSepStrategy = resTubGroup4.alternativas.find(a => a.id === 'separado');
+assert(tubRecEnfCount === 1, 'Test 15.4a: TUBULAR P:6, M:8, G:4, GG:2 → recomendada deve ter 1 risco');
+assert(tubSepStrategy !== undefined, 'Test 15.4b: Estratégia separada existe como alternativa');
+assert(tubRecEnfCount < (tubSepStrategy?.enfestos.length || 99), 'Test 15.4c: Recomendada tem MENOS enfestos que a estratégia separada');
+assert(resTubGroup4.recomendada.resumo.total_faltante === 0, 'Test 15.4d: 0 peças faltantes na recomendada');
+
 console.log(`\nIntelligent Assistant Tests Summary: ${passCount} passed, ${failCount} failed.`);
 if (failCount > 0) {
   process.exit(1);
