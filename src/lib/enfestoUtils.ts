@@ -1251,26 +1251,31 @@ export function optimizeEnfestoPlan(params: {
   }
 
   // ── Tubular-aware enfesto builder ──────────────────────────────────────────
+  // IMPORTANT: peças_por_passada stores MOLDS PER LAYER (the marker layout)
+  // NOT multiplied by fator. The fator (×2) is the enfesto multiplication.
+  // Risco = moldes por camada | Enfesto = passadas × fator = camadas efetivas
+  // Produção = moldes × passadas × fator
   const buildTubularEnfesto = (
     enfSizes: string[],
-    pcsPerLayer: { [sz: string]: number }, // pieces of each size PER LAYER (1 layer = 1 side of tube)
+    pcsPerLayer: { [sz: string]: number }, // pieces of each size PER LAYER (molds in the marker)
     passadas: number,
     compMetros: number
   ): EnfestoPlanItem => {
     const producao_por_tamanho: { [sz: string]: number } = {};
     const peças_por_passada: { [sz: string]: number } = {};
-    let totalPcsPerPass = 0;
+    let totalMoldsInMarker = 0;
 
     enfSizes.forEach(sz => {
-      const pcsLayer = pcsPerLayer[sz] || 1;
-      // TUBULAR: each pass = fator layers, so production = pcsLayer * passadas * fator
-      producao_por_tamanho[sz] = pcsLayer * passadas * fator;
-      peças_por_passada[sz] = pcsLayer * fator; // pieces produced per pass = pcsLayer * 2
-      totalPcsPerPass += pcsLayer;
+      const moldsPerLayer = pcsPerLayer[sz] || 1;
+      // TUBULAR: production = moldsPerLayer × passadas × fator(2)
+      producao_por_tamanho[sz] = moldsPerLayer * passadas * fator;
+      // peças_por_passada = MOLDS in the marker (what the operator physically sees)
+      peças_por_passada[sz] = moldsPerLayer;
+      totalMoldsInMarker += moldsPerLayer;
     });
 
     const totalProd = Object.values(producao_por_tamanho).reduce((a, b) => a + b, 0);
-    const compEstimated = compMetros > 0 ? compMetros : (totalPcsPerPass * 0.40 + 0.80);
+    const compEstimated = compMetros > 0 ? compMetros : (totalMoldsInMarker * 0.40 + 0.80);
     const pcsKey = Object.entries(pcsPerLayer).map(([s, q]) => `${s}${q}`).join('');
 
     return {
@@ -1279,7 +1284,7 @@ export function optimizeEnfestoPlan(params: {
         ? `ENFESTO ${enfSizes[0]}`
         : `ENFESTO MISTO (${enfSizes.join(' + ')})`,
       tamanhos: enfSizes,
-      risco_name: `Risco ${enfSizes.map(s => `${s}=${pcsPerLayer[s] || 1}`).join(', ')} /camada (×${fator})`,
+      risco_name: `Risco ${enfSizes.map(s => `${s}=${pcsPerLayer[s] || 1}`).join(', ')} /camada × ${fator} camadas/passada`,
       comprimento_metra: parseFloat(compEstimated.toFixed(2)),
       peças_por_passada,
       passadas,
@@ -1293,8 +1298,8 @@ export function optimizeEnfestoPlan(params: {
   };
 
   const createIndividualTubularEnfesto = (size: string, qtyNeeded: number, customCompMetros?: number): EnfestoPlanItem => {
-    const pcsPerLayer = 1;
-    const pcsPerPass = pcsPerLayer * fator; // 2 pieces per pass
+    const moldsPerLayer = 1; // 1 mold of this size per layer
+    const pcsPerPass = moldsPerLayer * fator; // 2 pieces per pass (TUBULAR)
     const passadas = Math.ceil(qtyNeeded / pcsPerPass);
     const prod = passadas * pcsPerPass;
     const exc = Math.max(0, prod - qtyNeeded);
@@ -1305,9 +1310,9 @@ export function optimizeEnfestoPlan(params: {
       id: `enf-${size}-${Date.now()}`,
       titulo: `ENFESTO ${size}`,
       tamanhos: [size],
-      risco_name: `Risco Individual (${size} = 1/camada ×${fator})`,
+      risco_name: `Risco Individual (${size} = 1 molde/camada × ${fator} camadas/passada)`,
       comprimento_metra: compMetros,
-      peças_por_passada: { [size]: pcsPerPass },
+      peças_por_passada: { [size]: moldsPerLayer }, // 1 MOLD in marker (not ×fator)
       passadas,
       camadas_efetivas: passadas * fator,
       producao_por_tamanho: { [size]: prod },
@@ -1543,7 +1548,7 @@ export function optimizeEnfestoPlan(params: {
       // Add top 2 best-fit candidates
       validCandidates.slice(0, 2).forEach((strat, idx) => {
         const enf = strat.enfestos[0];
-        const compStr = sizes.map(sz => `${(enf.peças_por_passada[sz] || 0) / fator}× ${sz}`).join(' + ');
+        const compStr = sizes.map(sz => `${enf.peças_por_passada[sz] || 0}× ${sz}`).join(' + ');
         strat.id = `tubular-bestfit-${idx}`;
         strat.name = `RISCO ÚNICO OTIMIZADO (${compStr})`;
         strat.motivo = `Composição otimizada (${compStr} /camada) em ${enf.passadas} passada(s) (${enf.camadas_efetivas} camadas). Minimiza excedente e mata o pedido todo em 1 risco.`;

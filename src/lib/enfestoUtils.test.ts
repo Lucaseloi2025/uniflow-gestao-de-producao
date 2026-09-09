@@ -307,6 +307,15 @@ assert(tubEnf1.producao_por_tamanho.G1 >= 4, 'Test 15.1c: TUBULAR produz >= 4 G1
 assert(tubEnf1.producao_por_tamanho.P >= 2, 'Test 15.1d: TUBULAR produz >= 2 P');
 assert(tubEnf1.producao_por_tamanho.M >= 2, 'Test 15.1e: TUBULAR produz >= 2 M');
 
+// CRITICAL: peças_por_passada must store MOLDS per layer, NOT × fator
+// Marker should show 2×G1 + 1×P + 1×M = 4 moldes (not 8)
+assert(tubEnf1.peças_por_passada.G1 === 2, 'Test 15.1f: peças_por_passada.G1 = 2 MOLDES (não 4)');
+assert(tubEnf1.peças_por_passada.P === 1, 'Test 15.1g: peças_por_passada.P = 1 MOLDE (não 2)');
+assert(tubEnf1.peças_por_passada.M === 1, 'Test 15.1h: peças_por_passada.M = 1 MOLDE (não 2)');
+// Total molds in marker = 4 (not 8!)
+const totalMoldsInMarker = Object.values(tubEnf1.peças_por_passada).reduce((a, b) => a + b, 0);
+assert(totalMoldsInMarker === 4, 'Test 15.1i: Total de moldes no risco = 4 (não 8)');
+
 // Test 15.2: G:7, GG:6 with TUBULAR must produce 1 marker (not 2 separate)
 const resTubGroup2 = optimizeEnfestoPlan({
   model: 'Camiseta Básica',

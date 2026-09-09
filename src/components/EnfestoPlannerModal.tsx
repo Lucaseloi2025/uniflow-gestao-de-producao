@@ -797,7 +797,7 @@ export const EnfestoPlannerModal: React.FC<EnfestoPlannerModalProps> = ({
                             {/* Representation of visual pieces (Rule 3 & 13) */}
                             <div className="flex flex-wrap gap-2 text-xs font-mono">
                               <span className="px-3 py-1 bg-blue-50 text-blue-950 font-black rounded-lg border border-blue-200">
-                                📐 Moldes no Risco: {renderVisualPiecesRepresentation(enf.peças_por_passada)} (1x por camada)
+                                📐 Moldes no Risco: {renderVisualPiecesRepresentation(enf.peças_por_passada)} ({Object.values(enf.peças_por_passada).reduce((a, b) => a + b, 0)} molde{Object.values(enf.peças_por_passada).reduce((a, b) => a + b, 0) > 1 ? 's' : ''}/camada)
                               </span>
                               <span className="px-3 py-1 bg-slate-100 text-slate-800 font-bold rounded-lg border border-slate-200">
                                 📦 Total Cortado: {Object.entries(enf.producao_por_tamanho).map(([s, q]) => `${s}: ${q} un`).join(' | ')}
@@ -806,7 +806,9 @@ export const EnfestoPlannerModal: React.FC<EnfestoPlannerModalProps> = ({
                           </div>
 
                           <div className="flex items-center gap-3 font-mono text-xs">
-                            <span className="font-bold text-slate-900 bg-blue-100/70 text-blue-950 px-2.5 py-1 rounded-lg border border-blue-200">{enf.passadas} enfesto(s) ({enf.camadas_efetivas} camada(s))</span>
+                            <span className="font-bold text-slate-900 bg-blue-100/70 text-blue-950 px-2.5 py-1 rounded-lg border border-blue-200">
+                              {enf.passadas} passada(s) × {tipoTecido === 'TUBULAR' ? '2 camadas' : '1 camada'} = {enf.camadas_efetivas} camada(s) efetiva(s)
+                            </span>
                             <span className="text-slate-300">•</span>
                             <span className="font-bold text-slate-900">{enf.consumo_metros}m consumo linear</span>
                           </div>
