@@ -292,6 +292,171 @@ export function deleteApprovedEnfestoPlan(planId: string): void {
 
 // ── CORE UTILS ─────────────────────────────────────────────────────────────
 
+export function gcd(a: number, b: number): number {
+  a = Math.abs(Math.round(a));
+  b = Math.abs(Math.round(b));
+  while (b) {
+    const t = b;
+    b = a % b;
+    a = t;
+  }
+  return a;
+}
+
+export function gcdArray(numbers: number[]): number {
+  if (!Array.isArray(numbers) || numbers.length === 0) return 1;
+  const validNums = numbers.map(n => Math.abs(Math.round(n))).filter(n => n > 0);
+  if (validNums.length === 0) return 1;
+  let result = validNums[0];
+  for (let i = 1; i < validNums.length; i++) {
+    result = gcd(result, validNums[i]);
+    if (result === 1) break;
+  }
+  return result;
+}
+
+function getSubsetsOfSize<T>(arr: T[], size: number): T[][] {
+  if (size === 0) return [[]];
+  if (arr.length === 0) return [];
+  const head = arr[0];
+  const tail = arr.slice(1);
+  const withHead = getSubsetsOfSize(tail, size - 1).map(s => [head, ...s]);
+  const withoutHead = getSubsetsOfSize(tail, size);
+  return [...withHead, ...withoutHead];
+}
+
+function generateGcdMarkerCandidates(
+  targetProd: { [sz: string]: number },
+  labelPrefix: string,
+  factor: number = 1
+): { enfestos: EnfestoPlanItem[]; name: string; motivo: string }[] {
+  const activeSizes = Object.keys(targetProd).filter(sz => targetProd[sz] > 0);
+  if (activeSizes.length === 0) return [];
+
+  const results: { enfestos: EnfestoPlanItem[]; name: string; motivo: string }[] = [];
+
+  // 1. FULL DEMAND SINGLE MARKER (MDC TOTAL DA DEMANDA)
+  const quantities = activeSizes.map(sz => targetProd[sz]);
+  const overallGcd = gcdArray(quantities);
+
+  if (overallGcd >= 1) {
+    const comp: { [sz: string]: number } = {};
+    let totalPcsLayer = 0;
+    activeSizes.forEach(sz => {
+      const pcs = targetProd[sz] / overallGcd;
+      comp[sz] = pcs;
+      totalPcsLayer += pcs;
+    });
+
+    if (totalPcsLayer <= MAX_PECAS_POR_RISCO_MESA && Number.isInteger(totalPcsLayer)) {
+      const passadas = Math.ceil(overallGcd / factor);
+      if (passadas > 0) {
+        const singleEnf = buildRamadoEnfesto(
+          activeSizes,
+          comp,
+          passadas,
+          totalPcsLayer * 0.35 + 0.90
+        );
+        activeSizes.forEach(sz => {
+          singleEnf.producao_por_tamanho[sz] = targetProd[sz];
+        });
+        singleEnf.producao_total = activeSizes.reduce((sum, sz) => sum + targetProd[sz], 0);
+
+        const compStr = activeSizes.map(sz => `${comp[sz]}× ${sz}`).join(' + ');
+        results.push({
+          enfestos: [singleEnf],
+          name: `RISCO ÚNICO PROPORCIONAL MDC (${compStr})`,
+          motivo: `MDC=${overallGcd}: Otimização prioritária em 1 único risco (${compStr}) cortado em ${passadas} passada(s) (${passadas * factor} camadas) com 0 desperdício.`
+        });
+      }
+    }
+  }
+
+  // 2. SUBSET GCD / GREEDY SUBGROUP GROUPING (Plano B: Agrupar Maior Subconjunto Compatível)
+  const remMap = { ...targetProd };
+  let remSizes = Object.keys(remMap).filter(sz => remMap[sz] > 0);
+  const subgroupEnfestos: EnfestoPlanItem[] = [];
+
+  while (remSizes.length > 0) {
+    let bestSubgroup: string[] = [];
+    let bestGcd = 1;
+    let bestComp: { [sz: string]: number } = {};
+    let bestPcsLayer = 0;
+
+    for (let subLen = remSizes.length; subLen >= 2; subLen--) {
+      const combinations = getSubsetsOfSize(remSizes, subLen);
+      let foundCombo = false;
+
+      for (const combo of combinations) {
+        const subQuantities = combo.map(sz => remMap[sz]);
+        const subGcd = gcdArray(subQuantities);
+
+        if (subGcd > 1) {
+          const comp: { [sz: string]: number } = {};
+          let pcsLayer = 0;
+          combo.forEach(sz => {
+            const pcs = remMap[sz] / subGcd;
+            comp[sz] = pcs;
+            pcsLayer += pcs;
+          });
+
+          if (pcsLayer <= MAX_PECAS_POR_RISCO_MESA && Number.isInteger(pcsLayer)) {
+            bestSubgroup = combo;
+            bestGcd = subGcd;
+            bestComp = comp;
+            bestPcsLayer = pcsLayer;
+            foundCombo = true;
+            break;
+          }
+        }
+      }
+
+      if (foundCombo) break;
+    }
+
+    if (bestSubgroup.length >= 2 && bestGcd > 1) {
+      const passadas = Math.ceil(bestGcd / factor);
+      const subEnf = buildRamadoEnfesto(
+        bestSubgroup,
+        bestComp,
+        passadas,
+        bestPcsLayer * 0.35 + 0.90
+      );
+      bestSubgroup.forEach(sz => {
+        subEnf.producao_por_tamanho[sz] = remMap[sz];
+        remMap[sz] = 0;
+      });
+      subEnf.producao_total = Object.values(subEnf.producao_por_tamanho).reduce((a, b) => a + b, 0);
+      subgroupEnfestos.push(subEnf);
+    } else {
+      remSizes.forEach(sz => {
+        const qty = remMap[sz];
+        if (qty > 0) {
+          const passadas = Math.ceil(qty / factor);
+          const singleEnf = buildRamadoEnfesto([sz], { [sz]: 1 }, passadas, 1.20);
+          singleEnf.producao_por_tamanho[sz] = qty;
+          singleEnf.producao_total = qty;
+          remMap[sz] = 0;
+          subgroupEnfestos.push(singleEnf);
+        }
+      });
+    }
+
+    remSizes = Object.keys(remMap).filter(sz => remMap[sz] > 0);
+  }
+
+  if (subgroupEnfestos.length > 0 && subgroupEnfestos.length < activeSizes.length) {
+    const compSummary = subgroupEnfestos.map(e => e.tamanhos.join('+')).join(' | ');
+    results.push({
+      enfestos: subgroupEnfestos,
+      name: `COMPOSIÇÃO AGRUPADA MDC (${compSummary})`,
+      motivo: `Agrupamento por subconjuntos proporcionais via MDC (${compSummary}) para minimizar trocas de risco.`
+    });
+  }
+
+  return results;
+}
+
 export function getFatorCamadasPorPassada(tipo: TecidoTipo): number {
   return tipo === 'TUBULAR' ? 2 : 1;
 }
@@ -606,6 +771,25 @@ export function optimizeRamadoPlan(params: {
   ): OptimizationStrategyResult[] => {
     const candidates: OptimizationStrategyResult[] = [];
     const activeSizes = Object.keys(targetProd).filter(sz => targetProd[sz] > 0);
+
+    // 0. PRIORITY STRATEGY: GCD SINGLE MARKER & SUBSET MDC GROUPINGS
+    const gcdOptions = generateGcdMarkerCandidates(targetProd, labelPrefix, 1);
+    gcdOptions.forEach((opt, idx) => {
+      const evalRes = evaluateRamadoPlanMetrics(opt.enfestos, demandMap, totalNecOverall, knownRiscos, weights, eficienciaMinimaDesejada);
+      candidates.push({
+        id: `ram-gcd-${idx}-${labelPrefix}`,
+        name: opt.name,
+        recomendada: idx === 0,
+        motivo: opt.motivo,
+        enfestos: opt.enfestos,
+        resumo: evalRes.resumo,
+        score: evalRes.score,
+        quantidade_riscos_distintos: evalRes.distinctMarkersCount,
+        max_passadas_por_risco: evalRes.maxPasses,
+        novos_riscos_count: evalRes.novosRiscosCount,
+        riscos_baixo_aproveitamento_count: evalRes.riscosBaixoAproveitamentoCount
+      });
+    });
 
     // 1. WATERFALL MULTI-PIECE MARKER STRATEGY (1 mold per size in marker x passadas)
     const waterfallEnfestos: EnfestoPlanItem[] = [];
@@ -1141,6 +1325,56 @@ export function optimizeEnfestoPlan(params: {
   });
 
   if (agruparTamanhos && sizes.length > 1) {
+    const gcdTubularOptions = generateGcdMarkerCandidates(demandMap, 'Tubular', fator);
+    gcdTubularOptions.forEach((gcdOpt, gIdx) => {
+      let combTotalPlan = 0;
+      let combTotalExc = 0;
+      let combTotalPassadas = 0;
+      let combTotalCamadas = 0;
+      let combTotalMetros = 0;
+      const currentProdMap: { [sz: string]: number } = {};
+
+      gcdOpt.enfestos.forEach(enf => {
+        for (const [sz, prd] of Object.entries(enf.producao_por_tamanho)) {
+          currentProdMap[sz] = (currentProdMap[sz] || 0) + prd;
+        }
+        combTotalPassadas += enf.passadas;
+        combTotalCamadas += enf.camadas_efetivas;
+        combTotalMetros += enf.consumo_metros;
+      });
+
+      sizes.forEach(sz => {
+        const prd = currentProdMap[sz] || 0;
+        const nec = demandMap[sz] || 0;
+        combTotalPlan += prd;
+        if (prd > nec) combTotalExc += (prd - nec);
+      });
+
+      const combFaltante = Math.max(0, totalNecOverall - combTotalPlan);
+      const distinctMarkersCount = new Set(gcdOpt.enfestos.map(e => e.tamanhos.sort().join('+'))).size;
+      const combScore = combFaltante * 100000 + distinctMarkersCount * 5000 + combTotalExc * 100 + combTotalMetros * 10 + gcdOpt.enfestos.length * 500;
+
+      strategies.push({
+        id: `agrupado-gcd-${gIdx}`,
+        name: gcdOpt.name,
+        recomendada: false,
+        motivo: gcdOpt.motivo,
+        enfestos: gcdOpt.enfestos,
+        resumo: {
+          total_necessario: totalNecOverall,
+          total_planejado: combTotalPlan,
+          total_faltante: combFaltante,
+          total_excedente: combTotalExc,
+          total_enfestos: gcdOpt.enfestos.length,
+          total_passadas: combTotalPassadas,
+          total_camadas_efetivas: combTotalCamadas,
+          total_metros_previstos: parseFloat(combTotalMetros.toFixed(2)),
+          pode_aprovar: combFaltante === 0
+        },
+        score: combScore
+      });
+    });
+
     const combinedEnfestos: EnfestoPlanItem[] = [];
 
     if (sizes.length === 2) {

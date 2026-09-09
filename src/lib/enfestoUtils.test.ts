@@ -35,7 +35,7 @@ function assert(condition: boolean, testName: string) {
 assert(getFatorCamadasPorPassada('TUBULAR') === 2, 'Test 1.1: TUBULAR should yield 2 effective layers per pass');
 assert(getFatorCamadasPorPassada('RAMADO') === 1, 'Test 1.2: RAMADO should yield 1 effective layer per pass');
 
-// ── TEST SUITE 2: CASO DE TESTE 1 (RAMADO - 3 RISCOS EXATOS -> 2 RISCOS COM +1 EXCEDENTE) ──
+// ── TEST SUITE 2: CASO DE TESTE 1 (RAMADO - AGRUPAMENTO OTIMIZADO VIA MDC/LARGURA MESA) ──
 const resCase1 = optimizeRamadoPlan({
   model: 'Camiseta Básica',
   fabric: 'Algodão Ramado',
@@ -45,13 +45,12 @@ const resCase1 = optimizeRamadoPlan({
 });
 
 assert(resCase1.plano_exato.resumo.total_excedente === 0, 'Test 2.1: Caso 1 - Plano Exato deve ter 0 excedente');
-assert(resCase1.plano_exato.quantidade_riscos_distintos <= 3, 'Test 2.2: Caso 1 - Plano Exato possui riscos otimizados');
-assert(resCase1.recomendacao === 'PLANO_OTIMIZADO', 'Test 2.3: Caso 1 - Deve recomendar PLANO_OTIMIZADO com excedente estratégico');
-assert(resCase1.requer_aprovacao === true, 'Test 2.4: Caso 1 - Requer aprovação humana obrigatoriamente');
-assert(resCase1.excedente_total <= 2, 'Test 2.5: Caso 1 - Excedente total dentro do limite global');
-assert(resCase1.plano_otimizado !== null, 'Test 2.6: Caso 1 - Plano Otimizado gerado com sucesso');
+assert(resCase1.plano_exato.quantidade_riscos_distintos === 1, 'Test 2.2: Caso 1 - Plano Exato agrupa P:4, M:2, G:1 em exatamente 1 único risco');
+assert(resCase1.recomendacao === 'PLANO_EXATO', 'Test 2.3: Caso 1 - Escolhe Plano Exato com 1 único risco e 0 desperdício');
+assert(resCase1.plano_exato.enfestos.length === 1, 'Test 2.4: Caso 1 - Contém exatamente 1 enfesto');
+assert(resCase1.excedente_total === 0, 'Test 2.5: Caso 1 - Excedente total 0');
 
-// ── TEST SUITE 3: CASO DE TESTE 2 (RAMADO - 3 RISCOS EXATOS -> 2 RISCOS COM +2 EXCEDENTES TOTAL) ──
+// ── TEST SUITE 3: CASO DE TESTE 2 (RAMADO - P:4, M:1, G:1 EM 1 ÚNICO RISCO) ──
 const resCase2 = optimizeRamadoPlan({
   model: 'Camiseta Oversized',
   fabric: 'Meia Malha Ramada',
@@ -61,9 +60,9 @@ const resCase2 = optimizeRamadoPlan({
 });
 
 assert(resCase2.candidatas.length > 0, 'Test 3.1: Caso 2 - Gerou opções candidatas');
-assert(resCase2.excedente_total <= 2, 'Test 3.2: Caso 2 - Excedente total dentro do limite global (<= 2 peças)');
-assert(resCase2.requer_aprovacao === true || resCase2.recomendacao !== undefined, 'Test 3.3: Caso 2 - Estrutura de recomendação válida');
-assert(resCase2.requer_aprovacao === true, 'Test 3.4: Caso 2 - Requer aprovação obrigatória');
+assert(resCase2.plano_exato.quantidade_riscos_distintos === 1, 'Test 3.2: Caso 2 - Agrupa P:4, M:1, G:1 em 1 único risco de 6 peças');
+assert(resCase2.recomendacao === 'PLANO_EXATO', 'Test 3.3: Caso 2 - Recomenda Plano Exato de 1 risco sem desperdício');
+assert(resCase2.excedente_total === 0, 'Test 3.4: Caso 2 - Excedente total 0');
 
 // ── TEST SUITE 4: CASO DE TESTE 3 (RAMADO - +1 PEÇA SEM GANHO OPERACIONAL DEVE MANTER PLANO EXATO) ──
 const resCase3 = optimizeRamadoPlan({
@@ -132,13 +131,13 @@ saveApprovedEnfestoPlan({
   fabric: 'Algodão Ramado',
   color: 'Preto',
   tipoTecido: 'RAMADO',
-  planType: 'PLANO_OTIMIZADO',
-  planName: 'PLANO OTIMIZADO (EXCEDENTE ESTRATÉGICO)',
-  enfestos: resCase1.plano_otimizado!.enfestos,
-  resumo: resCase1.plano_otimizado!.resumo,
-  excedente_proposto: { G: 1 },
-  excedente_total: 1,
-  beneficio_operacional: 'Elimina 1 risco no Optitex',
+  planType: 'PLANO_EXATO',
+  planName: 'PLANO EXATO (0 EXCEDENTE)',
+  enfestos: resCase1.plano_exato.enfestos,
+  resumo: resCase1.plano_exato.resumo,
+  excedente_proposto: null,
+  excedente_total: 0,
+  beneficio_operacional: 'Risco único otimizado',
   user_name: 'Operador Teste',
   created_at: new Date().toISOString(),
   status: 'PENDENTE_DE_CORTE'
@@ -247,6 +246,46 @@ saveApprovedEnfestoPlan({
 deleteApprovedEnfestoPlan(dummyPlanId);
 const plansAfterDel = getApprovedEnfestoPlans();
 assert(!plansAfterDel.some(p => p.id === dummyPlanId), 'Test 13.1: Exclusão de plano aprovado remove o registro do repositório');
+
+// ── TEST SUITE 14: MANDATORY GCD (MDC) & COMPATIBLE RATIO GROUPING TESTS ──
+// Test 14.1: Demand G1: 4, P: 2, M: 2 -> MUST result in 1 single risk with 2 layers (2x G1 + 1x P + 1x M)
+const resGcd1 = optimizeRamadoPlan({
+  model: 'Camiseta Básica',
+  fabric: 'Algodão Ramado',
+  larguraUtil: '1,60 m',
+  agruparTamanhos: true,
+  demandMap: { G1: 4, P: 2, M: 2 }
+});
+
+assert(resGcd1.plano_exato.enfestos.length === 1, 'Test 14.1a: Demanda G1:4, P:2, M:2 deve gerar exatamente 1 único risco');
+assert(resGcd1.plano_exato.enfestos[0].passadas === 2, 'Test 14.1b: Risco único deve ser cortado em exatamente 2 passadas/camadas');
+assert(resGcd1.plano_exato.enfestos[0].peças_por_passada.G1 === 2, 'Test 14.1c: Composição deve conter 2x G1 por camada');
+assert(resGcd1.plano_exato.enfestos[0].peças_por_passada.P === 1, 'Test 14.1d: Composição deve conter 1x P por camada');
+assert(resGcd1.plano_exato.enfestos[0].peças_por_passada.M === 1, 'Test 14.1e: Composição deve conter 1x M por camada');
+
+// Test 14.2: Demand G1: 4, P: 2, M: 2, GG: 7 -> combines G1+P+M in 1 risk (MDC 2, 2 layers) and GG separately
+const resGcd2 = optimizeRamadoPlan({
+  model: 'Camiseta Polo',
+  fabric: 'Piquet Ramado',
+  larguraUtil: '1,60 m',
+  agruparTamanhos: true,
+  demandMap: { G1: 4, P: 2, M: 2, GG: 7 }
+});
+
+assert(resGcd2.plano_exato.enfestos.length === 2, 'Test 14.2a: Demanda G1:4, P:2, M:2, GG:7 deve gerar 2 riscos no total (G1+P+M em 1 risco e GG em outro)');
+const combinedEnf = resGcd2.plano_exato.enfestos.find(e => e.tamanhos.length >= 3);
+assert(combinedEnf !== undefined, 'Test 14.2b: Deve agrupar o maior subconjunto compatível (G1+P+M) em 1 único risco');
+
+// Test 14.3: Non-GCD case (PP:1, P:4, M:5, G:3, GG:8, G1:2, G2:1) -> applies subgroup grouping, avoiding isolating sizes individually
+const resGcd3 = optimizeRamadoPlan({
+  model: 'Camiseta Infantil',
+  fabric: 'PV Ramado',
+  larguraUtil: '1,60 m',
+  agruparTamanhos: true,
+  demandMap: { PP: 1, P: 4, M: 5, G: 3, GG: 8, G1: 2, G2: 1 }
+});
+
+assert(resGcd3.plano_exato.enfestos.length < 7, 'Test 14.3a: Não deve isolar todos os 7 tamanhos individualmente quando houver subgrupos compatíveis');
 
 console.log(`\nIntelligent Assistant Tests Summary: ${passCount} passed, ${failCount} failed.`);
 if (failCount > 0) {
