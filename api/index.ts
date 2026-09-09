@@ -1182,6 +1182,11 @@ function _parseTinyXml(xmlString: string): { status: string; status_processament
                 descricao: getITag('descricao'),
                 quantidade: parseFloat(getITag('quantidade')) || 0,
                 valor_unitario: parseFloat(getITag('valor_unitario')) || 0,
+                tamanho: getITag('tamanho'),
+                cor: getITag('cor'),
+                variacao: getITag('variacao') || getITag('grade'),
+                grade: getITag('grade'),
+                atributos: getITag('atributos')
             });
         }
 
@@ -1200,22 +1205,9 @@ function _parseTinyXml(xmlString: string): { status: string; status_processament
     return { status, status_processamento, errors, pedidos };
 }
 
-function _extractItemSizeAndProduct(descricao: string, codigo: string): { productType: string; size: string } {
-    let size = '';
-    let productType = descricao || '';
-
-    // Match size patterns anywhere (e.g. " - G - ", " - M ", " - P", " G ", etc.)
-    const sizeMidMatch = descricao.match(/(?:^|[\s\-\–\/])(EXG|XXL|XGG|GG|G|M|P|PP|10|12|14|16)(?:[\s\-\–\/]|$)/i);
-    if (sizeMidMatch) {
-        size = sizeMidMatch[1].toUpperCase();
-    } else {
-        const skuSizeMatch = codigo.match(/-(EXG|XXL|XGG|GG|G|M|P|PP|10|12|14|16)$/i);
-        if (skuSizeMatch) {
-            size = skuSizeMatch[1].toUpperCase();
-        }
-    }
-
-    return { productType: productType || 'Vestuário', size: size || 'Único' };
+function _extractItemSizeAndProduct(descricao: string, codigo: string, explicitSize?: string): { productType: string; size: string } {
+    const details = extractItemDetails({ description: descricao, sku: codigo, tamanho: explicitSize });
+    return { productType: details.product_type, size: details.size };
 }
 
 function _isApprovedOlistStatus(situacao: string): boolean {
@@ -1410,7 +1402,17 @@ async function _fetchOlistOrderDetail(token: string, olistOrderId: string): Prom
         const desc = it.descricao || it.description || 'Item sem descrição';
         const cod = it.codigo || it.sku || '-';
         const qty = parseFloat(it.quantidade || it.quantity) || 1;
-        const extracted = _extractItemSizeAndProduct(desc, cod);
+        const explicitSize = it.tamanho || it.size || it.variacao?.tamanho || it.grade?.tamanho || it.variacoes?.tamanho;
+        const explicitColor = it.cor || it.color || it.variacao?.cor || it.grade?.cor || it.variacoes?.cor;
+
+        const extractedDetails = extractItemDetails({
+            ...it,
+            description: desc,
+            sku: cod,
+            tamanho: explicitSize,
+            cor: explicitColor
+        });
+
         return {
             id_produto: it.id_produto,
             codigo: cod,
@@ -1420,8 +1422,16 @@ async function _fetchOlistOrderDetail(token: string, olistOrderId: string): Prom
             quantidade: qty,
             quantity: qty,
             valor_unitario: parseFloat(it.valor_unitario || it.preco) || 0,
-            productType: extracted.productType,
-            size: extracted.size
+            tamanho: extractedDetails.size,
+            size: extractedDetails.size,
+            cor: extractedDetails.color,
+            color: extractedDetails.color,
+            productType: extractedDetails.product_type,
+            modelo: extractedDetails.product_type,
+            fabric: extractedDetails.fabric,
+            tecido: extractedDetails.fabric,
+            item_key: extractedDetails.item_key,
+            is_complete: extractedDetails.is_complete
         };
     });
 
@@ -1606,7 +1616,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                     if (itemCorte > 0) {
                         corteDetails.push({
                             description: item.description || item.descricao || 'Produto',
-                            size: item.size || 'Único',
+                            size: item.size || item.tamanho || 'Tamanho não informado',
                             sku: item.sku || item.codigo || '-',
                             qty_pedida: itemQty,
                             qty_separacao: itemSeparacao,

@@ -61,7 +61,7 @@ import PrintableReport from './PrintableReport';
 import { Session } from '@supabase/supabase-js';
 import PublicTracking from './PublicTracking';
 import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
-import { aggregateCuttingDemand } from './lib/cuttingUtils';
+import { aggregateCuttingDemand, getItemDisplaySize, sortSizes, extractItemDetails } from './lib/cuttingUtils';
 
 import {
   BarChart,
@@ -86,18 +86,7 @@ import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderT
 const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url);
 const isPdf = (url: string) => /\.pdf(\?.*)?$/i.test(url);
 
-function getItemDisplaySize(item: any): string {
-  if (!item) return 'Único';
-  const rawSize = (item.size || item.tamanho || '').toString().trim();
-  const isMaterial = /dry\s*fit|poliamida|algod[aã]o|camiseta|vestu[aá]rio/i.test(rawSize);
-  if (rawSize && !isMaterial && rawSize !== 'Único') {
-    return rawSize.toUpperCase();
-  }
-  const text = (item.description || item.descricao || '') + ' ' + (item.sku || item.codigo || '');
-  const match = text.match(/(?:^|[\s\-\–\/])(EXG|XXL|XGG|GG|G|M|P|PP|10|12|14|16)(?:[\s\-\–\/]|$)/i);
-  if (match) return match[1].toUpperCase();
-  return rawSize && !isMaterial ? rawSize : 'Único';
-}
+
 
 function getOrderCuttingQty(order: any): number {
   if (!order) return 0;

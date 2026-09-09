@@ -94,6 +94,11 @@ export function parseTinyXml(xmlString: string): {
         descricao: getITag('descricao'),
         quantidade: parseFloat(getITag('quantidade')) || 0,
         valor_unitario: parseFloat(getITag('valor_unitario')) || 0,
+        tamanho: getITag('tamanho'),
+        cor: getITag('cor'),
+        variacao: getITag('variacao') || getITag('grade'),
+        grade: getITag('grade'),
+        atributos: getITag('atributos')
       });
     }
 
@@ -217,7 +222,8 @@ export async function fetchOlistOrderDetail(token: string, olistOrderId: string)
 
   const raw = parsed.pedidos[0];
   const items: OlistOrderItem[] = (raw.itens || []).map((it: any) => {
-    const extracted = extractItemSizeAndProduct(it.descricao || '', it.codigo || '');
+    const explicitSize = it.tamanho || it.size || it.variacao?.tamanho || it.grade?.tamanho || it.variacoes?.tamanho;
+    const extracted = extractItemSizeAndProduct(it.descricao || '', it.codigo || '', explicitSize);
     return {
       id_produto: it.id_produto,
       codigo: it.codigo,
