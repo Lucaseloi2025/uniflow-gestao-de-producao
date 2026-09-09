@@ -238,7 +238,8 @@ saveApprovedEnfestoPlan({
   planType: 'PLANO_EXATO',
   planName: 'Plano Teste Exclusão',
   enfestos: [],
-  resumo: { total_necessario: 5, total_planejado: 5, total_passadas: 2, total_camadas: 2, total_metros_previstos: 5, todos_riscos_validados: true, pode_aprovar: true },
+  excedente_total: 0,
+  resumo: { total_necessario: 5, total_planejado: 5, total_faltante: 0, total_excedente: 0, total_enfestos: 1, total_passadas: 2, total_camadas_efetivas: 2, total_metros_previstos: 5, todos_riscos_validados: true, pode_aprovar: true },
   user_name: 'Test',
   created_at: new Date().toISOString(),
   status: 'PENDENTE_DE_CORTE'

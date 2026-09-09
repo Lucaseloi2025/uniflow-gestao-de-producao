@@ -28,6 +28,7 @@ import {
   TecidoTipo,
   RiscoConfig,
   OptimizationStrategyResult,
+  ProducaoExcedenteItem,
   getFatorCamadasPorPassada,
   optimizeEnfestoPlan,
   saveRiscoConfig,
@@ -335,8 +336,7 @@ export const EnfestoPlannerModal: React.FC<EnfestoPlannerModalProps> = ({
             size: sz,
             quantidade: qty,
             origem: 'EXCEDENTE_DE_PRODUCAO',
-            destino: 'ESTOQUE',
-            user_name: 'Operador'
+            destino: 'ESTOQUE'
           };
           saveProducaoExcedente(excItem);
         }

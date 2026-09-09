@@ -397,18 +397,18 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     });
 
     Object.values(groups).forEach(grp => {
-      const orderMap = new Map<number, { order_id: number; order_number?: string; customer_name?: string; quantity: number }>();
+      const orderMap = new Map<number, { order_id: number; order_number?: string; client_name?: string; quantity: number }>();
       grp.items.forEach(it => {
         it.pedidos_waiting.forEach(w => {
           const existing = orderMap.get(w.order_id);
           if (existing) {
-            existing.quantity += w.quantity;
+            existing.quantity += w.qty_corte_needed || w.item_quantity || 1;
           } else {
             orderMap.set(w.order_id, {
               order_id: w.order_id,
               order_number: w.order_number || `#${w.order_id}`,
-              customer_name: w.customer_name || 'Cliente',
-              quantity: w.quantity
+              client_name: w.client_name || 'Cliente',
+              quantity: w.qty_corte_needed || w.item_quantity || 1
             });
           }
         });
