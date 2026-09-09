@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased;
+  }
+}
+
+@media print {
+  /* Prevent background colors/images from disappearing */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Esconde elementos de navegação e UI que não devem ser impressos */
+  aside, main, header, .no-print {
+    display: none !important;
+  }
+  
+  /* Garante que o container de impressão apareça e sobrescreva o 'hidden' do Tailwind */
+  .print-container {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    background: white !important;
+  }
+
+  /* Garante que os filhos do container também sejam visíveis */
+  .print-container * {
+    visibility: visible !important;
+  }
+
+  /* Sobrescreve restrições de layout do App que podem cortar o conteúdo na impressão */
+  .flex, .h-screen, .overflow-hidden {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  /* Quebra de página para evitar tabelas fatiadas bizarramente */
+  tr {
+    page-break-inside: avoid;
+  }
+}
+

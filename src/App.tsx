@@ -1,0 +1,8475 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  LayoutDashboard,
+  ClipboardList,
+  Users,
+  Settings,
+  Plus,
+  Search,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
+  ChevronRight,
+  Play,
+  Pause,
+  Check,
+  Square,
+  BarChart3,
+  Package,
+  Calendar,
+  User as UserIcon,
+  X,
+  Edit2,
+  Trash2,
+  Image as ImageIcon,
+  Upload,
+  CheckCircle,
+  Circle,
+  FileText,
+  TrendingUp,
+  DollarSign,
+  Menu,
+  LogOut,
+  RefreshCw,
+  ArrowLeft,
+  PieChart as PieChartIcon,
+  Target,
+  Archive,
+  CheckSquare,
+  Timer,
+  Layers,
+  List,
+  Filter,
+  AlertTriangle,
+  TrendingDown,
+  Activity,
+  Download,
+  DownloadCloud,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  Eye,
+  EyeOff,
+  Printer,
+  Loader2,
+  Link as LinkIcon,
+  Scissors
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from './lib/supabase';
+import PrintableReport from './PrintableReport';
+import { Session } from '@supabase/supabase-js';
+import PublicTracking from './PublicTracking';
+import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
+import { aggregateCuttingDemand } from './lib/cuttingUtils';
+
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  ReferenceLine
+} from 'recharts';
+import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn, formatSeconds } from './lib/utils';
+import { calculateExecutionTimes } from './lib/timerUtils';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod, OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData, CollaboratorStageGoal } from './types';
+
+// Helpers
+const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i.test(url);
+const isPdf = (url: string) => /\.pdf(\?.*)?$/i.test(url);
+
+function getItemDisplaySize(item: any): string {
+  if (!item) return 'Único';
+  const rawSize = (item.size || item.tamanho || '').toString().trim();
+  const isMaterial = /dry\s*fit|poliamida|algod[aã]o|camiseta|vestu[aá]rio/i.test(rawSize);
+  if (rawSize && !isMaterial && rawSize !== 'Único') {
+    return rawSize.toUpperCase();
+  }
+  const text = (item.description || item.descricao || '') + ' ' + (item.sku || item.codigo || '');
+  const match = text.match(/(?:^|[\s\-\–\/])(EXG|XXL|XGG|GG|G|M|P|PP|10|12|14|16)(?:[\s\-\–\/]|$)/i);
+  if (match) return match[1].toUpperCase();
+  return rawSize && !isMaterial ? rawSize : 'Único';
+}
+
+function getOrderCuttingQty(order: any): number {
+  if (!order) return 0;
+  if (order.total_via_corte !== undefined && order.total_via_corte !== null && order.total_via_corte > 0) {
+    return order.total_via_corte;
+  }
+  if (order.items && order.items.length > 0) {
+    const sumCorte = order.items.reduce((acc: number, it: any) => {
+      const qPedida = it.quantity ?? it.quantidade ?? 1;
+      const cQty = it.qty_corte ?? it.total_via_corte ?? (it.stock_available !== undefined && it.stock_available !== null ? Math.max(0, qPedida - Math.min(qPedida, it.stock_available)) : 0);
+      return acc + cQty;
+    }, 0);
+    if (sumCorte > 0) return sumCorte;
+  }
+  if (order.observations) {
+    const match = order.observations.match(/⚠️\s*(\d+)\s*pçs?\s*sem\s*estoque/i);
+    if (match) {
+      return parseInt(match[1], 10) || 0;
+    }
+  }
+  return 0;
+}
+
+// Components
+const SidebarItem = ({ icon: Icon, label, active, onClick, badge }: { icon: any, label: string, active: boolean, onClick: () => void, badge?: number | string }) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "flex items-center justify-between w-full px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer",
+      active
+        ? "bg-zinc-900 text-white shadow-lg font-bold"
+        : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 font-medium"
+    )}
+  >
+    <div className="flex items-center gap-3">
+      <Icon size={20} />
+      <span className="text-sm">{label}</span>
+    </div>
+    {badge !== undefined && badge !== null && (
+      <span className="px-2 py-0.5 rounded-full text-xs font-black bg-amber-500 text-amber-950 font-mono">
+        {badge}
+      </span>
+    )}
+  </button>
+);
+
+const Card = ({ children, className, ...props }: any) => (
+  <div className={cn("bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden", className)} {...props}>
+    {children}
+  </div>
+);
+
+// Error Boundary Component (Shim for missing @types/react)
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends (React.Component as any)<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = {
+    hasError: false
+  };
+
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: any) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="p-12 text-center bg-zinc-50 rounded-3xl border-2 border-dashed border-zinc-200">
+          <AlertCircle className="mx-auto text-zinc-300 mb-4" size={48} />
+          <h3 className="text-lg font-bold text-zinc-900 mb-2">Ops! Algo deu errado nesta seção.</h3>
+          <p className="text-sm text-zinc-500 max-w-xs mx-auto mb-6">Ocorreu um erro inesperado ao processar os dados desta aba.</p>
+          <button 
+            onClick={() => this.setState({ hasError: false })}
+            className="px-6 py-2 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-all shadow-md active:scale-95"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const Badge = ({ children, variant = 'default', className }: { children: React.ReactNode, variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'error', className?: string }) => {
+  const variants = {
+    default: "bg-zinc-100 text-zinc-700",
+    success: "bg-emerald-100 text-emerald-700",
+    warning: "bg-amber-100 text-amber-700",
+    danger: "bg-rose-100 text-rose-700",
+    error: "bg-rose-100 text-rose-700",
+    info: "bg-sky-100 text-sky-700",
+  };
+  return (
+    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", variants[variant], className)}>
+      {children}
+    </span>
+  );
+};
+
+const InfoModal = ({ isOpen, onClose, title, description }: { isOpen: boolean, onClose: () => void, title: string, description: string }) => (
+  <AnimatePresence>
+    {isOpen && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        />
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-zinc-200"
+        >
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-zinc-900 border-b-2 border-zinc-900 pb-1">
+                <AlertCircle size={20} />
+                <h3 className="font-bold text-lg tracking-tight">{title}</h3>
+              </div>
+              <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-400">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bg-zinc-50 rounded-xl p-4 border border-zinc-100">
+              <p className="text-zinc-600 text-sm leading-relaxed font-medium">
+                {description}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-full mt-6 bg-zinc-900 text-white font-bold py-3 rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-[0.98]"
+            >
+              Entendido
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+);
+
+const safeDate = (dateStr: any) => {
+  try {
+    if (!dateStr) return null;
+    let str = String(dateStr).trim();
+    if (str.includes(' ') && !str.includes('T')) {
+      str = str.replace(' ', 'T');
+    }
+    if (!/[Zz]|[+-]\d{2}:?\d{2}$/.test(str) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str)) {
+      str += 'Z';
+    }
+    const d = parseISO(str);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+};
+
+const safeFormat = (dateStr: any, formatStr: string) => {
+  const d = safeDate(dateStr);
+  if (!d) return '-';
+  try {
+    return format(d, formatStr);
+  } catch {
+    return '-';
+  }
+};
+
+type RunningTaskBannerProps = {
+  execution: StageExecution;
+  onNavigate: () => void | Promise<void>;
+  key?: any;
+};
+
+const RunningTaskBanner = ({ execution, onNavigate }: RunningTaskBannerProps) => {
+  const [times, setTimes] = useState({ totalAccumulatedSeconds: 0, currentSessionSeconds: 0, isPaused: false });
+
+  useEffect(() => {
+    if (!execution.start_time) return;
+
+    const updateTimer = () => {
+      setTimes(calculateExecutionTimes(execution, execution.pauses || [], Date.now()));
+    };
+
+    updateTimer(); // Initial call
+    const timer = setInterval(updateTimer, 1000);
+    return () => clearInterval(timer);
+  }, [execution]);
+
+  return (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="bg-zinc-900 text-white overflow-hidden shadow-lg mb-2 rounded-xl"
+    >
+      <div
+        className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-zinc-800 transition-colors"
+        onClick={onNavigate}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 animate-pulse">
+            <Play size={16} />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tarefa em Andamento</p>
+            <p className="text-sm font-bold">
+              {execution.stage_name} <span className="text-zinc-500 mx-2">•</span> <span className="font-mono">{execution.order_number}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Sessão Atual</span>
+            <span className="text-sm font-mono font-bold text-emerald-300">{formatSeconds(times.currentSessionSeconds)}</span>
+          </div>
+          <div className="h-6 w-px bg-zinc-700 mx-1" />
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Tempo Total</span>
+            <span className="text-xl font-mono font-bold tabular-nums">{formatSeconds(times.totalAccumulatedSeconds)}</span>
+          </div>
+          <ChevronRight size={20} className="text-zinc-600" />
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string) => void }) => {
+  const [monitorData, setMonitorData] = useState<StageExecution[]>([]);
+  const [monitorSearch, setMonitorSearch] = useState('');
+  const [monitorStageFilter, setMonitorStageFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const fetchMonitorData = async () => {
+    try {
+      const res = await fetch('/api/executions/monitor', {
+        headers: { 'x-user-role': 'Admin' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMonitorData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching monitor data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMonitorData();
+    const interval = setInterval(fetchMonitorData, 10000); // 10s refresh
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredData = (monitorData || []).filter(e => {
+    const searchMatch = (e.order_number?.toLowerCase().includes(monitorSearch.toLowerCase()) || 
+                         e.client_name?.toLowerCase().includes(monitorSearch.toLowerCase()));
+    const stageMatch = !monitorStageFilter || e.stage_id?.toString() === monitorStageFilter;
+    return searchMatch && stageMatch;
+  });
+
+  const getBaseTimeInfo = (exec: StageExecution & { quantity?: number }) => {
+    const ideal = exec.ideal_time || exec.average_time_seconds || 0;
+    const count = exec.execution_count || 0;
+    const real = exec.real_average_time || 0;
+    const qty = exec.quantity || 1;
+    const calcType = exec.calculation_type || 'por_peca';
+
+    let baseTime = 0;
+    if (count >= 10 && real > 0) {
+      baseTime = real;
+    } else {
+      baseTime = ideal;
+    }
+
+    if (calcType === 'por_peca') {
+      baseTime *= qty;
+    } else if (calcType === 'por_lote') {
+      // Opcional: implementar lógica de lote se necessário
+      baseTime *= Math.ceil(qty / 10); // Exemplo: lote de 10
+    }
+
+    return { baseTime, type: count >= 10 && real > 0 ? 'Real' : 'Ideal', calcType };
+  };
+
+  const getStatusColor = (current: number, avg: number) => {
+    if (!avg || avg === 0) return 'text-zinc-600 bg-zinc-100';
+    const ratio = current / avg;
+    if (ratio <= 0.8) return 'text-emerald-700 bg-emerald-100 border-emerald-200';
+    if (ratio <= 1.0) return 'text-amber-700 bg-amber-100 border-amber-200';
+    return 'text-rose-700 bg-rose-100 border-rose-200';
+  };
+
+  const getStatusLabel = (current: number, avg: number) => {
+    if (!avg || avg === 0) return 'Normal';
+    const ratio = current / avg;
+    if (ratio <= 0.8) return 'Eficiente';
+    if (ratio <= 1.0) return 'Atenção';
+    return 'Atrasado';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Tarefas Ativas', 'Número de tarefas (etapas de uma OP) que estão com o \'Play\' acionado no exato momento.')}>
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+              <Activity size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Tarefas Ativas</p>
+              <h3 className="text-2xl font-bold">{monitorData?.length || 0}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Eficientes', 'Tarefas em andamento cujo tempo atual é inferior a 80% do tempo médio histórico esperado para a etapa.')}>
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Eficientes</p>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) <= 0.8; }).length}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Atenção', 'Tarefas em andamento onde o tempo atual atingiu entre 80% e 100% do tempo base (ideal ou real) esperado para a etapa.')}>
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
+              <AlertCircle size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Atenção</p>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) > 0.8 && (e.total_time_seconds / baseTime) <= 1.0; }).length}</h3>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Fora do Prazo', 'Tarefas cujo tempo atual de execução já excedeu o tempo base esperado.')}>
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 font-medium">Fora do Prazo</p>
+              <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) > 1.0; }).length}</h3>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-4 bg-zinc-50 border-zinc-200">
+        <div className="flex flex-col md:flex-row items-center gap-4">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input
+              type="text"
+              placeholder="Buscar por Pedido ou Cliente..."
+              value={monitorSearch}
+              onChange={(e) => setMonitorSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400"
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+             <Filter size={16} className="text-zinc-400" />
+             <select
+               value={monitorStageFilter}
+               onChange={(e) => setMonitorStageFilter(e.target.value)}
+               className="bg-white border border-zinc-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-zinc-400 min-w-[200px]"
+             >
+               <option value="">Todas as Etapas</option>
+                {Array.from(new Map((monitorData || []).map(e => [e.stage_id, e.stage_name])).entries()).map(([id, name]) => (
+                  <option key={id} value={id}>{name as string}</option>
+                ))}
+             </select>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-100">
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente / Produto</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Responsável</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Tempo Decorrido</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Tempo Base</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {loading ? (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400 animate-pulse">Carregando monitor...</td></tr>
+              ) : filteredData.length === 0 ? (
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-zinc-400">Nenhuma tarefa ativa no momento.</td></tr>
+              ) : filteredData.map(exec => {
+                const baseInfo = getBaseTimeInfo(exec);
+                const baseTime = baseInfo.baseTime;
+                let efficiency = '';
+                let efficiencyColor = 'text-zinc-500';
+                
+                if (baseTime > 0) {
+                  const pct = Math.round((exec.total_time_seconds / baseTime) * 100);
+                  efficiency = `${pct}% do tempo ${baseInfo.type.toLowerCase()}`;
+                  if (pct <= 80) efficiencyColor = 'text-emerald-600';
+                  else if (pct <= 100) efficiencyColor = 'text-amber-600';
+                  else efficiencyColor = 'text-rose-600 font-bold';
+                }
+
+                return (
+                  <tr key={exec.id} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-mono font-bold text-zinc-900">{exec.order_number}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-zinc-800">{exec.client_name}</span>
+                        <span className="text-[10px] text-zinc-500">{exec.product_type}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold">
+                          {exec.is_paused ? <Pause size={10} className="text-amber-500" /> : <Play size={10} className="text-emerald-500" />}
+                          {exec.stage_name}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {exec.calculation_type === 'por_pedido' && (
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Pedido">
+                              📄 por pedido
+                            </span>
+                          )}
+                          {exec.calculation_type === 'por_peca' && (
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Peça">
+                              👕 por peça
+                            </span>
+                          )}
+                          {exec.calculation_type === 'por_lote' && (
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Lote">
+                              📦 por lote
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-600 font-medium">
+                      {exec.user_name}
+                    </td>
+                    <td className="px-6 py-4">
+                       <span className={cn(
+                         "font-mono text-sm font-bold block",
+                         baseInfo.baseTime && exec.total_time_seconds > baseInfo.baseTime ? "text-rose-600" : "text-zinc-900"
+                       )}>
+                         {formatSeconds(exec.total_time_seconds)}
+                       </span>
+                       {efficiency && (
+                         <div className={`text-[10px] mt-0.5 ${efficiencyColor}`}>
+                           {efficiency}
+                         </div>
+                       )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-400 font-mono">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-900 font-medium">{baseInfo.baseTime ? formatSeconds(baseInfo.baseTime) : "-"}</span>
+                          <Badge variant={baseInfo.type === 'Real' ? 'info' : 'default'} className="md:px-2 md:py-0 md:text-[8px]">{baseInfo.type}</Badge>
+                        </div>
+                        <div className="text-[9px] text-zinc-500 flex flex-col">
+                          {(exec.ideal_time || 0) > 0 && (
+                            <span>Ideal: {formatSeconds(exec.calculation_type === 'por_peca' ? (exec.ideal_time || 0) * (exec.quantity || 1) : (exec.ideal_time || 0))}</span>
+                          )} 
+                          {(exec.real_average_time || 0) > 0 && (
+                            <span>Real: {formatSeconds(exec.calculation_type === 'por_peca' ? (exec.real_average_time || 0) * (exec.quantity || 1) : (exec.real_average_time || 0))}</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={cn(
+                        "inline-flex px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border",
+                        getStatusColor(exec.total_time_seconds, baseInfo.baseTime || 0)
+                      )}>
+                        {getStatusLabel(exec.total_time_seconds, baseInfo.baseTime || 0)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+export default function App() {
+  const [infoModal, setInfoModal] = useState<{ title: string, description: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
+  const [printOpen, setPrintOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  const cortePendingBadgeCount = useMemo(() => {
+    try {
+      const aggregated = aggregateCuttingDemand(orders || []);
+      return (aggregated || []).reduce((acc, item) => acc + (item.total_necessario || 0), 0);
+    } catch (e) {
+      console.warn('Erro ao calcular badge de corte:', e);
+      return 0;
+    }
+  }, [orders]);
+
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [templates, setTemplates] = useState<OrderTemplate[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [reportData, setReportData] = useState<any>(null);
+  const [expandedReportStage, setExpandedReportStage] = useState<string | null>(null);
+  const [deliveryReportData, setDeliveryReportData] = useState<DeliveryReportData | null>(null);
+  const [delaysReportData, setDelaysReportData] = useState<DeliveryReportData['atrasados'] | null>(null);
+  const [reportPeriod, setReportPeriod] = useState<'day' | 'week' | 'month'>('week');
+  const [reportUser, setReportUser] = useState<string>('');
+  const [reportStage, setReportStage] = useState<string>('');
+  const [reportPrintType, setReportPrintType] = useState<string>('');
+  const [profileReport, setProfileReport] = useState<any[]>([]);
+  const [operationalReportData, setOperationalReportData] = useState<OperationalReportData | null>(null);
+  const [goalsProductivityData, setGoalsProductivityData] = useState<GoalsProductivityResponse | null>(null);
+  const [collaboratorGoals, setCollaboratorGoals] = useState<CollaboratorStageGoal[]>([]);
+  const [goalsViewType, setGoalsViewType] = useState<'collaborator' | 'sector'>('collaborator');
+  const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+  const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+  const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
+  const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
+  const [autoPauseTimeWeekend, setAutoPauseTimeWeekend] = useState<string>('13:00');
+  const [showCompletedOrders, setShowCompletedOrders] = useState(false);
+  const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
+  const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [confirmingDtfOrderId, setConfirmingDtfOrderId] = useState<number | null>(null);
+  const [editingDtfOrderId, setEditingDtfOrderId] = useState<number | null>(null);
+  const [editingDtfValue, setEditingDtfValue] = useState<string>('');
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState<number | null>(null);
+  const [executions, setExecutions] = useState<StageExecution[]>([]);
+  const [orderStageObservations, setOrderStageObservations] = useState<any[]>([]);
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
+  const [newStageName, setNewStageName] = useState('');
+  const [newStageTime, setNewStageTime] = useState<number>(0);
+  const [newStageCalculationType, setNewStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
+  const [newStageMetaDiaria, setNewStageMetaDiaria] = useState<number | ''>('');
+  const [editingStageMetaDiaria, setEditingStageMetaDiaria] = useState<number | ''>('');
+  const [isUploadingArt, setIsUploadingArt] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const [editingStageId, setEditingStageId] = useState<number | null>(null);
+  const [editingStageName, setEditingStageName] = useState('');
+  const [editingStageTime, setEditingStageTime] = useState<number>(0);
+  const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
+  const [expandedGoalStageId, setExpandedGoalStageId] = useState<number | null>(null);
+  const [goalEditValues, setGoalEditValues] = useState<Record<string, string>>({}); // key: `${stageId}-${userId}`
+  const [lossReportData, setLossReportData] = useState<LossReportData | null>(null);
+  const [lossReasonsList, setLossReasonsList] = useState<LossReasonSetting[]>([]);
+  const [activeReportSubTab, setActiveReportSubTab] = useState<'geral' | 'metas' | 'operacional' | 'perdas'>('geral');
+
+  // Olist ERP Integration State
+  const [draftOrders, setDraftOrders] = useState<Order[]>([]);
+  const [selectedDraftOrder, setSelectedDraftOrder] = useState<Order | null>(null);
+  const [isDraftsListModalOpen, setIsDraftsListModalOpen] = useState(false);
+  const [isSyncingOlist, setIsSyncingOlist] = useState(false);
+  const [isConfirmingDraft, setIsConfirmingDraft] = useState(false);
+  const [confirmDraftForm, setConfirmDraftForm] = useState({
+    print_type: 'DTF' as 'DTF' | 'Silk' | 'Sublimação' | 'Bordado',
+    product_type: '',
+    num_colors: 1,
+    observations: '',
+    required_stages: [] as number[]
+  });
+
+  // Modal State: Progresso Parcial
+  const [isProgressModalOpen, setIsProgressModalOpen] = useState(false);
+  const [progressStageId, setProgressStageId] = useState<number | null>(null);
+  const [progressIncrementInput, setProgressIncrementInput] = useState<number>(0);
+
+  // Modal State: Ação de Pausar / Finalizar Etapa com Quantidade e Perdas
+  const [executionActionModal, setExecutionActionModal] = useState<{
+    type: 'pause' | 'finish';
+    executionId: number;
+    stageId: number;
+  } | null>(null);
+  const [actionQuantityInput, setActionQuantityInput] = useState<number>(0);
+  const [actionLossQuantityInput, setActionLossQuantityInput] = useState<number>(0);
+  const [actionLossReasonInput, setActionLossReasonInput] = useState<string>('');
+  const [actionLossReasonDetailInput, setActionLossReasonDetailInput] = useState<string>('');
+  const [actionLossReentryStageIdInput, setActionLossReentryStageIdInput] = useState<number | null>(null);
+  const [showActionLossSection, setShowActionLossSection] = useState<boolean>(false);
+  const [actionObservationInput, setActionObservationInput] = useState<string>('');
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
+
+  // Modal State: Registro de Perda
+  const [isLossModalOpen, setIsLossModalOpen] = useState(false);
+  const [lossStageId, setLossStageId] = useState<number | null>(null);
+  const [lossQtyInput, setLossQtyInput] = useState<number>(1);
+  const [lossReasonInput, setLossReasonInput] = useState<string>('');
+  const [lossReasonDetailInput, setLossReasonDetailInput] = useState<string>('');
+  const [lossReentryStageIdInput, setLossReentryStageIdInput] = useState<number | null>(null);
+
+  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [selectedStageFilter, setSelectedStageFilter] = useState<string>('');
+  const [selectedStageStatus, setSelectedStageStatus] = useState<'Pending' | 'Finished'>('Pending');
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [productTypeFilter, setProductTypeFilter] = useState<string>('');
+  const [printTypeFilter, setPrintTypeFilter] = useState<string>('');
+  const [newOrderRequiredStages, setNewOrderRequiredStages] = useState<number[]>([]);
+  const [isTemplateEditorOpen, setIsTemplateEditorOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<OrderTemplate | null>(null);
+  const [templateFormStages, setTemplateFormStages] = useState<number[]>([]);
+
+  // Edit Order Modal State
+  const [showEditOrderModal, setShowEditOrderModal] = useState(false);
+  const [editOrderForm, setEditOrderForm] = useState<Partial<Order>>({});
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+  const [editOrderHasExecutions, setEditOrderHasExecutions] = useState(false);
+
+  // Cancel Order State
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+
+  // Order History Modal State
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Delivery Forecast State
+  const [forecastData, setForecastData] = useState<OrderForecast[]>([]);
+  const [isLoadingForecast, setIsLoadingForecast] = useState(false);
+  const [expandedForecast, setExpandedForecast] = useState<number | null>(null);
+
+  // Auth States
+  const [session, setSession] = useState<Session | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [now, setNow] = useState(new Date());
+  const [activeExecutions, setActiveExecutions] = useState<StageExecution[]>([]);
+
+  const activeOrderTotalTime = useMemo(() => {
+    if (!selectedOrder) return 0;
+    if (!executions || executions.length === 0) return selectedOrder.total_time_seconds || 0;
+    const stageAcc = executions.reduce((sum, e) => {
+      const t = calculateExecutionTimes(e, e.pauses || [], now.getTime());
+      return sum + t.totalAccumulatedSeconds;
+    }, 0);
+    return Math.max(selectedOrder.total_time_seconds || 0, stageAcc);
+  }, [selectedOrder, executions, now]);
+  const [selectedFullImage, setSelectedFullImage] = useState<string | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the "Escanear OP" field
+  useEffect(() => {
+    if (activeTab === 'kanban' || activeTab === 'orders') {
+      // Small delay to ensure any modals/drawers have finished animating if needed
+      const timer = setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, selectedOrder, showNewOrderModal, showEditOrderModal, showHistoryModal, executions]);
+
+  const getOrderRisk = (orderId: number) => {
+    const forecast = forecastData.find(f => f.orderId === orderId);
+    if (!forecast) return 'safe';
+    return forecast.riskLevel;
+  };
+
+  const isImage = (url: string | undefined): boolean => {
+    if (!url) return false;
+    // Check if it's a data URL or has a common image extension
+    if (url.startsWith('data:image/')) return true;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const ext = cleanUrl.split('.').pop()?.toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext || '');
+  };
+
+  const isPdf = (url: string | undefined): boolean => {
+    if (!url) return false;
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const ext = cleanUrl.split('.').pop()?.toLowerCase();
+    return ext === 'pdf';
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (session?.user?.email) {
+      const userEmail = session.user.email.toLowerCase();
+      safeFetch(`/api/users?search=${encodeURIComponent(userEmail)}`).then(data => {
+        const found = data?.find((u: User) => u.email?.toLowerCase() === userEmail);
+        if (found) {
+          setCurrentUser(found);
+        } else {
+          console.warn(`[Auth] Usuário não encontrado na tabela 'users': ${userEmail}`);
+          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Produção', hourly_cost: 0, active: true });
+        }
+      });
+    } else {
+      setCurrentUser(null);
+    }
+  }, [session]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password: authPassword,
+    });
+    if (error) setAuthError(error.message);
+    setIsAuthLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const safeFetch = async (url: string, options?: RequestInit) => {
+    try {
+      // Automatically inject role and user-name headers if user is logged in
+      const roleHeaders: any = {};
+      if (currentUser?.role) {
+        roleHeaders['x-user-role'] = currentUser.role;
+        roleHeaders['x-user-name'] = currentUser.name;
+      }
+
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...roleHeaders,
+          ...(options?.headers || {})
+        }
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Fetch error ${res.status}: ${errorText}`);
+        return null;
+      }
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return await res.json();
+      }
+      return null;
+    } catch (err) {
+      console.error(`Fetch exception for ${url}:`, err);
+      return null;
+    }
+  };
+
+  const fetchActiveExecution = async () => {
+    if (!currentUser || currentUser.id === 0) return;
+    const data = await safeFetch(`/api/executions/active/${currentUser.id}`);
+    setActiveExecutions(data || []);
+  };
+
+  const fetchData = async () => {
+    let statsUrl = '/api/dashboard/stats?';
+    if (dateRange) {
+      statsUrl += `startDate=${dateRange.start}&endDate=${dateRange.end}&`;
+    }
+    if (productTypeFilter) {
+      statsUrl += `product_type=${productTypeFilter}&`;
+    }
+    if (printTypeFilter) {
+      statsUrl += `print_type=${printTypeFilter}&`;
+    }
+
+    let ordersUrl = `/api/orders?search=${encodeURIComponent(searchTerm)}`;
+    if (selectedStageFilter) {
+      ordersUrl += `&stage_id=${selectedStageFilter}&stage_status=${selectedStageStatus}`;
+    }
+    if (productTypeFilter) {
+      ordersUrl += `&product_type=${encodeURIComponent(productTypeFilter)}`;
+    }
+    if (printTypeFilter) {
+      ordersUrl += `&print_type=${encodeURIComponent(printTypeFilter)}`;
+    }
+
+    let [ordersData, stagesData, statsData, templatesData] = await Promise.all([
+      safeFetch(ordersUrl),
+      safeFetch('/api/stages'),
+      safeFetch(statsUrl),
+      safeFetch('/api/order-templates')
+    ]);
+
+    // Fallback para consulta direta ao Supabase caso a API REST do backend falhe ou retorne nulo
+    if (!Array.isArray(ordersData)) {
+      console.warn('[FetchData] /api/orders indisponível via API. Executando fallback direto ao Supabase...');
+      try {
+        let { data: fallbackOrders } = await supabase.rpc('get_orders_with_stages', {
+          p_search: searchTerm || null,
+          p_stage_id: selectedStageFilter ? Number(selectedStageFilter) : null,
+          p_stage_status: selectedStageStatus || null,
+          p_product_type: productTypeFilter || null,
+          p_print_type: printTypeFilter || null,
+        });
+
+        if (!Array.isArray(fallbackOrders) || fallbackOrders.length === 0) {
+          const { data: directOrders } = await supabase
+            .from('orders')
+            .select('*')
+            .is('deleted_at', null)
+            .order('deadline', { ascending: true });
+          if (Array.isArray(directOrders)) {
+            fallbackOrders = directOrders;
+          }
+        }
+
+        if (Array.isArray(fallbackOrders)) {
+          ordersData = fallbackOrders.map((o: any) => ({
+            ...o,
+            stages_status: Array.isArray(o.stages_status) ? o.stages_status : []
+          }));
+
+          // Enrich fallbackOrders with items column
+          try {
+            const orderIds = ordersData.map((o: any) => o.id);
+            if (orderIds.length > 0) {
+              const { data: dbItems } = await supabase
+                .from('orders')
+                .select('id, items')
+                .in('id', orderIds);
+              if (dbItems) {
+                const itemsMap = new Map();
+                dbItems.forEach((row: any) => {
+                  if (row.items) itemsMap.set(row.id, row.items);
+                });
+                ordersData.forEach((order: any) => {
+                  order.items = itemsMap.get(order.id) || [];
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('[FetchData] Erro ao enriquecer items no fallback:', err);
+          }
+
+          try {
+            const orderIds = ordersData.map((o: any) => o.id);
+            const { data: obsData } = await supabase
+              .from('stage_observations' as any)
+              .select('order_id, stage_id, observation, created_at')
+              .in('order_id', orderIds)
+              .order('created_at', { ascending: false });
+
+            if (obsData) {
+              const obsMap = new Map();
+              obsData.forEach((obs: any) => {
+                const key = `${obs.order_id}_${obs.stage_id}`;
+                if (!obsMap.has(key)) {
+                  obsMap.set(key, {
+                    observation: obs.observation,
+                    created_at: obs.created_at
+                  });
+                }
+              });
+
+              ordersData.forEach((order: any) => {
+                const activeStage = order.stages_status.find((s: any) => !s.finished);
+                order.active_stage_name = activeStage?.name || null;
+                
+                const unfinishedStages = (order.stages_status || []).filter((s: any) => !s.finished);
+                let newestObs = null;
+                for (const st of unfinishedStages) {
+                  const obsKey = `${order.id}_${st.id}`;
+                  const obsObj = obsMap.get(obsKey);
+                  if (obsObj) {
+                    const obsTime = new Date(obsObj.created_at).getTime();
+                    if (!newestObs || obsTime > newestObs.time) {
+                      newestObs = {
+                        text: obsObj.observation,
+                        time: obsTime
+                      };
+                    }
+                  }
+                }
+                order.active_stage_observation = newestObs ? newestObs.text : null;
+              });
+            } else {
+              ordersData.forEach((order: any) => {
+                const activeStage = order.stages_status.find((s: any) => !s.finished);
+                order.active_stage_name = activeStage?.name || null;
+                order.active_stage_observation = null;
+              });
+            }
+          } catch (err) {
+            console.warn('[FetchData] Falha ao buscar observações no fallback:', err);
+            ordersData.forEach((order: any) => {
+              const activeStage = order.stages_status.find((s: any) => !s.finished);
+              order.active_stage_name = activeStage?.name || null;
+              order.active_stage_observation = null;
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[FetchData] Erro no fallback do Supabase:', err);
+      }
+    }
+
+    if (!Array.isArray(stagesData)) {
+      try {
+        const { data: fallbackStages } = await supabase.from('stages').select('*').order('sort_order', { ascending: true });
+        if (Array.isArray(fallbackStages)) {
+          stagesData = fallbackStages;
+        }
+      } catch (err) {}
+    }
+
+    if (Array.isArray(ordersData)) {
+      // Prioridade visual por prazo (crescente)
+      const sortedOrders = [...ordersData].sort((a: Order, b: Order) => {
+        const timeA = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        const timeB = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+        return (isNaN(timeA) ? Infinity : timeA) - (isNaN(timeB) ? Infinity : timeB);
+      });
+      setOrders(sortedOrders);
+    }
+    if (Array.isArray(stagesData)) setStages(stagesData);
+    if (statsData) setStats(statsData);
+    if (templatesData) setTemplates(templatesData);
+    fetchCollaboratorGoals();
+    fetchDraftOrders();
+
+    // Always refresh forecast when data changes
+    const forecastResult = await safeFetch('/api/orders/delivery-forecast');
+    if (forecastResult) setForecastData(forecastResult);
+  };
+
+  const fetchDraftOrders = async () => {
+    const data = await safeFetch('/api/orders/drafts');
+    if (data && Array.isArray(data)) {
+      setDraftOrders(data);
+    }
+  };
+
+  const handleSyncOlist = async () => {
+    setIsSyncingOlist(true);
+    try {
+      const res = await fetch('/api/integrations/olist/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 1 })
+      });
+      const contentType = res.headers.get('content-type') || '';
+      
+      let data: any = {};
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`O servidor retornou uma resposta inesperada (HTTP ${res.status}). Tente novamente em alguns instantes.`);
+      }
+
+      if (!res.ok) throw new Error(data.error || 'Erro ao sincronizar com Olist ERP');
+
+      await fetchData();
+      await fetchDraftOrders();
+
+      let msg = `Sincronização concluída com sucesso!\n`;
+      msg += `Pedidos encontrados no Tiny (Histórico): ${data.total_found || 0}\n`;
+      msg += `Pedidos elegíveis (De hoje em diante): ${data.eligible_count || 0}\n`;
+      msg += `Novos rascunhos importados: ${data.imported_count || 0}\n`;
+      msg += `Pedidos ignorados (já importados): ${data.skipped_count || 0}`;
+      if (data.errors_count > 0) {
+        msg += `\n⚠️ Erros: ${data.errors_count}`;
+        if (data.errors && data.errors.length > 0) {
+          msg += `\nPrimeiro erro: ${data.errors[0]?.error || JSON.stringify(data.errors[0])}`;
+        }
+      }
+      alert(msg);
+    } catch (err: any) {
+      alert(`Erro na sincronização Olist: ${err.message}`);
+    } finally {
+      setIsSyncingOlist(false);
+    }
+  };
+
+  const handleOpenDraftReview = (order: Order) => {
+    setSelectedDraftOrder(order);
+    setConfirmDraftForm({
+      print_type: (order.print_type && ['DTF', 'Silk', 'Sublimação', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
+      product_type: order.product_type || 'Dry Fit',
+      num_colors: order.num_colors || 1,
+      observations: order.observations || '',
+      required_stages: order.required_stages && order.required_stages.length > 0 ? order.required_stages : stages.filter(s => s.active).map(s => s.id)
+    });
+  };
+
+  const handleConfirmDraftOrder = async () => {
+    if (!selectedDraftOrder) return;
+    setIsConfirmingDraft(true);
+    try {
+      const res = await fetch(`/api/orders/${selectedDraftOrder.id}/confirm-draft`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-name': currentUser?.name || 'Vendedora'
+        },
+        body: JSON.stringify(confirmDraftForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao liberar pedido para produção');
+
+      setSelectedDraftOrder(null);
+      await fetchData();
+      await fetchDraftOrders();
+      alert(`Pedido #${selectedDraftOrder.order_number} liberado para produção com sucesso!`);
+    } catch (err: any) {
+      alert(`Erro ao liberar pedido: ${err.message}`);
+    } finally {
+      setIsConfirmingDraft(false);
+    }
+  };
+
+  const handleDeleteDraftOrder = async (draftId: number) => {
+    if (!confirm('Tem certeza que deseja excluir este rascunho de pedido?')) return;
+    try {
+      const res = await fetch(`/api/orders/drafts/${draftId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-name': currentUser?.name || 'Vendedora' }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao excluir rascunho');
+
+      if (selectedDraftOrder?.id === draftId) {
+        setSelectedDraftOrder(null);
+      }
+      await fetchDraftOrders();
+    } catch (err: any) {
+      alert(`Erro ao excluir rascunho: ${err.message}`);
+    }
+  };
+
+  const handleCleanOldDrafts = async () => {
+    if (!confirm('Deseja excluir os rascunhos de pedidos antigos com mais de 7 dias?')) return;
+    try {
+      const res = await fetch('/api/orders/drafts/cleanup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-name': currentUser?.name || 'Vendedora'
+        },
+        body: JSON.stringify({ days: 7 })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao limpar rascunhos antigos');
+      await fetchDraftOrders();
+      alert('Rascunhos antigos limpos com sucesso!');
+    } catch (err: any) {
+      alert(`Erro ao limpar rascunhos: ${err.message}`);
+    }
+  };
+
+  const fetchCollaboratorGoals = async () => {
+    const data = await safeFetch('/api/collaborator-goals');
+    if (data) setCollaboratorGoals(data);
+  };
+
+  const fetchUsers = async () => {
+    const data = await safeFetch(`/api/users?search=${encodeURIComponent(userSearchTerm)}`);
+    if (data) setUsers(data);
+  };
+
+  const fetchExecutions = async (orderId: number) => {
+    const data = await safeFetch(`/api/orders/${orderId}/executions`);
+    if (data) setExecutions(data);
+    let obsData = await safeFetch(`/api/orders/${orderId}/stage-observations`);
+    if (!obsData) {
+      try {
+        const { data: sbObs } = await supabase
+          .from('stage_observations' as any)
+          .select('*, users(name)')
+          .eq('order_id', orderId)
+          .order('created_at', { ascending: false });
+        if (sbObs) {
+          obsData = sbObs.map((o: any) => ({
+            ...o,
+            user_name: o.users?.name || 'Operador'
+          }));
+        }
+      } catch (err) {
+        console.warn('[fetchExecutions] Fallback stage_observations falhou:', err);
+      }
+    }
+    setOrderStageObservations(obsData || []);
+  };
+
+  const fetchReports = async () => {
+    const tzOffset = new Date().getTimezoneOffset();
+    let url = `/api/reports?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}&tzOffset=${tzOffset}`;
+    if (reportUser) url += `&user_id=${reportUser}`;
+    if (reportStage) url += `&stage_id=${reportStage}`;
+    if (reportPrintType) url += `&print_type=${encodeURIComponent(reportPrintType)}`;
+
+    const data = await safeFetch(url);
+    if (data) setReportData(data);
+
+    const deliveryData = await safeFetch(`/api/reports/delivery?period=${reportPeriod}&startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
+    if (deliveryData) setDeliveryReportData(deliveryData);
+
+    const delaysData = await safeFetch(`/api/reports/delays?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
+    if (delaysData) setDelaysReportData(delaysData);
+
+    const profileData = await safeFetch(`/api/reports/profiles?startDate=${reportStartDate}&endDate=${reportEndDate}${reportPrintType ? `&print_type=${encodeURIComponent(reportPrintType)}` : ''}`);
+    if (profileData) setProfileReport(profileData || []);
+
+    const goalsData = await safeFetch('/api/reports/goals-productivity');
+    if (goalsData) setGoalsProductivityData(goalsData);
+
+    const lossData = await safeFetch(`/api/reports/losses?startDate=${reportStartDate}&endDate=${reportEndDate}`);
+    if (lossData) setLossReportData(lossData);
+
+    const reasonsData = await safeFetch('/api/loss-reasons');
+    if (reasonsData) setLossReasonsList(reasonsData);
+
+    fetchOperationalReport();
+  };
+
+  const fetchOperationalReport = async () => {
+    let url = `/api/reports/operational?startDate=${reportStartDate}&endDate=${reportEndDate}`;
+    if (reportPrintType) url += `&print_type=${encodeURIComponent(reportPrintType)}`;
+    const data = await safeFetch(url);
+    if (data) setOperationalReportData(data);
+  };
+
+  const fetchConfig = async () => {
+    const data = await safeFetch('/api/config');
+    if (data) {
+      if (data.meta_custo_por_peca !== undefined) setMetaCustoPeca(data.meta_custo_por_peca);
+      if (data.auto_pause_time_weekday) setAutoPauseTimeWeekday(data.auto_pause_time_weekday);
+      if (data.auto_pause_time_friday) setAutoPauseTimeFriday(data.auto_pause_time_friday);
+      if (data.auto_pause_time_lunch) setAutoPauseTimeLunch(data.auto_pause_time_lunch);
+    }
+  };
+
+  // Agendador de pausa automática: verifica o horário a cada minuto
+  useEffect(() => {
+    if (!currentUser) return; // Qualquer usuário logado pode disparar a verificação
+    
+    const check = () => {
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Dom, 1=Seg, ..., 5=Sex, 6=Sab
+      if (dayOfWeek === 0 || dayOfWeek === 6) return; // Ignora fins de semana
+
+      const checkTime = (target: string) => {
+        if (!target) return false;
+        const [hh, mm] = target.split(':').map(Number);
+        // No frontend, mantemos a verificação do exato minuto para disparar apenas uma vez
+        // O backend possui uma janela de ±3 min como margem de segurança
+        return now.getHours() === hh && now.getMinutes() === mm;
+      };
+
+      const isLunch = checkTime(autoPauseTimeLunch);
+      const isEndOfDay = checkTime(dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday);
+
+      if (isLunch || isEndOfDay) {
+        // Chamamos o novo endpoint robusto que valida o horário no server-side
+        safeFetch('/api/executions/auto-pause', { method: 'POST' })
+          .then((r) => {
+            if (r?.paused > 0) {
+              const reason = r.reason === 'almoço' ? 'almoço' : 'fim de expediente';
+              console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) - ${reason}.`);
+              fetchData(); // Atualiza a UI para refletir as pausas
+            }
+          })
+          .catch(console.error);
+      }
+    };
+    
+    // Verifica imediatamente ao montar e depois a cada minuto
+    check();
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, [currentUser, autoPauseTimeWeekday, autoPauseTimeFriday, autoPauseTimeLunch]);
+
+  const fetchForecast = async () => {
+    setIsLoadingForecast(true);
+    const data = await safeFetch('/api/orders/delivery-forecast');
+    if (data) setForecastData(data);
+    setIsLoadingForecast(false);
+  };
+
+  const handleUpdateDeadline = async (orderId: number, newDeadline: string) => {
+    await fetch(`/api/orders/${orderId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({ deadline: newDeadline })
+    });
+    fetchData();
+    if (selectedOrder && selectedOrder.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, deadline: newDeadline });
+    }
+  };
+
+  const handleToggleDtf = async (orderId: number, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    
+    // Optimistic UI updates
+    if (selectedOrder && selectedOrder.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, dtf_complete: nextStatus });
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_complete: nextStatus } : o));
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/dtf`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        },
+        body: JSON.stringify({ dtf_complete: nextStatus })
+      });
+      if (!res.ok) {
+        throw new Error('Falha ao atualizar status do DTF');
+      }
+    } catch (e) {
+      console.error(e);
+      // Revert status on failure
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_complete: currentStatus } : o));
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder({ ...selectedOrder, dtf_complete: currentStatus });
+      }
+      alert('Erro ao atualizar status do DTF.');
+    }
+    fetchData();
+  };
+
+  const handleUpdateDtfLocation = async (orderId: number, location: string) => {
+    if (selectedOrder && selectedOrder.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, dtf_location: location });
+    }
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_location: location } : o));
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/dtf`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        },
+        body: JSON.stringify({ dtf_location: location })
+      });
+      if (!res.ok) {
+        console.warn('Servidor respondeu com código de aviso/erro ao atualizar gaveteiro.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRequestToggleDtf = (orderId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+    }
+    
+    if (confirmingDtfOrderId === orderId) {
+      setConfirmingDtfOrderId(null);
+    } else {
+      setConfirmingDtfOrderId(orderId);
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmingDtfOrderId(null);
+      }, 4000); // 4 seconds auto-reset
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!window.confirm('⚠️ EXCLUIR PEDIDO\n\nO pedido será ocultado do sistema mas o histórico de execuções será mantido para auditoria.\n\nDeseja continuar?')) return;
+
+    setIsDeletingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        }
+      });
+
+      if (res.ok) {
+        setSelectedOrder(null);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao excluir pedido');
+      }
+    } catch (err) {
+      alert('Erro na conexão com o servidor');
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
+  const handleGenerateTrackingLink = async (order: Order) => {
+    setIsGeneratingLink(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/tracking-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || 'Produção',
+          'x-user-name': currentUser?.name || 'Operador',
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao gerar link de acompanhamento');
+      }
+
+      const token = data.tracking_token;
+      const trackingUrl = `${window.location.origin}/acompanhar/${token}`;
+      await navigator.clipboard.writeText(trackingUrl);
+      showToast('Link copiado!');
+    } catch (err: any) {
+      console.error('[Tracking Link] Error:', err);
+      alert(err.message || 'Erro ao gerar e copiar link de acompanhamento.');
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
+
+  const handleCancelOrder = async (orderId: number) => {
+    if (!window.confirm('⚠️ CANCELAR PEDIDO\n\nO pedido será marcado como cancelado e removido dos cálculos de capacidade. O histórico será mantido.\n\nDeseja continuar?')) return;
+
+    setIsCancellingOrder(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/cancel`, {
+        method: 'PATCH',
+        headers: {
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin'
+        }
+      });
+      if (res.ok) {
+        fetchData();
+        if (selectedOrder && selectedOrder.id === orderId) {
+          setSelectedOrder({ ...selectedOrder, status: 'Cancelado' });
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Erro ao cancelar pedido');
+      }
+    } catch (err) {
+      alert('Erro na conexão com o servidor');
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
+  const openEditOrderModal = (order: Order) => {
+    setEditOrderForm({
+      client_name: order.client_name,
+      product_type: order.product_type,
+      print_type: order.print_type,
+      quantity: order.quantity,
+      deadline: order.deadline ? order.deadline.split('T')[0] : '',
+      observations: order.observations,
+      required_stages: (order.required_stages || []).filter(id => {
+        const stage = stages.find(s => s.id === id);
+        return stage ? stage.active : false;
+      }),
+      num_colors: order.num_colors || 1,
+      art_urls: order.art_urls || (order.art_url ? [order.art_url] : []),
+      art_url: order.art_url,
+    });
+
+    // Open modal immediately to prevent "nothing happens" feeling
+    setShowEditOrderModal(true);
+
+    // Check if order has executions in the background
+    safeFetch(`/api/orders/${order.id}/executions`).then(execs => {
+      setEditOrderHasExecutions(execs && execs.length > 0);
+    });
+  };
+
+  const handleEditOrderSubmit = async () => {
+    if (!selectedOrder) return;
+
+    // Client-side validation
+    if (!editOrderForm.quantity || Number(editOrderForm.quantity) <= 0) {
+      alert('Quantidade deve ser maior que zero.');
+      return;
+    }
+    if (!editOrderForm.num_colors || Number(editOrderForm.num_colors) < 1) {
+      alert('Número de cores deve ser pelo menos 1.');
+      return;
+    }
+
+    setIsEditingOrder(true);
+    try {
+      const extraHeaders: any = {};
+      if (selectedOrder.status === 'Entregue') {
+        const confirmed = window.confirm('⚠️ PEDIDO JÁ ENTREGUE\n\nEste pedido já foi marcado como entregue. Editar pode afetar indicadores históricos.\n\nDeseja continuar?');
+        if (!confirmed) { setIsEditingOrder(false); return; }
+        extraHeaders['x-confirm-finalized'] = 'true';
+      }
+
+      const res = await fetch(`/api/orders/${selectedOrder.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || '',
+          'x-user-name': currentUser?.name || 'Admin',
+          ...extraHeaders
+        },
+        body: JSON.stringify(editOrderForm)
+      });
+
+      if (res.ok) {
+        setShowEditOrderModal(false);
+        fetchData();
+        // Update local selectedOrder state
+        setSelectedOrder({ ...selectedOrder, ...editOrderForm } as Order);
+      } else {
+        const err = await res.json();
+        alert(err.error || err.message || 'Erro ao editar pedido');
+      }
+    } catch (err) {
+      alert('Erro na conexão com o servidor');
+    } finally {
+      setIsEditingOrder(false);
+    }
+  };
+
+  const handleViewHistory = async (orderId: number) => {
+    setIsLoadingHistory(true);
+    setShowHistoryModal(true);
+    const data = await safeFetch(`/api/orders/${orderId}/history`);
+    setOrderHistory(data || []);
+    setIsLoadingHistory(false);
+  };
+
+  const handleAddImages = async (orderId: number, files: FileList) => {
+    // Check file sizes (max 4MB to avoid Vercel limit)
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > MAX_FILE_SIZE) {
+        alert(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+        return;
+      }
+    }
+
+    setIsUploadingArt(true);
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('art_files', files[i]);
+    }
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/images`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        const details = errData?.details ? `\n\nDetalhes:\n${errData.details.join('\n')}` : '';
+        throw new Error(`${errData?.error || 'Falha no upload'}${details}`);
+      }
+
+      const data = await res.json();
+      // Update local state for the selected order
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder({
+          ...selectedOrder,
+          art_urls: data.art_urls
+        });
+      }
+      fetchData(); // Refresh all orders
+    } catch (err) {
+      alert('Erro ao adicionar imagens. Tente novamente.');
+    } finally {
+      setIsUploadingArt(false);
+    }
+  };
+
+  const handleStartStage = async (stageId: number) => {
+    if (!selectedOrder) return;
+    
+    // Confirmação ao iniciar tarefa
+    const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
+    const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
+    if (!confirmStart) return;
+    
+    const res = await fetch('/api/executions/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser!.id })
+    });
+    if (res.ok) {
+      fetchExecutions(selectedOrder.id);
+      fetchData();
+      fetchActiveExecution();
+    } else {
+      const err = await res.json();
+      alert(err.error);
+    }
+  };
+
+  const moveStage = async (currentIndex: number, direction: 1 | -1) => {
+    const newIndex = currentIndex + direction;
+    if (newIndex < 0 || newIndex >= stages.length) return;
+
+    const newStages = [...stages];
+    const stageA = newStages[currentIndex];
+    const stageB = newStages[newIndex];
+
+    // Swap in local state
+    newStages[currentIndex] = stageB;
+    newStages[newIndex] = stageA;
+
+    // Swap sort_order values
+    const tempSortOrder = stageA.sort_order;
+    stageA.sort_order = stageB.sort_order;
+    stageB.sort_order = tempSortOrder;
+
+    setStages(newStages);
+
+    try {
+      await Promise.all([
+        fetch(`/api/stages/${stageA.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ sort_order: stageA.sort_order })
+        }),
+        fetch(`/api/stages/${stageB.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ sort_order: stageB.sort_order })
+        })
+      ]);
+      fetchData(); // Refresh to ensure backend sync
+    } catch (err) {
+      alert("Erro ao reordenar etapas.");
+      fetchData(); // Rollback local state
+    }
+  };
+
+  const handleOpenActionModal = (type: 'pause' | 'finish', executionId: number, stageId: number) => {
+    setActionQuantityInput(0);
+    setActionLossQuantityInput(0);
+    const initialReason = lossReasonsList.length > 0 ? lossReasonsList[0].motivo : 'Defeito de corte';
+    setActionLossReasonInput(initialReason);
+    setActionLossReasonDetailInput('');
+    const defaultReentry = lossReasonsList.find(r => r.motivo === initialReason)?.etapa_reentrada_id || stageId;
+    setActionLossReentryStageIdInput(defaultReentry);
+    setShowActionLossSection(false);
+    setActionObservationInput('');
+    setExecutionActionModal({ type, executionId, stageId });
+  };
+
+  const handlePauseStage = (executionId: number, stageId: number) => {
+    handleOpenActionModal('pause', executionId, stageId);
+  };
+
+  const handleFinishStage = (executionId: number, stageId: number) => {
+    handleOpenActionModal('finish', executionId, stageId);
+  };
+
+  const handleConfirmExecutionAction = async (actionType?: 'pause' | 'finish', forceFinish = false) => {
+    if (!executionActionModal || !selectedOrder) return;
+    const { executionId, stageId } = executionActionModal;
+    const type = actionType || executionActionModal.type;
+
+    // Validação do motivo se informou perdas
+    if (actionLossQuantityInput > 0) {
+      if (!actionLossReasonInput) {
+        alert("Por favor, selecione o motivo da perda.");
+        return;
+      }
+      if (actionLossReasonInput === 'Outro' && !actionLossReasonDetailInput.trim()) {
+        alert("Por favor, informe o detalhamento do motivo 'Outro'.");
+        return;
+      }
+    }
+
+    setIsActionLoading(true);
+    try {
+      // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
+      if (actionQuantityInput > 0) {
+        const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({
+            incremento: actionQuantityInput,
+            user_id: currentUser?.id || 1,
+            user_name: currentUser?.name || 'Operador'
+          })
+        });
+        if (!progRes.ok) {
+          const err = await progRes.json();
+          alert(err.error || "Erro ao registrar progresso.");
+          return;
+        }
+      }
+
+      // 2. Se informou peças perdidas > 0, registra a perda
+      if (actionLossQuantityInput > 0) {
+        const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({
+            quantidade_perdida: actionLossQuantityInput,
+            motivo: actionLossReasonInput,
+            motivo_detalhe: actionLossReasonDetailInput,
+            etapa_reentrada_id: actionLossReentryStageIdInput || stageId,
+            user_id: currentUser?.id || 1,
+            user_name: currentUser?.name || 'Operador'
+          })
+        });
+        if (!lossRes.ok) {
+          const err = await lossRes.json();
+          alert(err.error || "Erro ao registrar perda.");
+          return;
+        }
+      }
+
+      // 3. Executa a Pausa ou a Finalização
+      if (type === 'pause') {
+        await fetch(`/api/executions/${executionId}/pause`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ observation: actionObservationInput })
+        });
+        setExecutionActionModal(null);
+        fetchExecutions(selectedOrder.id);
+        fetchData();
+        fetchActiveExecution();
+      } else if (type === 'finish') {
+        const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-role': currentUser?.role || ''
+          },
+          body: JSON.stringify({ force: forceFinish, observation: actionObservationInput })
+        });
+
+        if (finishRes.ok) {
+          setExecutionActionModal(null);
+          fetchExecutions(selectedOrder.id);
+          fetchData();
+          fetchActiveExecution();
+        } else {
+          const err = await finishRes.json();
+          if (err.canForce && !forceFinish) {
+            const confirmForce = window.confirm(
+              `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
+            );
+            if (confirmForce) {
+              await handleConfirmExecutionAction('finish', true);
+            }
+          } else {
+            alert(err.error || "Erro ao finalizar etapa");
+          }
+        }
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleResumeStage = async (executionId: number) => {
+    await fetch(`/api/executions/${executionId}/resume`, {
+      method: 'POST',
+      headers: { 'x-user-role': currentUser?.role || '' }
+    });
+    fetchExecutions(selectedOrder!.id);
+    fetchActiveExecution();
+  };
+
+  const handleOpenProgressModal = (stageId: number) => {
+    setProgressStageId(stageId);
+    setProgressIncrementInput(0);
+    setIsProgressModalOpen(true);
+  };
+
+  const handleSaveProgress = async () => {
+    if (!selectedOrder || !progressStageId || progressIncrementInput <= 0) return;
+    const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${progressStageId}/progress`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({
+        incremento: progressIncrementInput,
+        user_id: currentUser?.id || 1,
+        user_name: currentUser?.name || 'Operador'
+      })
+    });
+    if (res.ok) {
+      setIsProgressModalOpen(false);
+      fetchData();
+      fetchExecutions(selectedOrder.id);
+      fetchActiveExecution();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Erro ao registrar progresso");
+    }
+  };
+
+  const handleOpenLossModal = (stageId: number) => {
+    setLossStageId(stageId);
+    setLossQtyInput(1);
+    const initialReason = lossReasonsList.length > 0 ? lossReasonsList[0].motivo : 'Defeito de corte';
+    setLossReasonInput(initialReason);
+    setLossReasonDetailInput('');
+    const defaultReentry = lossReasonsList.find(r => r.motivo === initialReason)?.etapa_reentrada_id || stageId;
+    setLossReentryStageIdInput(defaultReentry);
+    setIsLossModalOpen(true);
+  };
+
+  const handleSaveLoss = async () => {
+    if (!selectedOrder || !lossStageId || lossQtyInput <= 0 || !lossReasonInput) return;
+    if (lossReasonInput === 'Outro' && !lossReasonDetailInput.trim()) {
+      alert("Por favor, informe o detalhamento do motivo 'Outro'.");
+      return;
+    }
+    const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${lossStageId}/loss`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({
+        quantidade_perdida: lossQtyInput,
+        motivo: lossReasonInput,
+        motivo_detalhe: lossReasonDetailInput,
+        etapa_reentrada_id: lossReentryStageIdInput,
+        user_id: currentUser?.id || 1,
+        user_name: currentUser?.name || 'Operador'
+      })
+    });
+    if (res.ok) {
+      setIsLossModalOpen(false);
+      alert("Perda registrada com sucesso! A pendência de reposição foi enviada para a etapa de reentrada.");
+      fetchData();
+      fetchExecutions(selectedOrder.id);
+      fetchActiveExecution();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Erro ao registrar perda");
+    }
+  };
+
+  const handleSaveLossReasonsMapping = async (updatedReasons: LossReasonSetting[]) => {
+    const res = await fetch('/api/loss-reasons', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({ reasons: updatedReasons })
+    });
+    if (res.ok) {
+      alert("Mapeamento de perdas atualizado!");
+      setLossReasonsList(updatedReasons);
+    } else {
+      alert("Erro ao salvar mapeamento de perdas.");
+    }
+  };
+
+  const updateOrderStatus = async (orderId: number, status: string) => {
+    await fetch(`/api/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': currentUser?.role || ''
+      },
+      body: JSON.stringify({ status })
+    });
+    fetchData();
+  };
+
+  useEffect(() => {
+    fetchData();
+    if (currentUser?.role === 'Admin') {
+      fetchConfig();
+    }
+    if (activeTab === 'settings' && currentUser?.role === 'Admin') {
+      fetchUsers();
+      fetchCollaboratorGoals();
+    }
+  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, activeTab, currentUser]);
+
+  useEffect(() => {
+    if (activeTab === 'collaborators') {
+      fetchUsers();
+    }
+  }, [activeTab, userSearchTerm]);
+
+  useEffect(() => {
+    if (activeTab === 'reports' || activeTab === 'costs') {
+      fetchReports();
+      safeFetch(`/api/reports/profiles?startDate=${reportStartDate}&endDate=${reportEndDate}${reportUser ? `&user_id=${reportUser}` : ''}`).then(data => {
+        if (data) setProfileReport(data);
+      });
+    }
+  }, [activeTab, reportPeriod, reportUser, reportStage, reportStartDate, reportEndDate, reportPrintType]);
+
+  useEffect(() => {
+    if (currentUser && currentUser.id !== 0) {
+      fetchActiveExecution();
+      const interval = setInterval(fetchActiveExecution, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [currentUser]);
+
+  // Initialize selectedStageId and ensure items are loaded when order is opened
+  useEffect(() => {
+    if (selectedOrder) {
+      const orderStages = selectedOrder.stages_status || [];
+      const firstUnfinished = orderStages.find(s => !s.finished);
+      if (firstUnfinished) {
+        setSelectedStageId(firstUnfinished.id);
+      } else if (orderStages.length > 0) {
+        setSelectedStageId(orderStages[0].id);
+      }
+
+      // Guarantee items are populated for selectedOrder even if orders list was cached or missing items
+      if (!selectedOrder.items || selectedOrder.items.length === 0) {
+        supabase
+          .from('orders')
+          .select('items')
+          .eq('id', selectedOrder.id)
+          .single()
+          .then(({ data }) => {
+            if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
+              setSelectedOrder(prev => (prev && prev.id === selectedOrder.id ? { ...prev, items: data.items } : prev));
+            }
+          });
+      }
+    } else {
+      setSelectedStageId(null);
+    }
+  }, [selectedOrder]);
+
+  // Shortcut Listener at top level to avoid Hook order violation
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ignore input if user is typing in another form field
+      if ((e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) && e.target !== scanInputRef.current) {
+        return;
+      }
+
+      // Handle Escape even if scan input is focused (to close order)
+      if (e.key === 'Escape' && selectedOrder) {
+        setSelectedOrder(null);
+        return;
+      }
+
+      // If no order is selected, we don't handle the numbered shortcuts
+      if (!selectedOrder) return;
+
+      // Handle Arrow Navigation
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const stageIds = (selectedOrder.stages_status || []).map(s => s.id);
+        const currentIndex = stageIds.indexOf(selectedStageId || -1);
+        
+        if (e.key === 'ArrowDown') {
+          const nextIndex = (currentIndex + 1) % Math.max(1, stageIds.length);
+          if (stageIds[nextIndex] !== undefined) setSelectedStageId(stageIds[nextIndex]);
+        } else {
+          const prevIndex = (currentIndex - 1 + stageIds.length) % Math.max(1, stageIds.length);
+          if (stageIds[prevIndex] !== undefined) setSelectedStageId(stageIds[prevIndex]);
+        }
+        return;
+      }
+
+      // Also ignore if the scan field is focused but the key is not one of our shortcuts
+      const isShortcutKey = ['1', '2', '3'].includes(e.key);
+      if (e.target === scanInputRef.current && !isShortcutKey) {
+        return;
+      }
+
+      // Shortcut logic for the selected stage
+      if (!selectedStageId) return;
+      
+      const stage = stages.find(s => s.id === selectedStageId);
+      if (!stage) return;
+      
+      const execution = (executions || []).find(ex => ex.stage_id === stage.id);
+      const isFinished = (selectedOrder.stages_status || []).find(s => s.id === selectedStageId)?.finished;
+
+      switch (e.key) {
+        case '1':
+          e.preventDefault();
+          if (isFinished) return;
+          if (!execution) {
+            handleStartStage(stage.id);
+          } else if (execution.status === 'Pausado') {
+            handleResumeStage(execution.id);
+          }
+          break;
+        case '2':
+          e.preventDefault();
+          if (execution?.status === 'Em andamento') {
+            handlePauseStage(execution.id, stage.id);
+          }
+          break;
+        case '3':
+          e.preventDefault();
+          if (execution?.status === 'Em andamento') {
+            handleFinishStage(execution.id, stage.id);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [selectedOrder, selectedStageId, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
+
+  // New Order Form State
+  const [newOrderForm, setNewOrderForm] = useState({
+    client_name: '',
+    product_type: 'Dry Fit',
+    print_type: 'Silk',
+    quantity: '',
+    deadline: '',
+    observations: ''
+  });
+
+  const applyTemplate = (template: OrderTemplate) => {
+    setNewOrderForm(prev => ({
+      ...prev,
+      product_type: template.product_type,
+      print_type: template.print_type,
+      quantity: template.quantity.toString(),
+      observations: template.observations
+    }));
+
+    // Fallback: Se o template não tiver etapas, carrega todas as ativas
+    if (template.required_stages && template.required_stages.length > 0) {
+      setNewOrderRequiredStages(template.required_stages.filter(id => {
+        const stage = stages.find(s => s.id === id);
+        return stage ? stage.active : false;
+      }));
+    } else {
+      setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+    }
+  };
+
+
+  const COLORS = React.useMemo(() => ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'], []);
+
+  // Memoriazação robusta dos dados de custo para evitar crash durante renderização
+  const memoizedCostsByCollaborator = React.useMemo(() => {
+    if (!reportData?.costsByCollaborator || !Array.isArray(reportData.costsByCollaborator)) return [];
+    return [...reportData.costsByCollaborator].sort((a: any, b: any) => {
+      const costA = (Number(a?.total_cost) || 0) / (Number(a?.pecas) || 1);
+      const costB = (Number(b?.total_cost) || 0) / (Number(b?.pecas) || 1);
+      return costA - costB;
+    });
+  }, [reportData?.costsByCollaborator]);
+
+  const memoizedOrdersCompleted = React.useMemo(() => {
+    if (!operationalReportData?.pedidos_concluidos || !Array.isArray(operationalReportData.pedidos_concluidos)) return [];
+    return [...operationalReportData.pedidos_concluidos];
+  }, [operationalReportData?.pedidos_concluidos]);
+
+  const isTrackingPage = window.location.pathname.startsWith('/acompanhar/');
+  const trackingToken = isTrackingPage ? window.location.pathname.split('/').pop() || null : null;
+
+  if (isTrackingPage) {
+    return <PublicTracking token={trackingToken} />;
+  }
+
+  if (isAuthLoading) {
+    return <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA]"><div className="animate-spin text-zinc-400"><RefreshCw size={24} /></div></div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA] p-4 font-sans">
+        <Card className="w-full max-w-md p-8 shadow-xl border-t-4 border-t-zinc-900 border-x-0 border-b-0 rounded-2xl">
+          <div className="flex items-center gap-2 mb-8 justify-center">
+            <div className="w-12 h-12 bg-zinc-900 rounded-xl flex items-center justify-center text-white shadow-md">
+              <Package size={26} />
+            </div>
+            <h1 className="font-bold text-3xl tracking-tight text-zinc-900">ComfortPro</h1>
+          </div>
+
+          <h2 className="text-xl font-bold mb-6 text-center text-zinc-800">Acesso Restrito</h2>
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            {authError && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm font-medium text-center border border-red-100">
+                Ocorreu um erro: {authError}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">E-mail Corporativo</label>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
+                placeholder="seu@email.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Senha</label>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <button type="submit" className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-bold py-3.5 rounded-lg mt-6 flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg active:scale-[0.98]">
+              Entrar no Sistema <ChevronRight size={18} />
+            </button>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <div className="flex h-screen items-center justify-center bg-[#F8F9FA]"><p className="text-zinc-500 font-medium animate-pulse">Carregando permissões de perfil...</p></div>;
+  }
+
+  return (
+    <div className="flex h-screen bg-[#F8F9FA] font-sans text-zinc-900 overflow-hidden">
+      {/* Print Container */}
+      {(activeTab === 'kanban' || activeTab === 'orders') && (
+        <div className="print-container hidden text-black bg-white w-full p-8 font-sans">
+          <div className="mb-6 border-b border-zinc-300 pb-4 flex justify-between items-end">
+            <div>
+              <h1 className="text-2xl font-bold uppercase tracking-tight">Sequência de Produção</h1>
+              <p className="text-sm mt-1 text-zinc-500">
+                Emitido em: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+              </p>
+            </div>
+            <div className="text-right text-sm">
+              {selectedStageFilter && (
+                <p>Etapa: <strong>{stages.find(s => s.id.toString() === selectedStageFilter)?.name || selectedStageFilter}</strong></p>
+              )}
+              {printTypeFilter && <p>Estampa: <strong>{printTypeFilter}</strong></p>}
+            </div>
+          </div>
+          <table className="w-full border-collapse text-sm text-left">
+            <thead>
+              <tr className="bg-zinc-100 border-b-2 border-zinc-300 uppercase text-[10px] tracking-wider text-zinc-600">
+                <th className="p-2 border-r border-zinc-200">Cliente</th>
+                <th className="p-2 border-r border-zinc-200 text-center">Qtde</th>
+                <th className="p-2 border-r border-zinc-200">Estampa</th>
+                <th className="p-2 border-r border-zinc-200">Etapa atual</th>
+                <th className="p-2 border-r border-zinc-200 text-center">Prazo</th>
+                <th className="p-2 text-left" style={{minWidth: '200px'}}>Observação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(orders || [])
+                .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                .filter(o => {
+                    if (!searchTerm) return true;
+                    const search = searchTerm.toLowerCase();
+                    return (
+                      o.order_number.toLowerCase().includes(search) ||
+                      o.client_name.toLowerCase().includes(search) ||
+                      o.product_type.toLowerCase().includes(search) ||
+                      (o.print_type || '').toLowerCase().includes(search)
+                    );
+                })
+                .filter(o => {
+                    if (!selectedStageFilter) return true;
+                    const st = o.stages_status.find(s => s.id.toString() === selectedStageFilter);
+                    if (!st) return false;
+                    if (selectedStageStatus === 'Finished') return st.finished;
+                    return !st.finished;
+                })
+                .sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''))
+                .map((o, idx) => (
+                  <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
+                    <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[220px]">{o.client_name}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-center font-bold">{o.quantity}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.print_type || '-'}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-xs font-semibold text-zinc-700">{o.active_stage_name || '-'}</td>
+                    <td className="p-2 border-b border-zinc-200 border-r text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
+                    <td className="p-2 border-b border-zinc-200 text-xs text-zinc-700" style={{minWidth: '200px'}}>
+                      {o.active_stage_observation 
+                        ? <span className="italic">📝 {o.active_stage_observation.length > 120 
+                            ? `${o.active_stage_observation.slice(0, 120)}...` 
+                            : o.active_stage_observation}</span>
+                        : ''}
+                    </td>
+                  </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar */}
+      <aside className={cn(
+        "fixed inset-y-0 left-0 z-50 w-64 border-r border-zinc-200 bg-white p-6 flex flex-col gap-8 transition-transform duration-300 lg:relative lg:translate-x-0",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center text-white">
+              <Package size={18} />
+            </div>
+            <h1 className="font-bold text-xl tracking-tight">ComfortPro</h1>
+          </div>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden p-1 text-zinc-400">
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="flex flex-col gap-2 flex-1">
+          <SidebarItem
+            icon={LayoutDashboard}
+            label="Dashboard"
+            active={activeTab === 'dashboard'}
+            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
+          />
+          <SidebarItem
+            icon={ClipboardList}
+            label="Kanban"
+            active={activeTab === 'kanban'}
+            onClick={() => { setActiveTab('kanban'); setIsMobileMenuOpen(false); }}
+          />
+          <SidebarItem
+            icon={Package}
+            label="Pedidos"
+            active={activeTab === 'orders'}
+            onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
+          />
+          <SidebarItem
+            icon={Scissors}
+            label="Painel de Corte"
+            active={activeTab === 'cutting'}
+            onClick={() => { setActiveTab('cutting'); setIsMobileMenuOpen(false); }}
+            badge={cortePendingBadgeCount > 0 ? cortePendingBadgeCount : undefined}
+          />
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={Users}
+              label="Colaboradores"
+              active={activeTab === 'collaborators'}
+              onClick={() => { setActiveTab('collaborators'); setIsMobileMenuOpen(false); }}
+            />
+          )}
+          <SidebarItem
+            icon={FileText}
+            label="Relatórios"
+            active={activeTab === 'reports'}
+            onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
+          />
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={Activity}
+              label="Monitor"
+              active={activeTab === 'monitor'}
+              onClick={() => { setActiveTab('monitor'); setIsMobileMenuOpen(false); }}
+            />
+          )}
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={DollarSign}
+              label="Custos"
+              active={activeTab === 'costs'}
+              onClick={() => { setActiveTab('costs'); setIsMobileMenuOpen(false); }}
+            />
+          )}
+          {currentUser?.role === 'Admin' && (
+            <SidebarItem
+              icon={Settings}
+              label="Configurações"
+              active={activeTab === 'settings'}
+              onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+            />
+          )}
+        </nav>
+
+        <div className="mt-auto pt-6 border-t border-zinc-100">
+          <div className="flex items-center gap-3 px-2 mb-4">
+            <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600">
+              <UserIcon size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate">{currentUser?.name || '---'}</p>
+              <p className="text-xs text-zinc-500 truncate">{currentUser?.role || '---'}</p>
+            </div>
+          </div>
+          <button onClick={handleLogout} className="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-medium text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+            <LogOut size={16} />
+            Sair da Conta
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+        
+        {/* Banner Operador Ativo */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-6 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+              <span className="text-sm font-bold text-emerald-900">Operador Ativo: {currentUser?.name || '---'}</span>
+              <span className="hidden sm:inline text-emerald-300">•</span>
+              <span className="text-xs font-medium text-emerald-700">Setor: {currentUser?.role || '---'}</span>
+            </div>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {activeExecutions.length > 0 && (
+            <div className="flex flex-col gap-3 mb-6">
+              {activeExecutions.length > 1 && (
+                <div className="flex items-center gap-2 px-1">
+                  <Activity size={16} className="text-zinc-400" />
+                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Tarefas em Andamento ({activeExecutions.length})</span>
+                </div>
+              )}
+              {activeExecutions.map((exec) => (
+                <RunningTaskBanner
+                  key={exec.id}
+                  execution={exec}
+                  onNavigate={async () => {
+                    const orderData = await safeFetch(`/api/orders?search=${exec.order_number}`);
+                    if (orderData && orderData.length > 0) {
+                      const order = orderData.find((o: Order) => o.id === exec.order_id);
+                      if (order) {
+                        setSelectedOrder(order);
+                        fetchExecutions(order.id);
+                        setActiveTab('kanban');
+                      }
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </AnimatePresence>
+        <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl lg:text-2xl font-bold tracking-tight">
+                {activeTab === 'dashboard' && 'Visão Geral'}
+                {activeTab === 'kanban' && 'Fluxo de Produção'}
+                {activeTab === 'orders' && 'Todos os Pedidos'}
+                {activeTab === 'collaborators' && 'Colaboradores'}
+                {activeTab === 'reports' && 'Relatórios'}
+                {activeTab === 'costs' && 'Análise de Custos'}
+                {activeTab === 'settings' && 'Configurações do Sistema'}
+                {activeTab === 'monitor' && 'Monitor de Tarefas (Tempo Real)'}
+              </h2>
+              <p className="text-zinc-500 text-xs lg:text-sm">
+                {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
+              </p>
+            </div>
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 bg-white border border-zinc-200 rounded-lg text-zinc-600"
+            >
+              <Menu size={20} />
+            </button>
+          </div>
+
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+            {activeTab === 'collaborators' && (
+              <div className="relative w-full lg:w-auto">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome ou email..."
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 lg:min-w-[250px]"
+                />
+              </div>
+            )}
+            {(activeTab === 'kanban' || activeTab === 'orders') && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 sm:min-w-[200px]"
+                  />
+                </div>
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 rounded-lg p-1">
+                  <select
+                    value={selectedStageFilter}
+                    onChange={(e) => setSelectedStageFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-sm focus:outline-none"
+                  >
+                    <option value="">Todas as Etapas</option>
+                    {stages.map(stage => (
+                      <option key={stage.id} value={stage.id}>{stage.name}</option>
+                    ))}
+                  </select>
+                  {selectedStageFilter && (
+                    <select
+                      value={selectedStageStatus}
+                      onChange={(e) => setSelectedStageStatus(e.target.value as any)}
+                      className="px-2 py-1 bg-zinc-100 rounded text-[10px] font-bold focus:outline-none"
+                    >
+                      <option value="Pending">Pendente</option>
+                      <option value="Finished">Concluído</option>
+                    </select>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 rounded-lg p-1">
+                  <select
+                    value={productTypeFilter}
+                    onChange={(e) => setProductTypeFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
+                  >
+                    <option value="">Produtos</option>
+                    <option value="Dry Fit">Dry Fit</option>
+                    <option value="Algodão">Algodão</option>
+                    <option value="Poliamida">Poliamida</option>
+                  </select>
+                  <div className="w-px h-4 bg-zinc-200 mx-1" />
+                  <select
+                    value={printTypeFilter}
+                    onChange={(e) => setPrintTypeFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
+                  >
+                    <option value="">Estampas</option>
+                    <option value="Silk">Silk</option>
+                    <option value="DTF">DTF</option>
+                    <option value="Sublimação">Sublimação</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 ml-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
+                  title="Imprimir Sequência"
+                >
+                  <Printer size={16} />
+                  <span className="hidden sm:inline">Imprimir</span>
+                </button>
+              </div>
+            )}
+            {activeTab === 'collaborators' && (
+              <button
+                onClick={() => {
+                  setSelectedUserForEdit(null);
+                  setShowUserModal(true);
+                }}
+                className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
+              >
+                <Plus size={18} />
+                Convidar Colaborador
+              </button>
+            )}
+            {activeTab === 'dashboard' && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm overflow-x-auto">
+                  <button
+                    onClick={() => setDateRange(null)}
+                    className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", !dateRange ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Tudo
+                  </button>
+                  <button
+                    onClick={() => setDateRange({
+                      start: startOfWeek(new Date()).toISOString(),
+                      end: endOfWeek(new Date()).toISOString()
+                    })}
+                    className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", dateRange?.start === startOfWeek(new Date()).toISOString() ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Semana
+                  </button>
+                  <button
+                    onClick={() => setDateRange({
+                      start: startOfMonth(new Date()).toISOString(),
+                      end: endOfMonth(new Date()).toISOString()
+                    })}
+                    className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", dateRange?.start === startOfMonth(new Date()).toISOString() ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Mês
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
+                  <select
+                    value={productTypeFilter}
+                    onChange={(e) => setProductTypeFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
+                  >
+                    <option value="">Produtos</option>
+                    <option value="Dry Fit">Dry Fit</option>
+                    <option value="Algodão">Algodão</option>
+                    <option value="Poliamida">Poliamida</option>
+                  </select>
+                  <div className="w-px h-4 bg-zinc-200 mx-1" />
+                  <select
+                    value={printTypeFilter}
+                    onChange={(e) => setPrintTypeFilter(e.target.value)}
+                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
+                  >
+                    <option value="">Estampas</option>
+                    <option value="Silk">Silk</option>
+                    <option value="DTF">DTF</option>
+                    <option value="Sublimação">Sublimação</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            {activeTab === 'reports' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
+                  <button
+                    onClick={() => {
+                      setReportPeriod('day');
+                      setReportStartDate(format(new Date(), 'yyyy-MM-dd'));
+                      setReportEndDate(format(new Date(), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Diário
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportPeriod('day');
+                      setReportStartDate(format(new Date(), 'yyyy-MM-dd'));
+                      setReportEndDate(format(new Date(), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Diário
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportPeriod('week');
+                      setReportStartDate(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                      setReportEndDate(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'week' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Semanal
+                  </button>
+                  <button
+                    onClick={() => {
+                      setReportPeriod('month');
+                      setReportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                      setReportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                    }}
+                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'month' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
+                  >
+                    Mensal
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1.5 rounded-lg shadow-sm">
+                  <div className="flex items-center gap-2 px-2">
+                    <Calendar size={14} className="text-zinc-400" />
+                    <input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={(e) => setReportStartDate(e.target.value)}
+                      className="text-[10px] font-medium bg-transparent focus:outline-none"
+                    />
+                    <span className="text-zinc-300">|</span>
+                    <input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={(e) => setReportEndDate(e.target.value)}
+                      className="text-[10px] font-medium bg-transparent focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
+                  <div className="flex items-center gap-1 px-2 border-r border-zinc-100 py-1 sm:py-0">
+                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Colab:</span>
+                    <select
+                      value={reportUser}
+                      onChange={(e) => setReportUser(e.target.value)}
+                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
+                    >
+                      <option value="">Todos</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>{user.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 py-1 sm:py-0">
+                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Etapa:</span>
+                    <select
+                      value={reportStage}
+                      onChange={(e) => setReportStage(e.target.value)}
+                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
+                    >
+                      <option value="">Todas</option>
+                      {stages.map(stage => (
+                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 border-l border-zinc-100 py-1 sm:py-0">
+                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Setor:</span>
+                    <select
+                      value={reportPrintType}
+                      onChange={(e) => setReportPrintType(e.target.value)}
+                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
+                    >
+                      <option value="">Todos</option>
+                      <option value="Silk">Silk</option>
+                      <option value="DTF">DTF</option>
+                      <option value="Sublimação">Sublimação</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-[10px] font-bold hover:bg-zinc-800 transition-all shadow-sm active:scale-95 ml-auto sm:ml-0"
+                  title="Imprimir Relatório"
+                >
+                  <Printer size={12} />
+                  <span>Imprimir Relatório</span>
+                </button>
+              </div>
+            )}
+            {activeTab === 'dashboard' ? (
+              currentUser?.role === 'Admin' ? (
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
+                >
+                  <Target size={18} />
+                  Definir Metas
+                </button>
+              ) : null
+            ) : (
+              <div className="flex items-center gap-3 w-full lg:w-auto">
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    const scannedValue = (formData.get('escanearOp') as string).trim();
+                    if (!scannedValue) return;
+
+                    // Procura especificamente no campo client_name (como solicitado pelo usuário)
+                    const searchLower = scannedValue.toLowerCase();
+                    let foundOrder = orders.find(o => 
+                      o.client_name && o.client_name.toLowerCase().includes(searchLower)
+                    );
+
+                    const handleOrderFound = (order: Order) => {
+                      setSelectedOrder(order);
+                      fetchExecutions(order.id);
+                      (e.target as HTMLFormElement).reset();
+                    };
+
+                    if (foundOrder) {
+                      handleOrderFound(foundOrder);
+                    } else {
+                      // Se não encontrar localmente, busca na API focando no nome do cliente
+                      safeFetch(`/api/orders?search=${encodeURIComponent(scannedValue)}`).then(data => {
+                        if (data && data.length > 0) {
+                          // Prioriza match no client_name
+                          const clientMatch = data.find((o: Order) => 
+                            o.client_name && o.client_name.toLowerCase().includes(searchLower)
+                          );
+                          if (clientMatch) {
+                            handleOrderFound(clientMatch);
+                          } else {
+                            // Se encontrar algo por outros campos mas o usuário quer apenas cliente
+                            // podemos abrir o primeiro se for um scan literal do campo circled
+                            handleOrderFound(data[0]);
+                          }
+                        } else {
+                          alert('OP (Cliente) não encontrada no sistema.');
+                        }
+                      });
+                    }
+                  }}
+                  className="relative group flex-1 lg:w-64"
+                >
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none transition-colors group-focus-within:text-zinc-900 text-zinc-400">
+                    <Search className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="text"
+                    name="escanearOp"
+                    ref={scanInputRef}
+                    placeholder="Escanear OP (Cliente)..."
+                    className="block w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-bold text-zinc-900 placeholder:text-zinc-400 placeholder:font-normal focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-all outline-none"
+                    autoComplete="off"
+                  />
+                </form>
+
+                <button
+                  onClick={handleSyncOlist}
+                  disabled={isSyncingOlist}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm whitespace-nowrap text-xs font-bold active:scale-95 disabled:opacity-50 cursor-pointer"
+                  title="Buscar novos pedidos aprovados dos últimos 7 dias do Olist ERP"
+                >
+                  <RefreshCw size={15} className={cn(isSyncingOlist && "animate-spin")} />
+                  <span>{isSyncingOlist ? "Sincronizando..." : "Sincronizar Olist"}</span>
+                </button>
+
+                <button
+                  onClick={() => setIsDraftsListModalOpen(true)}
+                  className="relative bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm whitespace-nowrap text-xs font-bold active:scale-95 cursor-pointer"
+                  title="Ver lista de rascunhos de pedidos importados do Olist ERP"
+                >
+                  <Package size={15} />
+                  <span>Rascunhos Olist</span>
+                  {draftOrders.length > 0 && (
+                    <span className="bg-white text-amber-900 font-black px-1.5 py-0.5 rounded-full text-[10px] shadow-sm">
+                      {draftOrders.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowNewOrderModal(true);
+                    setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+                  }}
+                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm whitespace-nowrap"
+                >
+                  <Plus size={18} />
+                  Novo Pedido
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {activeTab === 'dashboard' && stats && (
+          <div className="space-y-8">
+            {/* Olist Draft Orders Banner */}
+            {draftOrders.length > 0 && (
+              <Card className="p-6 border-indigo-200 bg-indigo-50/50 shadow-md">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-indigo-600 text-white rounded-xl shadow-sm">
+                      <Package size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-indigo-950 flex items-center gap-2">
+                        Pedidos Importados do Olist ERP ({draftOrders.length})
+                        <span className="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 uppercase tracking-wider">
+                          Pendente de Estampa / Revisão
+                        </span>
+                      </h3>
+                      <p className="text-xs text-indigo-700 mt-0.5">
+                        Estes pedidos foram importados automaticamente do Olist com a grade de tamanhos. A vendedora precisa selecionar a estampa antes de liberar para produção.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCleanOldDrafts}
+                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                    title="Excluir rascunhos com mais de 7 dias"
+                  >
+                    <Trash2 size={13} />
+                    Limpar Antigos (&gt; 7 dias)
+                  </button>
+                </div>
+                <div className="overflow-x-auto border border-indigo-100 rounded-xl bg-white shadow-sm">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-indigo-100/50 border-b border-indigo-100 text-indigo-900 font-bold uppercase text-[10px]">
+                        <th className="px-4 py-2.5">Pedido Olist</th>
+                        <th className="px-4 py-2.5">Cliente</th>
+                        <th className="px-4 py-2.5 text-center">Itens / Grade</th>
+                        <th className="px-4 py-2.5 text-center">Prazo</th>
+                        <th className="px-4 py-2.5 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-indigo-50">
+                      {draftOrders.map((draft) => (
+                        <tr key={draft.id} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-4 py-3 font-bold font-mono text-indigo-950">{draft.order_number}</td>
+                          <td className="px-4 py-3 font-semibold text-zinc-800">{draft.client_name}</td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex flex-col items-center justify-center gap-1">
+                              <span className="inline-flex items-center gap-1 font-mono font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-[11px]">
+                                {draft.quantity} peças {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
+                              </span>
+                              {(() => {
+                                const cutQty = getOrderCuttingQty(draft);
+                                if (cutQty > 0) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[10px] font-black animate-pulse shadow-sm">
+                                      <Scissors size={11} className="text-amber-700" /> FALTA ESTOQUE: {cutQty} PÇS (CORTE)
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center font-medium text-zinc-600">
+                            {safeFormat(draft.deadline, 'dd/MM/yyyy')}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleOpenDraftReview(draft)}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                              >
+                                <Edit2 size={13} />
+                                Revisar &amp; Liberar
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDraftOrder(draft.id)}
+                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors border border-rose-200"
+                                title="Excluir este rascunho"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* Top KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Ativos', description: 'Total de pedidos que estão atualmente no sistema e ainda não foram finalizados ou cancelados.' })}>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Package size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Pedidos Ativos</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.activeOrders || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Peças em Produção', description: 'Soma total de todas as quantidades de itens dos pedidos que estão com status ativo.' })}>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                    <Layers size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Peças em Produção</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.activePieces || 0} <span className="text-sm font-normal text-zinc-400">un</span></h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Atrasados', description: 'Contagem de pedidos ativos cuja data de entrega (prazo) é anterior à data de hoje.' })}>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className={cn("p-3 rounded-xl", (stats.metrics?.overdueOrders || 0) > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}>
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Pedidos Atrasados</p>
+                    <h3 className={cn("text-2xl font-bold", (stats.metrics?.overdueOrders || 0) > 0 ? "text-rose-600" : "text-emerald-600")}>{stats.metrics?.overdueOrders || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Produção Hoje', description: 'Quantidade de peças que passaram por alguma etapa de finalização no dia atual.' })}>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Produção Hoje</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.todayFinalizedPieces || 0} <span className="text-sm font-normal text-zinc-400">peças</span></h3>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio', description: 'Média de tempo (em dias) que um pedido leva para ser concluído, desde a criação até a última etapa.' })}>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                    <Clock size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio</p>
+                    <h3 className="text-2xl font-bold">{((stats.metrics?.avgLeadTimeSeconds || 0) / 86400).toFixed(1)} <span className="text-sm font-normal text-zinc-400">dias</span></h3>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Central Orders Table */}
+              <div className="lg:col-span-2 space-y-8">
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-bold flex items-center gap-2">
+                      <List size={18} className="text-zinc-400" />
+                      Pedidos em Produção
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-100">
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Produto</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Qtd</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Prazo</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-50">
+                        {orders
+                          .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                          .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                          .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                          .map(order => {
+                          const risk = getOrderRisk(order.id);
+                          const riskColors = {
+                            danger: "text-rose-600",
+                            warning: "text-amber-600",
+                            safe: "text-emerald-600"
+                          };
+
+                          return (
+                            <tr key={order.id} className="hover:bg-zinc-50 transition-colors">
+                              <td className={cn("px-4 py-3 font-mono text-xs font-bold", riskColors[risk])}>
+                                <div>{order.order_number}</div>
+                                {(() => {
+                                  const cutQty = getOrderCuttingQty(order);
+                                  if (cutQty > 0) {
+                                    return (
+                                      <span className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded text-[9px] font-black animate-pulse">
+                                        <Scissors size={9} className="text-amber-700" /> {cutQty} p/ Corte
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-medium text-zinc-800">{order.client_name}</td>
+                              <td className="px-4 py-3 text-sm text-zinc-600">{order.product_type}</td>
+                              <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{order.quantity}</td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={cn("text-xs font-bold", riskColors[risk])}>
+                                  {safeFormat(order.deadline, 'dd/MM/yyyy')}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={cn(
+                                  "inline-flex px-2 py-1 rounded-full text-[10px] font-bold",
+                                  order.status === 'Em Produção' ? 'bg-sky-100 text-sky-700' :
+                                    order.status === 'Finalização' ? 'bg-amber-100 text-amber-700' :
+                                      'bg-zinc-100 text-zinc-700'
+                                )}>
+                                  {order.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {orders
+                          .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                          .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                          .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                          .length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produção.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Productivity Table */}
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-bold flex items-center gap-2">
+                      <Users size={18} className="text-zinc-400" />
+                      Produtividade por Colaborador
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-100">
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Colaborador</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Pedidos Finais</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Peças Feitas</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Tempo Médio/Peça</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-50">
+                        {(stats.productivity || []).map(prod => (
+                          <tr key={prod.collaborator} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-4 py-3 text-sm font-medium text-zinc-800">{prod.collaborator}</td>
+                            <td className="px-4 py-3 text-center text-sm text-zinc-600">{prod.orders_count}</td>
+                            <td className="px-4 py-3 text-center text-sm font-bold text-zinc-700">{prod.pieces_count}</td>
+                            <td className="px-4 py-3 text-center font-mono text-xs text-zinc-600">{(prod.avg_time_per_piece / 60).toFixed(1)} min</td>
+                          </tr>
+                        ))}
+                        {(!stats.productivity || stats.productivity.length === 0) && (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">Sem dados de produtividade no período.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Sidebar panels */}
+              <div className="space-y-8">
+                {/* At Risk Orders */}
+                <Card className="p-6 border-rose-100">
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-rose-700">
+                    <AlertTriangle size={18} />
+                    Pedidos em Risco ou Atrasados
+                  </h3>
+                  <div className="space-y-3">
+                    {(stats.atRiskOrders || []).map(risk => (
+                      <div key={risk.id} className="p-3 bg-rose-50 rounded-lg border border-rose-100 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-mono font-bold text-rose-700">{risk.order_number}</p>
+                          <p className="text-sm font-medium text-zinc-800 truncate max-w-[120px]">{risk.client_name}</p>
+                          <p className="text-[10px] text-zinc-500">{safeFormat(risk.deadline, 'dd/MM/yyyy')}</p>
+                        </div>
+                        <Badge variant="error" className="py-1">{risk.urgency === 'Atrasado' ? 'ATR' : 'RSC'}</Badge>
+                      </div>
+                    ))}
+                    {(!stats.atRiskOrders || stats.atRiskOrders.length === 0) && (
+                      <div className="text-center py-4 text-emerald-600 bg-emerald-50 rounded-lg border border-emerald-100 text-sm">
+                        Nenhum pedido em risco! 🎉
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                {/* Bottlenecks */}
+                <Card className="p-6 border-amber-100">
+                  <h3 className="font-bold mb-4 flex items-center gap-2 text-amber-700">
+                    <Filter size={18} />
+                    Gargalos da Produção
+                  </h3>
+                  <p className="text-xs text-zinc-500 mb-4">Setores com mais pedidos aguardando ou em andamento no momento.</p>
+                  <div className="space-y-3">
+                    {(stats.bottlenecks || []).map((bottleneck, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-zinc-50 rounded-lg border border-zinc-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </div>
+                          <p className="text-sm font-medium text-zinc-800">{bottleneck.stage_name}</p>
+                        </div>
+                        <p className="text-sm font-bold text-zinc-700">{bottleneck.count} <span className="text-[10px] font-normal text-zinc-400">pedidos</span></p>
+                      </div>
+                    ))}
+                    {(!stats.bottlenecks || stats.bottlenecks.length === 0) && (
+                      <div className="text-center py-4 text-zinc-500 text-sm">
+                        Fluxo normalizado.
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'kanban' && (
+          <div className="flex lg:grid lg:grid-cols-4 gap-6 h-[calc(100vh-250px)] overflow-x-auto pb-4 lg:overflow-x-visible">
+            {['Entrada', 'Em Produção', 'Finalização', 'Entregue'].map((status) => (
+              <div key={status} className="flex flex-col gap-4 min-w-[280px] lg:min-w-0">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="font-bold text-sm uppercase tracking-widest text-zinc-500">{status}</h3>
+                  <span className="bg-zinc-200 text-zinc-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    {orders.filter(o => o.status === status).length}
+                  </span>
+                </div>
+                <div className="flex-1 bg-zinc-100/50 rounded-xl p-3 flex flex-col gap-3 overflow-y-auto border border-zinc-200/50">
+                  {orders
+                    .filter(o => o.status === status)
+                    .filter(o => {
+                      if (!searchTerm) return true;
+                      const search = searchTerm.toLowerCase();
+                      return (
+                        o.order_number.toLowerCase().includes(search) ||
+                        o.client_name.toLowerCase().includes(search) ||
+                        o.product_type.toLowerCase().includes(search) ||
+                        (o.print_type || '').toLowerCase().includes(search)
+                      );
+                    })
+                    .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                    .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+                    .map(order => {
+                    const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
+                    return (
+                      <motion.div
+                        layoutId={`order-${order.id}`}
+                        key={order.id}
+                        onClick={() => {
+                          setSelectedOrder(order);
+                          fetchExecutions(order.id);
+                        }}
+                        className={cn(
+                          "bg-white rounded-lg border shadow-sm cursor-pointer transition-colors group overflow-hidden",
+                          isOverdue ? "border-rose-500 bg-rose-50/30 hover:border-rose-600" : "border-zinc-200 hover:border-zinc-400"
+                        )}
+                      >
+                        {order.art_url && (
+                          <div className="w-full h-32 bg-zinc-100 relative overflow-hidden group/art">
+                            {isImage(order.art_url) ? (
+                              <img
+                                src={order.art_url}
+                                alt="Mockup"
+                                className="w-full h-full object-cover transition-transform group-hover/art:scale-110"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : isPdf(order.art_url) ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50 border-b border-rose-100 text-rose-500">
+                                <FileText size={40} />
+                                <span className="text-[10px] font-bold mt-1">PDF</span>
+                              </div>
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
+                                <FileText size={40} />
+                                <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{order.art_url.split('.').pop()}</span>
+                              </div>
+                            )}
+                            {order.art_urls && order.art_urls.length > 1 && (
+                              <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-white text-[10px] font-bold shadow-sm">
+                                +{order.art_urls.length - 1} foto{order.art_urls.length - 1 !== 1 ? 's' : ''}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <span className="text-[10px] font-mono text-zinc-400">{order.order_number}</span>
+                            <Badge variant={isOverdue ? 'danger' : (differenceInDays(parseISO(order.deadline), new Date()) < 2 ? 'warning' : 'default')}>
+                              {safeFormat(order.deadline, 'dd/MM')}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-zinc-500 mb-2">{order.quantity}x {order.product_type}</p>
+                          {(() => {
+                            const cutQty = getOrderCuttingQty(order);
+                            if (cutQty > 0) {
+                              return (
+                                <div className="mb-3">
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-[10px] font-black animate-pulse shadow-sm w-full">
+                                    <Scissors size={12} className="text-amber-700 shrink-0" />
+                                    <span>FALTA ESTOQUE: {cutQty} PÇS (CORTE)</span>
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          {order.stages_status && order.stages_status.length > 0 && (
+                            <div className="mb-3 space-y-2">
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                {order.stages_status.map((stage, i) => {
+                                  const isCurrent = !stage.finished && (i === 0 || order.stages_status[i - 1].finished);
+                                  const isFinished = stage.finished;
+                                  return (
+                                    <React.Fragment key={i}>
+                                      <span className={cn(
+                                        "truncate max-w-[80px]",
+                                        isCurrent ? "font-bold text-zinc-900 border-b border-zinc-900" 
+                                        : isFinished ? "text-emerald-600 font-medium" 
+                                        : "text-zinc-400"
+                                      )} title={stage.name}>
+                                        {stage.name}
+                                      </span>
+                                      {i < order.stages_status.length - 1 && (
+                                        <span className="text-zinc-300">→</span>
+                                      )}
+                                    </React.Fragment>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-emerald-500 rounded-full transition-all" 
+                                    style={{ width: `${Math.round((order.stages_status.filter(s => s.finished).length / order.stages_status.length) * 100)}%` }} 
+                                  />
+                                </div>
+                                <span className="text-[9px] font-bold text-zinc-500">
+                                  {Math.round((order.stages_status.filter(s => s.finished).length / order.stages_status.length) * 100)}%
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between">
+                            <Badge variant="info">{order.print_type}</Badge>
+                            <div className="flex items-center gap-1 text-zinc-400">
+                              <Clock size={12} />
+                              <span className="text-[10px] font-mono">{formatSeconds(order.total_time_seconds)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'orders' && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <Card className="flex-grow p-4 bg-zinc-50 border-zinc-200">
+                <div className="flex items-center gap-3 text-zinc-500 text-xs italic">
+                  <Search size={14} />
+                  Use a barra de busca no topo para localizar OPs por número ou nome do cliente.
+                </div>
+              </Card>
+
+              <button
+                onClick={() => setShowCompletedOrders(!showCompletedOrders)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-xs transition-all border shadow-sm whitespace-nowrap",
+                  showCompletedOrders 
+                    ? "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800" 
+                    : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
+                )}
+              >
+                {showCompletedOrders ? <Eye size={16} /> : <EyeOff size={16} />}
+                {showCompletedOrders ? 'Ocultar Entregues' : 'Mostrar Entregues'}
+              </button>
+            </div>
+
+            <Card>
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-bottom border-zinc-200 bg-zinc-50">
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">DTF</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Gaveteiro</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Observação da Etapa</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-right">Tempo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {(() => {
+                  const filteredOrders = (orders || [])
+                    .filter(order => {
+                      if (showCompletedOrders) return true;
+                      return order.status !== 'Entregue' && order.status !== 'Cancelado';
+                    })
+                    .filter(o => {
+                      if (selectedStageFilter) {
+                        const hasStage = Array.isArray(o.required_stages) && o.required_stages.map(String).includes(String(selectedStageFilter));
+                        if (!hasStage) return false;
+                        if (selectedStageStatus) {
+                          const st = (o.stages_status || []).find((s: any) => String(s.id) === String(selectedStageFilter));
+                          if (selectedStageStatus === 'Pending' && st?.finished) return false;
+                          if (selectedStageStatus === 'Finished' && !st?.finished) return false;
+                        }
+                      }
+                      return true;
+                    })
+                    .filter(o => {
+                      if (!searchTerm) return true;
+                      const search = searchTerm.toLowerCase();
+                      return (
+                        (o.order_number || '').toLowerCase().includes(search) ||
+                        (o.client_name || '').toLowerCase().includes(search) ||
+                        (o.product_type || '').toLowerCase().includes(search) ||
+                        (o.print_type || '').toLowerCase().includes(search)
+                      );
+                    })
+                    .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
+                    .filter(o => !productTypeFilter || o.product_type === productTypeFilter);
+
+                  if (filteredOrders.length === 0) {
+                    const hasActiveFilters = Boolean(searchTerm || selectedStageFilter || productTypeFilter || printTypeFilter);
+                    return (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-12 text-center text-zinc-400 text-sm italic">
+                          <div className="flex flex-col items-center gap-2">
+                            <p>
+                              Nenhum pedido encontrado. {(orders || []).length > 0 
+                                ? `(${orders.length} pedidos no sistema, mas nenhum atende aos filtros aplicados)` 
+                                : 'Nenhum pedido cadastrado no sistema.'}
+                            </p>
+                            {hasActiveFilters && (
+                              <button
+                                onClick={() => {
+                                  setSearchTerm('');
+                                  setSelectedStageFilter('');
+                                  setSelectedStageStatus('Pending');
+                                  setProductTypeFilter('');
+                                  setPrintTypeFilter('');
+                                }}
+                                className="mt-2 text-xs font-bold text-zinc-900 bg-zinc-200 hover:bg-zinc-300 px-3 py-1.5 rounded-lg transition-colors not-italic"
+                              >
+                                Limpar Todos os Filtros
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return filteredOrders.map(order => {
+                    const stagesList = Array.isArray(order.stages_status) ? order.stages_status : [];
+                    let isOverdue = false;
+                    if (order.status !== 'Entregue' && order.deadline) {
+                      try {
+                        const d = parseISO(order.deadline);
+                        if (d && !isNaN(d.getTime())) {
+                          isOverdue = isPast(endOfDay(d));
+                        }
+                      } catch (e) {}
+                    }
+                    const hasPendingReplacements = stagesList.some(s => s.pendencia_reposicao > 0);
+                  return (
+                    <tr
+                      key={order.id}
+                      className={cn(
+                        "cursor-pointer transition-colors border-l-4",
+                        hasPendingReplacements 
+                          ? "bg-rose-50 hover:bg-rose-100/80 border-l-rose-500 font-semibold"
+                          : getOrderCuttingQty(order) > 0
+                            ? "bg-amber-50/70 hover:bg-amber-100/80 border-l-amber-500 font-semibold"
+                            : isOverdue 
+                              ? "bg-amber-50/50 hover:bg-amber-100/60 border-l-amber-500"
+                              : "border-l-transparent hover:bg-zinc-50"
+                      )}
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        fetchExecutions(order.id);
+                      }}
+                    >
+                      <td className="px-6 py-4 text-sm font-medium">
+                        <div className="font-bold text-zinc-900">{order.client_name}</div>
+                        {(() => {
+                          const cutQty = getOrderCuttingQty(order);
+                          if (cutQty > 0) {
+                            return (
+                              <div className="mt-1 flex items-center gap-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-md text-[10px] font-black animate-pulse shadow-sm">
+                                  <Scissors size={11} className="text-amber-700 shrink-0" />
+                                  FALTA ESTOQUE: {cutQty} PÇS (CORTE)
+                                </span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm flex items-center gap-1.5 font-bold text-zinc-800">
+                            {order.product_type}
+                            {((order.art_url && isPdf(order.art_url)) || (order.art_urls && order.art_urls.some(url => isPdf(url)))) && (
+                              <FileText size={14} className="text-rose-500" title="Possui PDF" />
+                            )}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 font-medium">{order.print_type} • {order.quantity} un</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                        {order.print_type === 'DTF' ? (
+                          confirmingDtfOrderId === order.id ? (
+                            <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-lg p-1 w-max shadow-sm">
+                              <span className="text-[10px] font-bold text-zinc-500 px-1 animate-pulse">Confirmar?</span>
+                              <button
+                                onClick={() => {
+                                  if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                  setConfirmingDtfOrderId(null);
+                                  handleToggleDtf(order.id, order.dtf_complete || false);
+                                }}
+                                className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                title="Confirmar"
+                              >
+                                <Check size={12} className="stroke-[3]" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                  setConfirmingDtfOrderId(null);
+                                }}
+                                className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                title="Cancelar"
+                              >
+                                <X size={12} className="stroke-[2]" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => handleRequestToggleDtf(order.id, e)}
+                              className={cn(
+                                "px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shadow-sm",
+                                order.dtf_complete
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100"
+                              )}
+                            >
+                              {order.dtf_complete ? (
+                                <>
+                                  <CheckCircle size={12} className="stroke-[3]" />
+                                  <span>Pronto</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Timer size={12} />
+                                  <span>Pendente</span>
+                                </>
+                              )}
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-zinc-300">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                        {editingDtfOrderId === order.id ? (
+                          <div className="flex items-center gap-1 bg-white border border-amber-400 rounded-lg p-1 shadow-md w-max">
+                            <Archive size={13} className="text-amber-600 ml-1 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Gaveta / Obs..."
+                              value={editingDtfValue}
+                              onChange={(e) => setEditingDtfValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleUpdateDtfLocation(order.id, editingDtfValue.trim());
+                                  setEditingDtfOrderId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingDtfOrderId(null);
+                                }
+                              }}
+                              autoFocus
+                              className="w-28 px-1.5 py-0.5 text-xs focus:outline-none text-zinc-800 placeholder:text-zinc-300"
+                            />
+                            <button
+                              onClick={() => {
+                                handleUpdateDtfLocation(order.id, editingDtfValue.trim());
+                                setEditingDtfOrderId(null);
+                              }}
+                              className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded cursor-pointer transition-all active:scale-95 flex items-center justify-center w-5 h-5"
+                              title="Salvar"
+                            >
+                              <Check size={12} className="stroke-[3]" />
+                            </button>
+                            <button
+                              onClick={() => setEditingDtfOrderId(null)}
+                              className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded cursor-pointer transition-all active:scale-95 flex items-center justify-center w-5 h-5"
+                              title="Cancelar"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : order.dtf_location ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDtfOrderId(order.id);
+                              setEditingDtfValue(order.dtf_location || '');
+                            }}
+                            className="group flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-lg text-xs font-bold text-amber-900 shadow-sm transition-all cursor-pointer"
+                            title="Clique para alterar a localização do gaveteiro"
+                          >
+                            <Archive size={12} className="text-amber-600 shrink-0" />
+                            <span>{order.dtf_location}</span>
+                            <Edit2 size={10} className="text-amber-400 group-hover:text-amber-700 transition-colors ml-0.5 shrink-0" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDtfOrderId(order.id);
+                              setEditingDtfValue('');
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-zinc-50 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-700 transition-all cursor-pointer"
+                            title="Clique para definir a gaveta / observação"
+                          >
+                            <Plus size={11} className="text-zinc-400" />
+                            <span>Gaveteiro</span>
+                          </button>
+                        )}
+                      </td>
+                      <td className={cn("px-6 py-4 text-sm", isOverdue && "text-rose-600 font-bold")}>
+                        {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') ? (
+                          <input
+                            type="date"
+                            defaultValue={order.deadline ? order.deadline.split('T')[0] : ''}
+                            onChange={(e) => handleUpdateDeadline(order.id, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-transparent border-none focus:ring-0 text-sm p-0 cursor-pointer hover:underline"
+                          />
+                        ) : (
+                          safeFormat(order.deadline, 'dd/MM/yyyy')
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-zinc-600">
+                        {(() => {
+                          const active = stagesList.find(s => !s.finished);
+                          if (!active) return <span className="text-zinc-400 font-medium">Concluído</span>;
+                          const qty = active.quantidade_pedido || order.quantity || 0;
+                          const current = active.quantidade_boa || 0;
+                          const exec = order.active_stage_execution;
+                          
+                          const isCurrentStageActive = exec && Number(exec.stage_id) === Number(active.id);
+                          const execStatus = isCurrentStageActive ? exec.status : null;
+
+                          const latestFinished = order.latest_finished_stage;
+                          const isFinishedToday = latestFinished && (() => {
+                            const d = new Date(latestFinished.end_time);
+                            const today = new Date();
+                            return d.getDate() === today.getDate() &&
+                                   d.getMonth() === today.getMonth() &&
+                                   d.getFullYear() === today.getFullYear();
+                          })();
+
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-zinc-800 font-bold">{active.name}</span>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                {qty > 0 && (
+                                  <span className="text-[10px] text-zinc-600 font-mono font-bold bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200/50">
+                                    {current} / {qty} un
+                                  </span>
+                                )}
+                                {execStatus === 'Pausado' && (
+                                  <span className="text-[8px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    Pausado
+                                  </span>
+                                )}
+                                {execStatus === 'Em andamento' && (
+                                  <span className="text-[8px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                                    Produzindo
+                                  </span>
+                                )}
+                              </div>
+                              {active.pendencia_reposicao > 0 && (
+                                <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1 flex items-center gap-1 w-max animate-pulse">
+                                  ⚠️ Reposição: +{active.pendencia_reposicao} pc
+                                </span>
+                              )}
+                              {isFinishedToday && (
+                                <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5 mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
+                                  ✓ {latestFinished.stage_name} hoje
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-zinc-600">
+                        {order.active_stage_observation ? (
+                          <span className="italic text-zinc-700">
+                            📝 "{order.active_stage_observation}"
+                          </span>
+                        ) : (
+                          <span className="text-zinc-400 italic font-light">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right font-mono text-xs">{formatSeconds(order.total_time_seconds)}</td>
+                    </tr>
+                  );
+                });
+              })()}
+              </tbody>
+            </table>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'cutting' && (
+          <ConsolidatedCuttingPanel
+            orders={orders}
+            users={users}
+            currentUser={currentUser}
+            onRefresh={fetchData}
+            onSelectOrder={(ord) => {
+              setSelectedOrder(ord);
+            }}
+          />
+        )}
+
+        {activeTab === 'collaborators' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center px-2">
+              <p className="text-sm text-zinc-500">{users.length} colaboradores</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {users.map(user => (
+                <Card key={user.id} className="p-4 flex items-center justify-between hover:border-zinc-300 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-lg">
+                      {user.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-zinc-900">{user.name}</h4>
+                      <div className="flex items-center gap-3 text-xs text-zinc-500">
+                        <span className="flex items-center gap-1"><UserIcon size={12} /> {user.email}</span>
+                        {currentUser?.role === 'Admin' && (
+                          <>
+                            <span>•</span>
+                            <span>R$ {user.hourly_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={user.role === 'Admin' ? 'info' : 'default'}>{user.role}</Badge>
+                    <button
+                      onClick={() => {
+                        setSelectedUserForEdit(user);
+                        setShowUserModal(true);
+                      }}
+                      className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600 transition-colors"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'reports' && (
+          <div className="space-y-8">
+
+            {/* Sub-navigation inside Reports */}
+            <div className="flex items-center gap-2 border-b border-zinc-200 pb-3">
+              <button
+                type="button"
+                onClick={() => setActiveReportSubTab('geral')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeReportSubTab === 'geral'
+                    ? "bg-zinc-900 text-white shadow"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                )}
+              >
+                <BarChart3 size={16} /> Visão Geral & Entregas
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReportSubTab('metas')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeReportSubTab === 'metas'
+                    ? "bg-zinc-900 text-white shadow"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                )}
+              >
+                <Target size={16} /> Metas & Produtividade
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReportSubTab('perdas')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeReportSubTab === 'perdas'
+                    ? "bg-rose-600 text-white shadow"
+                    : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
+                )}
+              >
+                <AlertCircle size={16} /> Relatório de Perdas & Retrabalho
+              </button>
+            </div>
+
+            {activeReportSubTab === 'perdas' && (
+              <div className="space-y-8">
+                {/* Executive Summary Cards for Losses */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <Card className="p-6 border-rose-100 bg-rose-50/20">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
+                        <AlertCircle size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Total Peças Perdidas</p>
+                        <h3 className="text-2xl font-bold text-rose-700">{lossReportData?.summary?.total_perdido || 0} <span className="text-xs font-normal text-zinc-500">peças</span></h3>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                        <TrendingUp size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Taxa de Perda (%)</p>
+                        <h3 className="text-2xl font-bold text-amber-700">{lossReportData?.summary?.pct_perda?.toFixed(1) || '0.0'}%</h3>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                        <Package size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Pedidos com Retrabalho</p>
+                        <h3 className="text-2xl font-bold text-zinc-900">{lossReportData?.summary?.total_pedidos_com_perda || 0}</h3>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
+                        <Clock size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-zinc-500 font-medium">Impacto Médio no Prazo</p>
+                        <h3 className="text-2xl font-bold text-purple-700">{lossReportData?.summary?.impacto_prazo_horas?.toFixed(1) || '0.0'} <span className="text-xs font-normal text-zinc-500">horas/ped</span></h3>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Section 1: Perdas por Setor (Etapa) */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <Layers size={16} className="text-rose-600" /> Perdas por Setor / Etapa (Gráfico)
+                    </h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={lossReportData?.perdas_por_setor || []}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                          <XAxis dataKey="stage_name" fontSize={10} axisLine={false} tickLine={false} />
+                          <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                          <Bar dataKey="quantidade_perdida" name="Peças Perdidas" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <FileText size={16} className="text-rose-600" /> Detalhamento por Setor
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-zinc-100 bg-zinc-50">
+                            <th className="py-2.5 px-3 font-bold text-zinc-500">Setor / Etapa</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Perdas</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">% do Total</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Pedidos Afetados</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {(lossReportData?.perdas_por_setor || []).map((item, idx) => (
+                            <tr key={idx} className="hover:bg-zinc-50">
+                              <td className="py-2.5 px-3 font-bold text-zinc-900">{item.stage_name}</td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-rose-600">{item.quantidade_perdida} pc</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.pct_total}%</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.pedidos_afetados}</td>
+                            </tr>
+                          ))}
+                          {(lossReportData?.perdas_por_setor || []).length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhuma perda registrada no período.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Section 2: Perdas por Motivo Categorizado */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <BarChart3 size={16} className="text-rose-600" /> Distribuição por Motivo (Gráfico)
+                    </h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={lossReportData?.perdas_por_motivo || []} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f1f1" />
+                          <XAxis type="number" fontSize={10} axisLine={false} tickLine={false} />
+                          <YAxis dataKey="motivo" type="category" fontSize={9} axisLine={false} tickLine={false} width={130} />
+                          <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                          <Bar dataKey="quantidade_perdida" name="Peças Perdidas" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <AlertCircle size={16} className="text-rose-600" /> Motivos de Defeito / Retrabalho
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-zinc-100 bg-zinc-50">
+                            <th className="py-2.5 px-3 font-bold text-zinc-500">Motivo Categorizado</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500">Setor Origem</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Peças</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">% Perdas</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {(lossReportData?.perdas_por_motivo || []).map((item, idx) => (
+                            <tr key={idx} className="hover:bg-zinc-50">
+                              <td className="py-2.5 px-3 font-bold text-zinc-900">{item.motivo}</td>
+                              <td className="py-2.5 px-3 text-zinc-600">{item.stage_name}</td>
+                              <td className="py-2.5 px-3 text-center font-mono font-bold text-amber-700">{item.quantidade_perdida} pc</td>
+                              <td className="py-2.5 px-3 text-center font-mono">{item.pct_total}%</td>
+                            </tr>
+                          ))}
+                          {(lossReportData?.perdas_por_motivo || []).length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhum motivo registrado no período.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Section 3: Impacto em Prazo de Entrega (Custo do Retrabalho) */}
+                <Card className="p-6">
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <Clock size={16} className="text-purple-600" /> Impacto no Prazo por Pedidos com Reposição (Custo do Retrabalho)
+                  </h3>
+                  <p className="text-xs text-zinc-500 mb-4">
+                    Compara o tempo total de produção dos pedidos que tiveram perdas contra a média dos pedidos sem perdas.
+                  </p>
+                  <div className="overflow-x-auto border border-zinc-100 rounded-xl">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-100">
+                          <th className="py-3 px-4 font-bold text-zinc-500">Pedido</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500">Cliente</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Peças Perdidas</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Lead Time (com perda)</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Média Sem Perda</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Atraso Adicional (Retrabalho)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {(lossReportData?.impacto_pedidos || []).map((imp, idx) => (
+                          <tr key={idx} className="hover:bg-zinc-50">
+                            <td className="py-3 px-4 font-mono font-bold text-zinc-900">{imp.order_number}</td>
+                            <td className="py-3 px-4 font-medium text-zinc-700">{imp.client_name}</td>
+                            <td className="py-3 px-4 text-center font-mono font-bold text-rose-600">{imp.quantidade_perdida} pc</td>
+                            <td className="py-3 px-4 text-center font-mono">{imp.lead_time_com_perda_horas}h</td>
+                            <td className="py-3 px-4 text-center font-mono text-zinc-500">{imp.lead_time_medio_sem_perda_horas}h</td>
+                            <td className="py-3 px-4 text-center font-mono font-bold text-purple-700">
+                              +{imp.atraso_adicional_horas}h
+                            </td>
+                          </tr>
+                        ))}
+                        {(lossReportData?.impacto_pedidos || []).length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="text-center py-6 text-zinc-400">Nenhum pedido com reposição/retrabalho registrado.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {activeReportSubTab !== 'perdas' && (
+              <>
+
+            {/* Delivery & Performance KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {/* Entregues Hoje */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Entregues Hoje', description: 'Total de pedidos marcados como concluídos na data de hoje.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                    <CheckCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Entregues Hoje</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.entregues_hoje || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Entregues no Período */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Período', description: 'Total de pedidos concluídos dentro do intervalo de datas selecionado no filtro.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                    <Archive size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">No Período</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.entregues_periodo || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Pedidos no Prazo (%) */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Prazo (%)', description: 'Percentual de pedidos entregues cuja data de finalização foi igual ou anterior ao prazo prometido.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                    <TrendingUp size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">No Prazo (%)</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.taxa_no_prazo_percent?.toFixed(1) || '0.0'}%</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Lead Time Médio */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Lead Time Médio', description: 'Média de dias decorridos entre a data de criação do pedido e a sua data de finalização.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                    <Clock size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Lead Time Médio</p>
+                    <h3 className="text-2xl font-bold">
+                      {deliveryReportData?.lead_time_medio_dias?.toFixed(1) || '0.0'}
+                      <span className="text-sm font-normal text-zinc-400 ml-1">dias</span>
+                    </h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Cumprimento de Meta (%) */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Cumprimento Meta', description: 'Percentual de atingimento da meta de produção diária (peças produzidas vs meta configurada).' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
+                    <Target size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Cumprimento Meta</p>
+                    <h3 className="text-2xl font-bold">{deliveryReportData?.cumprimento_meta_percent?.toFixed(1) || '0.0'}%</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Total de Pedidos */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Total Pedidos', description: 'Volume total de pedidos processados ou registrados no sistema durante o período.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Package size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Total Pedidos</p>
+                    <h3 className="text-2xl font-bold">{reportData?.summary?.total_orders || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Etapas Finalizadas */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Etapas Finalizadas', description: 'Contagem total de etapas individuais concluídas no período.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <CheckSquare size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Etapas Finalizadas</p>
+                    <h3 className="text-2xl font-bold">{reportData?.summary?.total_stages || 0}</h3>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Tempo Médio por Etapa */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio/Etapa', description: 'Média de tempo real gasto em cada etapa produtiva, comparada ao tempo esperado.' })}>
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
+                    <Timer size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio/Etapa</p>
+                    <h3 className="text-2xl font-bold">{formatSeconds(reportData?.summary?.avg_stage_time || 0)}</h3>
+                  </div>
+                </div>
+              </Card>
+            </div>
+            
+            {/* Produção por Etapa no Período (Visual) */}
+            {reportData?.production_by_stage && reportData.production_by_stage.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <Card className="p-6 border-zinc-200 shadow-sm bg-white">
+                  <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <BarChart3 size={16} className="text-emerald-600" />
+                    Peças Produzidas por Etapa (Gráfico)
+                  </h3>
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.production_by_stage}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                        <XAxis dataKey="stage_name" fontSize={10} axisLine={false} tickLine={false} />
+                        <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Bar dataKey="total_pieces" name="Peças Produzidas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+
+                <Card className="p-6 border-zinc-200 shadow-sm bg-white">
+                  <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Layers size={16} className="text-emerald-600" />
+                    Detalhamento de Volume por Etapa (Clique para expandir)
+                  </h3>
+                  <div className="overflow-x-auto max-h-[380px] overflow-y-auto scrollbar-thin">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-zinc-100 bg-zinc-50">
+                          <th className="py-2.5 px-3 font-bold text-zinc-500">Etapa</th>
+                          <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Ordens Finalizadas</th>
+                          <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Peças Produzidas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {reportData.production_by_stage.map((item: any, idx: number) => {
+                          const isExpanded = expandedReportStage === item.stage_name;
+                          return (
+                            <React.Fragment key={idx}>
+                              <tr 
+                                onClick={() => setExpandedReportStage(isExpanded ? null : item.stage_name)}
+                                className="hover:bg-zinc-50 transition-colors cursor-pointer select-none"
+                              >
+                                <td className="py-3 px-3 font-bold text-zinc-900 flex items-center gap-2">
+                                  <span className={cn(
+                                    "text-[9px] text-zinc-400 inline-block transition-transform duration-200",
+                                    isExpanded && "rotate-90 text-zinc-800"
+                                  )}>
+                                    ▶
+                                  </span>
+                                  {item.stage_name}
+                                </td>
+                                <td className="py-3 px-3 text-center font-mono font-semibold text-zinc-600">{item.completed_count} ordens</td>
+                                <td className="py-3 px-3 text-center font-mono font-bold text-emerald-600">{item.total_pieces} un</td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="bg-zinc-50/50">
+                                  <td colSpan={3} className="py-3 px-4 border-t border-b border-zinc-100/80">
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                                          Pedidos Processados em "{item.stage_name}"
+                                        </h4>
+                                        <span className="text-[9px] text-zinc-400 font-medium">Filtro aplicado: {item.completed_count} itens</span>
+                                      </div>
+                                      <div className="overflow-x-auto border border-zinc-200 rounded-lg bg-white shadow-inner max-h-48 overflow-y-auto scrollbar-thin">
+                                        <table className="w-full text-left text-[11px]">
+                                          <thead>
+                                            <tr className="border-b border-zinc-200 bg-zinc-50/80 text-[9px] font-bold text-zinc-500 uppercase">
+                                              <th className="py-2 px-3">Pedido</th>
+                                              <th className="py-2 px-3">Cliente</th>
+                                              <th className="py-2 px-3 text-center">Pecas</th>
+                                              <th className="py-2 px-3">Operador</th>
+                                              <th className="py-2 px-3 text-right">Horário</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-zinc-100">
+                                            {item.details.map((detail: any, detIdx: number) => (
+                                              <tr key={detIdx} className="hover:bg-zinc-50/60 transition-colors">
+                                                <td className="py-2 px-3 font-mono font-bold text-zinc-700">#{detail.order_number}</td>
+                                                <td className="py-2 px-3 text-zinc-600 font-medium">{detail.client_name}</td>
+                                                <td className="py-2 px-3 text-center font-bold text-zinc-800">{detail.quantity}</td>
+                                                <td className="py-2 px-3 text-zinc-600">{detail.operator}</td>
+                                                <td className="py-2 px-3 text-right text-zinc-500 font-mono">
+                                                  {safeFormat(detail.finished_at, 'HH:mm')}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Detalhamento dos Pedidos do Período */}
+            {reportData?.orders_list && reportData.orders_list.length > 0 && (
+              <Card className="p-6 border-zinc-200 shadow-sm mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold flex items-center gap-2 text-zinc-700 uppercase tracking-wider">
+                    <ClipboardList size={16} className="text-zinc-400" />
+                    Detalhamento dos {reportData.summary?.total_orders || reportData.orders_list.length} Pedidos Vincunlados
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-400 font-medium">Clique no card para abrir detalhes do pedido</span>
+                    <Badge variant="default" className="text-[10px] font-mono">
+                      {reportData.orders_list.length} registros
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-zinc-200">
+                  {reportData.orders_list.map((order: any, idx: number) => (
+                    <motion.div 
+                      key={idx}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.02 }}
+                      onClick={() => {
+                        const found = orders.find(o => o.id === order.order_id);
+                        if (found) {
+                          setSelectedOrder(found);
+                          fetchExecutions(found.id);
+                        }
+                      }}
+                      className="flex items-center justify-between p-3 bg-zinc-50 border border-zinc-100 rounded-xl hover:bg-white hover:border-zinc-300 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="min-w-0 pr-2 flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-[10px] font-black font-mono text-zinc-400 group-hover:text-zinc-900 transition-colors">#{order.order_number}</p>
+                          <span className={cn(
+                            "text-[8px] font-black px-1 py-0.5 rounded uppercase",
+                            order.status === 'Entregue' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                          )}>
+                            {order.status === 'Entrada' ? 'Em Fila' : order.status}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-zinc-700 truncate line-clamp-1">{order.client_name}</p>
+                        
+                        {/* Etapas finalizadas neste período */}
+                        {order.stages_worked_in_period && order.stages_worked_in_period.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1 max-w-[190px]">
+                            {order.stages_worked_in_period.map((st: any, sidx: number) => (
+                              <span key={sidx} title={`Concluído por ${st.operator}`} className="text-[8px] leading-tight bg-emerald-50 text-emerald-700 border border-emerald-100 px-1 py-0.5 rounded font-bold">
+                                ✓ {st.stage_name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[8px] text-zinc-400 font-medium italic mt-1 block">Sem etapas finalizadas</span>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-black text-zinc-900">{order.quantity}</p>
+                        <p className="text-[8px] text-zinc-400 font-bold uppercase">Peças</p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Delivery Chart */}
+              {deliveryReportData && deliveryReportData.grafico.length > 0 && (
+                <Card className="p-8">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                    <BarChart3 size={20} />
+                    Pedidos Entregues por Dia
+                  </h3>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={deliveryReportData?.grafico || []}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                        <XAxis dataKey="data" fontSize={10} axisLine={false} tickLine={false} />
+                        <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Bar dataKey="pedidos" name="Pedidos Entregues" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        {(deliveryReportData?.grafico?.[0]?.meta_pedidos || 0) > 0 && (
+                          <ReferenceLine y={deliveryReportData.grafico[0].meta_pedidos} stroke="#f59e0b" strokeDasharray="3 3" label={{ position: 'top', value: 'Meta Pedidos', fill: '#f59e0b', fontSize: 10 }} />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              )}
+
+              {/* Delay Report */}
+              {delaysReportData && delaysReportData.length > 0 && (
+                <Card className="p-8 border-rose-200">
+                  <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-rose-600">
+                    <AlertCircle size={20} />
+                    Relatório de Atrasos
+                  </h3>
+                  <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-zinc-200 bg-zinc-50">
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente</th>
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500">Produto</th>
+                          <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-500 text-center">Atraso</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {(delaysReportData || []).map(order => (
+                          <tr key={order.id} className="hover:bg-rose-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-xs font-bold">{order.order_number}</td>
+                            <td className="px-4 py-3 text-sm font-medium">{order.client_name}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {order.product_type} <span className="text-[10px] text-zinc-500 ml-1">({order.print_type})</span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <Badge variant="danger">{order.dias_atraso} dias</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+            </div>
+
+            {reportData?.volume && (
+              <Card className="p-8">
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <BarChart3 size={20} />
+                  Volume de Produção por {reportPeriod === 'day' ? 'Dia' : reportPeriod === 'week' ? 'Semana' : 'Mês'}
+                </h3>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData?.volume || []}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f1f1" />
+                      <XAxis dataKey="label" fontSize={10} axisLine={false} tickLine={false} />
+                      <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      />
+                      <Bar dataKey="orders" name="Pedidos" fill="#18181b" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="pieces" name="Peças" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            )}
+
+            {/* Painel de Metas & Produtividade */}
+            {goalsProductivityData && (() => {
+              const statusBadge = (s: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta', pct: number | null) => {
+                if (s === 'sem_meta') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500">— Sem meta</span>;
+                const label = pct !== null ? `${Math.round(pct * 100)}%` : '—';
+                if (s === 'verde') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">✓ {label}</span>;
+                if (s === 'amarelo') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {label}</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">✗ {label}</span>;
+              };
+              const periodCell = (p: { real: number; target: number | null; pct: number | null; status: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta' }) => (
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-xs font-black font-mono text-zinc-800">{p.real}</span>
+                  {p.target !== null && <span className="text-[9px] text-zinc-400 font-mono">/ {p.target}</span>}
+                </div>
+              );
+              const unitLabel = (t: string) => t === 'por_pedido' ? 'pedidos' : 'peças';
+              return (
+                <Card className="p-8 border-zinc-200 shadow-lg bg-white relative overflow-hidden">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-lg font-bold flex items-center gap-2 text-zinc-800 uppercase tracking-wider">
+                        <Target size={20} className="text-zinc-600" />
+                        Painel de Metas e Produtividade
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1">Desempenho por colaborador e setor — ordenado do pior para o melhor % atingido.</p>
+                    </div>
+                    <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-lg self-start">
+                      <button onClick={() => setGoalsViewType('collaborator')} className={cn('px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5', goalsViewType === 'collaborator' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500 hover:text-zinc-700')}>
+                        <Users size={13} /> Por Colaborador
+                      </button>
+                      <button onClick={() => setGoalsViewType('sector')} className={cn('px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5', goalsViewType === 'sector' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500 hover:text-zinc-700')}>
+                        <Layers size={13} /> Por Setor
+                      </button>
+                    </div>
+                  </div>
+                  {goalsViewType === 'collaborator' ? (
+                    <div className="overflow-x-auto border border-zinc-100 rounded-xl">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="bg-zinc-50 border-b border-zinc-100">
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Colaborador</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Setor</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Unidade</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Meta/dia</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Hoje</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Semana</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status Mês</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {[...(goalsProductivityData.collaborators || [])].sort((a, b) => {
+                            const pa = a.month.pct ?? (a.month.status === 'sem_meta' ? 2 : -1);
+                            const pb = b.month.pct ?? (b.month.status === 'sem_meta' ? 2 : -1);
+                            return pa - pb;
+                          }).map((row, i) => (
+                            <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                              <td className="px-4 py-3 font-bold text-zinc-800 whitespace-nowrap">
+                                {row.month.status === 'verde' && (row.month.pct ?? 0) >= 1 && <span title="Meta atingida">🏆 </span>}
+                                {row.user_name}
+                                {row.is_custom && <span className="ml-1 text-[9px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full border border-violet-200">personalizada</span>}
+                              </td>
+                              <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{row.stage_name}</td>
+                              <td className="px-4 py-3 text-zinc-500 whitespace-nowrap text-[11px]">{unitLabel(row.calculation_type)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">—</span>}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.today)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.week)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.month)}</td>
+                              <td className="px-4 py-3 text-center">{statusBadge(row.month.status, row.month.pct)}</td>
+                            </tr>
+                          ))}
+                          {(goalsProductivityData.collaborators || []).length === 0 && (
+                            <tr><td colSpan={8} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de colaborador no período.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-zinc-100 rounded-xl">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="bg-zinc-50 border-b border-zinc-100">
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Setor / Etapa</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 whitespace-nowrap">Unidade</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Meta/dia</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Hoje</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Semana</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status Mês</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {[...(goalsProductivityData.sectors || [])].sort((a, b) => {
+                            const pa = a.month.pct ?? (a.month.status === 'sem_meta' ? 2 : -1);
+                            const pb = b.month.pct ?? (b.month.status === 'sem_meta' ? 2 : -1);
+                            return pa - pb;
+                          }).map((row, i) => (
+                            <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                              <td className="px-4 py-3 font-bold text-zinc-800 whitespace-nowrap">{row.stage_name}</td>
+                              <td className="px-4 py-3 text-zinc-500 whitespace-nowrap text-[11px]">{unitLabel(row.calculation_type)}</td>
+                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">—</span>}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.today)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.week)}</td>
+                              <td className="px-4 py-3 text-center">{periodCell(row.month)}</td>
+                              <td className="px-4 py-3 text-center">{statusBadge(row.month.status, row.month.pct)}</td>
+                            </tr>
+                          ))}
+                          {(goalsProductivityData.sectors || []).length === 0 && (
+                            <tr><td colSpan={7} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de setores no período.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+              );
+            })()}
+
+            {/* Drill-Down Operacional */}
+            {
+              operationalReportData && (
+                <div className="space-y-8 pb-12">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Produção Detalhada */}
+                    <Card className="p-6">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                        <Clock size={18} className="text-zinc-400" />
+                        Produção Detalhada (Etapas)
+                      </h3>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-zinc-50 border-b border-zinc-100">
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Fim</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Colab</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Etapa</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500 text-right">Tempo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-50">
+                            {(operationalReportData?.producao_dia || []).map((step, i) => (
+                              <tr key={i} className="hover:bg-zinc-50 transition-colors">
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{step.hora}</td>
+                                <td className="px-3 py-2 text-xs font-medium">{step.user_name}</td>
+                                <td className="px-3 py-2 text-xs">{step.stage_name} <br /> <span className="text-[9px] text-zinc-400 font-mono">#{step.order_number}</span></td>
+                                <td className="px-3 py-2 text-right font-mono text-[10px] font-bold">{formatSeconds(step.duration_seconds)}</td>
+                              </tr>
+                            ))}
+                            {(operationalReportData?.producao_dia || []).length === 0 && (
+                              <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-400 italic text-xs">Sem etapas registradas.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+
+                    {/* Progresso de Pedidos */}
+                    <Card className="p-6">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-zinc-400" />
+                        Progresso de Pedidos Ativos
+                      </h3>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-zinc-50 border-b border-zinc-100">
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Pedido</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Progresso</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Próxima</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500 text-center">Prazo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-50">
+                            {(operationalReportData?.progresso_pedidos || []).map((order, i) => (
+                              <tr key={i} className="hover:bg-zinc-50 transition-colors">
+                                <td className="px-3 py-2">
+                                  <p className="text-xs font-bold">{order.order_number}</p>
+                                  <p className="text-[9px] text-zinc-500 truncate max-w-[100px]">{order.client_name}</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-blue-500 transition-all"
+                                        style={{ width: `${(order.etapas_concluidas / (order.total_etapas || 1)) * 100}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[9px] font-bold text-zinc-600">{order.etapas_concluidas}/{order.total_etapas}</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-[10px] text-zinc-600 font-medium">
+                                  {order.proxima_etapa || <span className="text-emerald-500 font-bold">Concluído</span>}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className={cn(
+                                    "text-[10px] font-bold",
+                                    isPast(endOfDay(parseISO(order.deadline))) ? "text-rose-600" : "text-zinc-500"
+                                  )}>
+                                    {safeFormat(order.deadline, 'dd/MM')}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {(operationalReportData?.progresso_pedidos || []).length === 0 && (
+                              <tr><td colSpan={4} className="px-3 py-8 text-center text-zinc-400 italic text-xs">Sem pedidos em andamento.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Pedidos Concluídos */}
+                    <Card className="p-6 border-emerald-100">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2 text-emerald-700">
+                        <CheckCircle size={18} />
+                        Pedidos Concluídos no Período
+                      </h3>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="bg-emerald-50 border-b border-emerald-100 text-emerald-700">
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Conclusão</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Pedido</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Lead Time</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-emerald-50">
+                            {(operationalReportData?.pedidos_concluidos || []).map((order, i) => (
+                              <tr key={i} className="hover:bg-emerald-50 transition-colors">
+                                <td className="px-3 py-2 text-[10px] text-zinc-500">{safeFormat(order.completed_at, 'dd/MM HH:mm')}</td>
+                                <td className="px-3 py-2">
+                                  <p className="text-xs font-bold text-zinc-800">{order.order_number}</p>
+                                  <p className="text-[9px] text-zinc-500">{order.client_name}</p>
+                                </td>
+                                <td className="px-3 py-2 text-[10px] font-mono font-bold text-zinc-600">
+                                  {(order.lead_time_horas || 0).toFixed(1)}h
+                                </td>
+                                <td className="px-3 py-2 text-center text-[9px] font-black italic uppercase">
+                                  {order.no_prazo ? (
+                                    <span className="text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">NO PRAZO</span>
+                                  ) : (
+                                    <span className="text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">ATRASADO</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+
+                    {/* Produtividade */}
+                    <Card className="p-6">
+                      <h3 className="text-base font-bold mb-4 flex items-center gap-2">
+                        <Users size={18} className="text-zinc-400" />
+                        Produtividade por Colaborador
+                      </h3>
+                      <div className="space-y-4">
+                        {(operationalReportData?.produtividade_colaboradores || []).map((user, i) => (
+                          <div key={user.user_id} className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-end">
+                              <div>
+                                <p className="text-sm font-bold text-zinc-800">{user.user_name}</p>
+                                <p className="text-[10px] text-zinc-500 font-medium">
+                                  <Clock size={10} className="inline mr-1" />
+                                  {formatSeconds(user.tempo_total_segundos)} ativo
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs font-mono font-black text-indigo-600">{user.pecas} peças</p>
+                                <p className="text-[9px] text-zinc-400 font-bold uppercase">{user.etapas} etapas</p>
+                              </div>
+                            </div>
+                            <div className="h-1 bg-zinc-50 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-500 transition-all"
+                                style={{ width: `${Math.min(100, (user.pecas / 150) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              )
+            }
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <Card className="p-8">
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                  <Clock size={20} />
+                  Tempo Médio por Etapa (min)
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData?.avgTimePerStage || []} layout="vertical">
+                      <XAxis type="number" hide />
+                      <YAxis dataKey="name" type="category" fontSize={10} width={100} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        formatter={(value: any) => [`${(Number(value || 0) / 60).toFixed(1)} min`, 'Tempo Médio']}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      />
+                      <Bar dataKey="avg_time" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <PieChartIcon size={20} />
+                Tempo Médio por Perfil de Pedido
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-zinc-100">
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Perfil</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Cores</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. Pedidos</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. Média Peças</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Média Real</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Mín/Máx</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {profileReport.length > 0 ? (
+                      (profileReport || []).map((p, i) => (
+                        <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="py-4">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-zinc-900">{p.product_type}</span>
+                              <span className="text-[10px] text-zinc-500 uppercase">{p.print_type}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-center">
+                            {(p.print_type === 'Silk' || p.print_type === 'Sublimação') ? (
+                              <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                                {p.num_colors} {p.num_colors === 1 ? 'Cor' : 'Cores'}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-300">-</span>
+                            )}
+                          </td>
+                          <td className="py-4 text-center text-sm font-mono">{p.count}</td>
+                          <td className="py-4 text-center text-sm font-mono">{p.avg_quantity}</td>
+                          <td className="py-4 text-right">
+                            <span className="text-sm font-black text-zinc-900">{formatSeconds(p.avg_time_seconds)}</span>
+                          </td>
+                          <td className="py-4 text-right">
+                            <span className="text-[10px] font-mono text-zinc-400">
+                              {formatSeconds(p.min_time_seconds)} / {formatSeconds(p.max_time_seconds)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-zinc-400 italic text-sm">
+                          Aguardando mais pedidos finalizados para gerar médias por perfil...
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+            </>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'costs' && currentUser?.role === 'Admin' && (
+          <ErrorBoundary>
+            <div className="space-y-8 pb-12">
+              {/* Filters Bar */}
+              <Card className="p-4 bg-zinc-900 border-none shadow-2xl">
+                <div className="flex flex-wrap items-center gap-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-zinc-800 rounded-lg text-zinc-400">
+                      <Calendar size={18} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={reportStartDate}
+                        onChange={(e) => setReportStartDate(e.target.value)}
+                        className="bg-zinc-800 border-none text-white text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-zinc-700 appearance-none"
+                      />
+                      <span className="text-zinc-600">até</span>
+                      <input
+                        type="date"
+                        value={reportEndDate}
+                        onChange={(e) => setReportEndDate(e.target.value)}
+                        className="bg-zinc-800 border-none text-white text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-zinc-700 appearance-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-zinc-800 rounded-lg text-zinc-400">
+                      <Users size={18} />
+                    </div>
+                    <select
+                      value={reportUser}
+                      onChange={(e) => setReportUser(e.target.value)}
+                      className="bg-zinc-800 border-none text-white text-xs rounded-md px-3 py-1.5 focus:ring-1 focus:ring-zinc-700 min-w-[150px]"
+                    >
+                      <option value="">Todos Colaboradores</option>
+                      {(users || []).map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-zinc-800 rounded-lg text-zinc-400">
+                      <Layers size={18} />
+                    </div>
+                    <select
+                      value={reportStage}
+                      onChange={(e) => setReportStage(e.target.value)}
+                      className="bg-zinc-800 border-none text-white text-xs rounded-md px-3 py-1.5 focus:ring-1 focus:ring-zinc-700 min-w-[150px]"
+                    >
+                      <option value="">Todas as Etapas</option>
+                      {(stages || []).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="ml-auto flex items-center gap-4 group">
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Meta Custo/Peça</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-400 text-xs font-medium">R$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={metaCustoPeca || 0}
+                          onChange={(e) => setMetaCustoPeca(Number(e.target.value) || 0)}
+                          onBlur={async () => {
+                            try {
+                              await fetch('/api/config', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', 'x-user-role': 'Admin' },
+                                body: JSON.stringify({ meta_custo_por_peca: metaCustoPeca || 0 })
+                              });
+                            } catch (err) {
+                              console.error("Erro ao salvar meta:", err);
+                            }
+                          }}
+                          className="bg-zinc-800 border-none text-white text-sm font-black rounded-md px-2 py-1 w-20 focus:ring-2 focus:ring-emerald-500/50 text-center transition-all bg-opacity-50 hover:bg-opacity-100"
+                        />
+                      </div>
+                    </div>
+                    <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/30 group-hover:scale-110 transition-transform">
+                      <Target size={20} />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Custo Total M.O.', description: 'Soma do custo de mão de obra de todos os colaboradores para as etapas finalizadas no período selecionado.' })}>
+                  <div className="absolute top-0 right-0 p-8 opacity-5">
+                    <DollarSign size={80} />
+                  </div>
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 shadow-inner">
+                      <DollarSign size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Custo Total M.O.</p>
+                      <h3 className="text-2xl font-black text-zinc-900">R$ {(Number(reportData?.summary?.total_labor_cost) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card 
+                  className={cn(
+                    "p-6 shadow-sm border-none bg-white relative overflow-hidden cursor-help hover:border-zinc-300 transition-colors",
+                    (Number(metaCustoPeca) || 0) > 0 && ((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)) > (Number(metaCustoPeca) || Infinity)
+                      ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-rose-500"
+                      : (Number(metaCustoPeca) || 0) > 0 ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-emerald-500" : ""
+                  )}
+                  onClick={() => setInfoModal({ title: 'Custo Médio / Peça', description: 'Valor médio investido em mão de obra para cada peça produzida. Calculado dividindo o Custo Total M.O. pelo Volume Produzido.' })}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      "p-3 rounded-2xl shadow-inner",
+                      ((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)) <= (Number(metaCustoPeca) || 0) || (Number(metaCustoPeca) || 0) === 0
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-rose-50 text-rose-600"
+                    )}>
+                      <Target size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Custo Médio / Peça</p>
+                      <div className="flex items-baseline gap-2">
+                        <h3 className="text-2xl font-black text-zinc-900">R$ {((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                        {(Number(metaCustoPeca) || 0) > 0 && (
+                          <div className={cn(
+                            "flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm",
+                            ((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)) <= (Number(metaCustoPeca) || 0)
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-rose-100 text-rose-700"
+                          )}>
+                            {(((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)) <= (Number(metaCustoPeca) || 0)) ? <TrendingDown size={10} /> : <TrendingUp size={10} />}
+                            {Math.abs((((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)) / (Number(metaCustoPeca) || 1) - 1) * 100).toFixed(0)}%
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Volume Produzido', description: 'Quantidade total de peças físicas que foram finalizadas em todas as suas etapas obrigatórias no período.' })}>
+                  <div className="absolute top-0 right-0 p-8 opacity-5">
+                    <Package size={80} />
+                  </div>
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="p-3 bg-sky-50 rounded-2xl text-sky-600 shadow-inner">
+                      <Package size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Volume Produzido</p>
+                      <h3 className="text-2xl font-black text-zinc-900">{(Number(reportData?.summary?.total_parts) || 0).toLocaleString('pt-BR')} <span className="text-xs font-medium text-zinc-400 uppercase">Peças</span></h3>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-6 border-none shadow-sm bg-zinc-900 overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Total Gasto', description: 'Soma de todas as horas trabalhadas pelos colaboradores nas etapas de produção finalizadas no período.' })}>
+                  <div className="absolute top-0 right-0 p-8 opacity-10 text-white">
+                    <Clock size={80} />
+                  </div>
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="p-3 bg-zinc-800 rounded-2xl text-zinc-400 shadow-inner">
+                      <Clock size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">Tempo Total Gasto</p>
+                      <h3 className="text-2xl font-black text-white">
+                        {((Number(reportData?.summary?.total_labor_cost) || 0) / 15).toFixed(1)} <span className="text-xs font-medium text-zinc-500 uppercase">Horas</span>
+                      </h3>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Main Content Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Left Column: Charts */}
+                <div className="space-y-8">
+                  <Card className="p-8 border-none shadow-sm bg-white">
+                    <div className="flex items-center justify-between mb-8">
+                      <div>
+                        <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                          <PieChartIcon size={20} className="text-emerald-500" />
+                          Composição de Custos
+                        </h3>
+                        <p className="text-xs text-zinc-400 font-medium">Divisão do investimento em mão de obra por colaborador</p>
+                      </div>
+                    </div>
+                    <div className="h-80">
+                      {memoizedCostsByCollaborator.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={memoizedCostsByCollaborator}
+                              dataKey="total_cost"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={70}
+                              outerRadius={100}
+                              paddingAngle={8}
+                              labelLine={false}
+                            >
+                              {memoizedCostsByCollaborator.map((entry: any, index: number) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} className="hover:opacity-80 transition-opacity cursor-pointer" />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.25)', padding: '12px' }}
+                              itemStyle={{ fontWeight: '800', fontSize: '12px' }}
+                              formatter={(value: any) => [`R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Investimento']}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-4">
+                          <Activity size={40} className="opacity-20" />
+                          <p className="text-sm font-medium italic">Nenhuma produção registrada neste período</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      {memoizedCostsByCollaborator.slice(0, 4).map((c: any, i: number) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase truncate">{c?.name || '---'}</span>
+                          <span className="text-[10px] font-black text-zinc-900 ml-auto">{(((Number(c?.total_cost) || 0) / (Number(reportData?.summary?.total_labor_cost) || 1)) * 100).toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  <Card className="p-8 border-none shadow-sm bg-zinc-900 text-white overflow-hidden relative">
+                    <div className="absolute -bottom-10 -right-10 opacity-10">
+                      <TrendingUp size={200} />
+                    </div>
+                    <div className="relative z-10">
+                      <h3 className="text-lg font-black mb-1 flex items-center gap-2">
+                        <TrendingUp size={20} className="text-emerald-400" />
+                        Ranking de Rentabilidade
+                      </h3>
+                      <p className="text-xs text-zinc-500 font-medium mb-8">Colaboradores com menor custo por peça produzida</p>
+
+                      <div className="space-y-6">
+                        {memoizedCostsByCollaborator.map((c: any, i: number) => {
+                            const costPerPiece = (Number(c?.total_cost) || 0) / (Number(c?.pecas) || 1);
+                            const isEfficient = (Number(metaCustoPeca) || 0) > 0 ? costPerPiece <= (Number(metaCustoPeca) || 0) : true;
+                            const denominator = (Number(metaCustoPeca) || costPerPiece * 1.5) || 1;
+                            return (
+                              <div key={i} className="group">
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                      "w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shadow-lg shadow-black/20",
+                                      i === 0 ? "bg-amber-400 text-amber-950" : "bg-zinc-800 text-zinc-500"
+                                    )}>
+                                      {i + 1}
+                                    </div>
+                                    <span className="text-sm font-bold text-zinc-100">{c?.name || '---'}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className={cn(
+                                      "text-sm font-black font-mono",
+                                      isEfficient ? "text-emerald-400" : "text-rose-400"
+                                    )}>
+                                      R$ {costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-medium opacity-50">/pç</span>
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="h-1.5 w-full bg-zinc-800/50 rounded-full overflow-hidden shadow-inner">
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${Math.min(100, (costPerPiece / denominator) * 100)}%` }}
+                                    className={cn("h-full shadow-lg", isEfficient ? "bg-emerald-400" : "bg-rose-400")}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Right Column: Detailed Table */}
+                <div className="space-y-8">
+                  <Card className="p-8 border-none shadow-sm bg-white h-full flex flex-col">
+                    <div className="flex items-center justify-between mb-8">
+                      <div>
+                        <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                          <FileText size={20} className="text-sky-500" />
+                          Custos por Ordem de Produção
+                        </h3>
+                        <p className="text-xs text-zinc-400 font-medium">Análise detalhada de cada pedido finalizado neste período</p>
+                      </div>
+                      <button className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors">
+                        <Download size={18} />
+                      </button>
+                    </div>
+
+                    <div className="flex-grow overflow-y-auto max-h-[700px] pr-2 custom-scrollbar">
+                      <div className="grid grid-cols-1 gap-4">
+                        {memoizedOrdersCompleted.length ? (
+                          memoizedOrdersCompleted.map((p: any, i: number) => {
+                            const costPerPiece = (Number(p?.lead_time_horas) || 0) > 0 ? ((Number(p?.lead_time_horas) || 0) * 15) / (Number(p?.pecas) || 1) : 0;
+                            const isEfficient = (Number(metaCustoPeca) || 0) > 0 ? costPerPiece <= (Number(metaCustoPeca) || 0) : true;
+                            return (
+                              <div key={i} className="group border border-zinc-100 rounded-2xl p-4 hover:border-emerald-200 hover:bg-emerald-50/10 transition-all cursor-pointer flex items-center gap-6">
+                                <div className="bg-zinc-50 p-3 rounded-xl group-hover:bg-white transition-colors">
+                                  <span className="text-[10px] font-black text-zinc-400 uppercase block mb-0.5 tracking-widest">Pedido</span>
+                                  <span className="text-sm font-black text-zinc-900 font-mono">{p?.order_number || '---'}</span>
+                                </div>
+
+                                <div className="flex-grow grid grid-cols-2 md:grid-cols-3 gap-4">
+                                  <div>
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Peças</span>
+                                    <span className="text-sm font-black text-zinc-900">{Number(p?.pecas) || 0}</span>
+                                  </div>
+                                  <div className="hidden md:block">
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Tempo Total</span>
+                                    <span className="text-sm font-black text-zinc-900">{(Number(p?.lead_time_horas) || 0).toFixed(1)}h</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Custo Peça</span>
+                                    <span className={cn(
+                                      "text-sm font-black font-mono",
+                                      isEfficient ? "text-emerald-600" : "text-rose-600"
+                                    )}>
+                                      R$ {costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className={cn(
+                                  "hidden sm:flex items-center justify-center px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase",
+                                  isEfficient ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                                )}>
+                                  {isEfficient ? 'Ok' : 'Alto'}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-center py-12 text-zinc-400 italic font-medium">
+                            Nenhum pedido concluído para análise.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'monitor' && currentUser?.role === 'Admin' && (
+          <div className="max-w-7xl mx-auto pb-12">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
+              <p className="text-zinc-500">Acompanhamento em tempo real da produção e tempos de execução</p>
+            </div>
+            <TaskMonitor onShowInfo={(t, d) => setInfoModal({ title: t, description: d })} />
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="max-w-2xl space-y-8 pb-12">
+            <Card className="p-8">
+              <div className="flex justify-between items-start mb-6">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Settings size={20} />
+                  Integração Supabase
+                </h3>
+                <button
+                  onClick={async () => {
+                    const data = await safeFetch('/api/supabase/status');
+                    if (data?.status === 'success') {
+                      alert('✅ Supabase conectado com sucesso!');
+                    } else {
+                      alert(`❌ Erro: ${data?.message || 'Falha na conexão'}`);
+                    }
+                  }}
+                  className="text-[10px] font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700"
+                >
+                  Testar Conexão
+                </button>
+              </div>
+              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-500">Status do SDK:</span>
+                  <Badge variant="info">Ativo</Badge>
+                </div>
+                <p className="text-[11px] text-zinc-500 leading-relaxed">
+                  O SDK do Supabase foi inicializado. Para usar o Supabase como banco de dados principal (SQL),
+                  certifique-se de configurar a <strong>DATABASE_URL</strong> com a Connection String do Supabase nos Secrets.
+                </p>
+              </div>
+            </Card>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <BarChart3 size={20} />
+                Configuração de Capacidade Produtiva
+              </h3>
+              <form className="space-y-6" onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const data = {
+                  jornada_horas: Number(formData.get('jornada_horas')),
+                  operadores_ativos: Number(formData.get('operadores_ativos')),
+                  eficiencia_percentual: Number(formData.get('eficiencia_percentual')) / 100,
+                  dias_uteis_mes: Number(formData.get('dias_uteis_mes')),
+                  meta_custo_por_peca: Number(formData.get('meta_custo_por_peca'))
+                };
+
+                await fetch('/api/config', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-role': currentUser?.role || ''
+                  },
+                  body: JSON.stringify(data)
+                });
+                fetchData();
+              }}>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Jornada de Trabalho (Horas)</label>
+                    <input
+                      name="jornada_horas"
+                      type="number"
+                      step="0.5"
+                      defaultValue={stats?.capacity?.config?.jornada_horas || 8}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Operadores Ativos</label>
+                    <input
+                      name="operadores_ativos"
+                      type="number"
+                      defaultValue={stats?.capacity?.config?.operadores_ativos || 2}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Eficiência Operacional (%)</label>
+                    <input
+                      name="eficiencia_percentual"
+                      type="number"
+                      defaultValue={(stats?.capacity?.config?.eficiencia_percentual || 0.85) * 100}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Úteis no Mês</label>
+                    <input
+                      name="dias_uteis_mes"
+                      type="number"
+                      defaultValue={stats?.capacity?.config?.dias_uteis_mes || 22}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Meta Custo/Peça (R$)</label>
+                    <input
+                      name="meta_custo_por_peca"
+                      type="number"
+                      step="0.01"
+                      defaultValue={metaCustoPeca || 0}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
+                  Salvar Configurações
+                </button>
+              </form>
+            </Card>
+
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                <Clock size={20} />
+                Horários de Pausa Automática
+              </h3>
+              <p className="text-xs text-zinc-400 mb-6">
+                Ao atingir o horário configurado, todas as tarefas em andamento são pausadas automaticamente.
+                O sistema requer que um Admin esteja com o sistema aberto no horário.
+              </p>
+              <form className="space-y-5" onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const weekday = formData.get('auto_pause_time_weekday') as string;
+                const friday = formData.get('auto_pause_time_friday') as string;
+                const lunch = formData.get('auto_pause_time_lunch') as string;
+                const res = await fetch('/api/config', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
+                  body: JSON.stringify({ auto_pause_time_weekday: weekday, auto_pause_time_friday: friday, auto_pause_time_lunch: lunch })
+                });
+                if (res.ok) {
+                  setAutoPauseTimeWeekday(weekday);
+                  setAutoPauseTimeFriday(friday);
+                  setAutoPauseTimeLunch(lunch);
+                  alert('✅ Horários salvos com sucesso!');
+                }
+              }}>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Almoço (Horário de Pausa)</label>
+                    <input
+                      name="auto_pause_time_lunch"
+                      type="time"
+                      defaultValue={autoPauseTimeLunch}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Seg – Qui (Fim de Expediente)</label>
+                    <input
+                      name="auto_pause_time_weekday"
+                      type="time"
+                      defaultValue={autoPauseTimeWeekday}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Sexta (Fim de Expediente)</label>
+                    <input
+                      name="auto_pause_time_friday"
+                      type="time"
+                      defaultValue={autoPauseTimeFriday}
+                      className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
+                  Salvar Horários
+                </button>
+              </form>
+            </Card>
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                <Settings size={20} />
+                Gerenciar Etapas de Produção
+              </h3>
+
+              <div className="flex flex-wrap gap-2 mb-8">
+                <input
+                  type="text"
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="Nome da nova etapa (ex: Silk 2 Cores)"
+                  className="flex-1 min-w-[200px] p-2 border border-zinc-200 rounded-lg text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newStageTime || ''}
+                  onChange={(e) => setNewStageTime(Number(e.target.value))}
+                  placeholder="Tempo Ideal (min/peça)"
+                  title="Tempo ideal da etapa em minutos por peça"
+                  className="p-2 border border-zinc-200 rounded-lg text-sm w-36 focus:outline-none focus:border-zinc-400"
+                />
+                 <select
+                  value={newStageCalculationType}
+                  onChange={(e) => setNewStageCalculationType(e.target.value as any)}
+                  className="p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
+                >
+                  <option value="por_pedido">📄 Por pedido</option>
+                  <option value="por_peca">👕 Por peça</option>
+                  <option value="por_lote">📦 Por lote</option>
+                </select>
+                <input
+                  type="number"
+                  value={newStageMetaDiaria}
+                  onChange={(e) => setNewStageMetaDiaria(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Meta Diária"
+                  title="Meta de produção diária base para esta etapa"
+                  className="p-2 border border-zinc-200 rounded-lg text-sm w-28 focus:outline-none focus:border-zinc-400"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newStageName) return;
+                    await fetch('/api/stages', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-role': currentUser?.role || ''
+                      },
+                      body: JSON.stringify({ 
+                        name: newStageName, 
+                        ideal_time: newStageTime * 60,
+                        calculation_type: newStageCalculationType,
+                        meta_diaria: newStageMetaDiaria !== '' ? newStageMetaDiaria : null
+                      })
+                    });
+                    setNewStageName('');
+                    setNewStageTime(0);
+                    setNewStageCalculationType('por_peca');
+                    setNewStageMetaDiaria('');
+                    fetchData();
+                  }}
+                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors"
+                >
+                  Adicionar
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {stages.map((stage, index) => {
+                  const idealTimeDisplay = stage.ideal_time || stage.average_time_seconds || 0;
+                  return (
+                  <div key={stage.id} className="flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 rounded-xl group">
+                    <div className="flex items-center gap-4 flex-1">
+                      <span className="text-xs font-bold text-zinc-400 w-6">{stage.sort_order}</span>
+                      {editingStageId === stage.id ? (
+                        <div className="flex flex-wrap flex-1 gap-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingStageName}
+                            onChange={(e) => setEditingStageName(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Escape') setEditingStageId(null);
+                            }}
+                            className="flex-1 min-w-[150px] bg-white border border-zinc-300 rounded px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          />
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editingStageTime === 0 ? '' : editingStageTime}
+                            onChange={(e) => setEditingStageTime(Number(e.target.value))}
+                            className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
+                            title="Tempo ideal por peça em minutos"
+                          />
+                          <select
+                            value={editingStageCalculationType}
+                            onChange={(e) => setEditingStageCalculationType(e.target.value as any)}
+                            className="p-1 border border-zinc-300 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                          >
+                            <option value="por_pedido">📄 Por pedido</option>
+                            <option value="por_peca">👕 Por peça</option>
+                            <option value="por_lote">📦 Por lote</option>
+                          </select>
+                          <input
+                            type="number"
+                            value={editingStageMetaDiaria}
+                            onChange={(e) => setEditingStageMetaDiaria(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="Meta Diária"
+                            title="Meta de produção diária base para esta etapa"
+                            className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
+                          />
+                          <button
+                            onClick={async () => {
+                              if (editingStageName) {
+                                await fetch(`/api/stages/${stage.id}`, {
+                                  method: 'PATCH',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'x-user-role': currentUser?.role || ''
+                                  },
+                                  body: JSON.stringify({ 
+                                    name: editingStageName, 
+                                    ideal_time: editingStageTime * 60,
+                                    calculation_type: editingStageCalculationType,
+                                    meta_diaria: editingStageMetaDiaria !== '' ? editingStageMetaDiaria : null
+                                  })
+                                });
+                                fetchData();
+                              }
+                              setEditingStageId(null);
+                            }}
+                            className="px-3 py-1 bg-zinc-900 text-white rounded text-xs font-bold hover:bg-zinc-800 transition-colors"
+                          >
+                            Salvar
+                          </button>
+                          <button
+                            onClick={() => setEditingStageId(null)}
+                            className="px-3 py-1 bg-zinc-100 text-zinc-600 rounded text-xs font-bold hover:bg-zinc-200 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{stage.name}</span>
+                            {stage.calculation_type === 'por_pedido' && <Badge variant="info" className="lowercase italic opacity-70">por pedido</Badge>}
+                            {stage.calculation_type === 'por_peca' && <Badge variant="success" className="lowercase italic opacity-70">por peça</Badge>}
+                            {stage.calculation_type === 'por_lote' && <Badge variant="warning" className="lowercase italic opacity-70">por lote</Badge>}
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5">
+                            {idealTimeDisplay > 0 ? <span className="text-[10px] text-zinc-500 font-mono bg-white px-1.5 py-0.5 rounded border border-zinc-200">
+                              Ideal: {formatSeconds(idealTimeDisplay)} {stage.calculation_type === 'por_peca' ? '/pc' : ''}
+                            </span> : null}
+                            {stage.real_average_time && stage.real_average_time > 0 ? (
+                               <span className="text-[10px] text-blue-600 font-mono bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                 Real: {formatSeconds(stage.real_average_time)} ({stage.execution_count} rec)
+                               </span>
+                            ) : null}
+                            {stage.meta_diaria && stage.meta_diaria > 0 ? (
+                              <span className="text-[10px] text-violet-600 font-mono bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100">
+                                Meta: {stage.meta_diaria}/{stage.calculation_type === 'por_pedido' ? 'ped' : 'pc'}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="success">Ativa</Badge>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => moveStage(index, -1)}
+                          disabled={index === 0}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 disabled:opacity-30 transition-colors"
+                          title="Mover para cima"
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveStage(index, 1)}
+                          disabled={index === stages.length - 1}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 disabled:opacity-30 transition-colors"
+                          title="Mover para baixo"
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <div className="w-px h-4 bg-zinc-200 mx-1"></div>
+                        <button
+                          onClick={() => {
+                            setEditingStageId(stage.id);
+                            setEditingStageName(stage.name);
+                            setEditingStageTime(Math.round((stage.ideal_time || stage.average_time_seconds || 0) / 60));
+                            setEditingStageCalculationType(stage.calculation_type || 'por_peca');
+                            setEditingStageMetaDiaria(stage.meta_diaria ?? '');
+                          }}
+                          className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500 transition-colors"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
+                              await fetch(`/api/stages/${stage.id}`, {
+                                method: 'DELETE',
+                                headers: { 'x-user-role': currentUser?.role || '' }
+                              });
+                              fetchData();
+                            }
+                          }}
+                          className="p-1.5 hover:bg-rose-100 rounded text-rose-500 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              </div>
+
+              {/* Metas Individuais por Colaborador */}
+              <div className="mt-8 border-t border-zinc-100 pt-6">
+                <h4 className="text-sm font-bold text-zinc-700 mb-4 flex items-center gap-2">
+                  <Target size={16} className="text-zinc-500" />
+                  Metas Individuais por Colaborador (Overrides)
+                </h4>
+                <p className="text-xs text-zinc-500 mb-4">Configure metas personalizadas por colaborador que sobrescrevem a meta padrão do setor.</p>
+                <div className="space-y-2">
+                  {stages.map(stage => (
+                    <div key={stage.id} className="border border-zinc-100 rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => {
+                          setExpandedGoalStageId(expandedGoalStageId === stage.id ? null : stage.id);
+                          if (expandedGoalStageId !== stage.id) fetchCollaboratorGoals();
+                        }}
+                        className="w-full flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100 transition-colors text-left"
+                      >
+                        <span className="text-sm font-medium text-zinc-700 flex items-center gap-2">
+                          {stage.name}
+                          <span className="text-[10px] text-zinc-400 font-mono">
+                            Meta padrão: {stage.meta_diaria ?? '—'} {stage.calculation_type === 'por_pedido' ? 'pedidos' : 'peças'}/dia
+                          </span>
+                        </span>
+                        <ChevronRight size={14} className={cn('text-zinc-400 transition-transform', expandedGoalStageId === stage.id && 'rotate-90')} />
+                      </button>
+                      {expandedGoalStageId === stage.id && (
+                        <div className="p-4 space-y-2">
+                          {users.filter(u => u.active).map(user => {
+                            const override = collaboratorGoals.find(g => g.user_id === user.id && g.stage_id === stage.id);
+                            const key = `${stage.id}-${user.id}`;
+                            const editVal = goalEditValues[key] ?? '';
+                            return (
+                              <div key={user.id} className="flex items-center gap-3 p-2 rounded-lg bg-zinc-50/50 border border-zinc-100">
+                                <span className="text-sm font-medium text-zinc-700 w-40 truncate">{user.name}</span>
+                                {override ? (
+                                  <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200">Meta personalizada: {override.meta_diaria}</span>
+                                ) : (
+                                  <span className="text-[10px] text-zinc-400">Usa padrão do setor ({stage.meta_diaria ?? '—'})</span>
+                                )}
+                                <div className="flex items-center gap-2 ml-auto">
+                                  <input
+                                    type="number"
+                                    value={editVal}
+                                    onChange={e => setGoalEditValues(v => ({ ...v, [key]: e.target.value }))}
+                                    placeholder={String(override?.meta_diaria ?? stage.meta_diaria ?? '')}
+                                    className="w-20 p-1 border border-zinc-200 rounded text-xs text-center"
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      if (!editVal) return;
+                                      await fetch('/api/collaborator-goals', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
+                                        body: JSON.stringify({ user_id: user.id, stage_id: stage.id, meta_diaria: Number(editVal) })
+                                      });
+                                      setGoalEditValues(v => { const n = { ...v }; delete n[key]; return n; });
+                                      fetchCollaboratorGoals();
+                                    }}
+                                    className="px-2 py-1 bg-zinc-900 text-white rounded text-[10px] font-bold hover:bg-zinc-700 transition-colors"
+                                  >Salvar</button>
+                                  {override && (
+                                    <button
+                                      onClick={async () => {
+                                        if (!override.id) return;
+                                        await fetch(`/api/collaborator-goals/${override.id}`, {
+                                          method: 'DELETE',
+                                          headers: { 'x-user-role': currentUser?.role || '' }
+                                        });
+                                        fetchCollaboratorGoals();
+                                      }}
+                                      className="px-2 py-1 bg-rose-50 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-100 transition-colors"
+                                    >Remover</button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {/* Mapeamento de Motivos de Perda & Etapa de Reentrada */}
+            <Card className="p-8">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
+                <AlertCircle size={20} className="text-rose-600" />
+                Mapeamento de Motivos de Perda & Etapa de Reentrada Padrão
+              </h3>
+              <p className="text-xs text-zinc-500 mb-6">
+                Configure para qual etapa a peça de reposição reentra automaticamente no fluxo quando um operador registra uma perda.
+              </p>
+              <div className="space-y-3">
+                {lossReasonsList.map((reason, idx) => (
+                  <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl gap-3">
+                    <div className="flex-1">
+                      <span className="font-bold text-xs text-zinc-900">{reason.motivo}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500 font-medium">Reentra em:</span>
+                      <select
+                        value={reason.etapa_reentrada_id}
+                        onChange={(e) => {
+                          const newId = Number(e.target.value);
+                          const updated = lossReasonsList.map((r, i) => i === idx ? { ...r, etapa_reentrada_id: newId } : r);
+                          setLossReasonsList(updated);
+                        }}
+                        className="p-2 border border-zinc-200 rounded-lg text-xs bg-white font-medium focus:outline-none focus:border-zinc-400"
+                      >
+                        {stages.map(st => (
+                          <option key={st.id} value={st.id}>{st.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSaveLossReasonsMapping(lossReasonsList)}
+                className="mt-6 px-5 py-2.5 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-colors"
+              >
+                Salvar Mapeamento de Perdas
+              </button>
+            </Card>
+
+            <Card className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <ClipboardList size={20} />
+                  Gerenciar Templates de Pedido
+                </h3>
+                {currentUser?.role === 'Admin' && (
+                  <button
+                    onClick={() => {
+                      setEditingTemplate(null);
+                      setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                      setIsTemplateEditorOpen(true);
+                    }}
+                    className="bg-zinc-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                  >
+                    <Plus size={16} /> Novo Template
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {templates.map((template) => (
+                  <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
+                      {currentUser?.role === 'Admin' && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setEditingTemplate(template);
+                              setTemplateFormStages(template.required_stages || []);
+                              setIsTemplateEditorOpen(true);
+                            }}
+                            className="p-1.5 hover:bg-zinc-200 rounded text-zinc-500"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Excluir template "${template.name}"?`)) {
+                                await fetch(`/api/order-templates/${template.id}`, {
+                                  method: 'DELETE',
+                                  headers: { 'x-user-role': currentUser?.role || '' }
+                                });
+                                fetchData();
+                              }
+                            }}
+                            className="p-1.5 hover:bg-rose-100 rounded text-rose-500"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <Badge variant="default">{template.product_type}</Badge>
+                      <Badge variant="info">{template.print_type}</Badge>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Etapas Inclusas:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {stages.filter(s => template.required_stages?.includes(s.id)).map(s => (
+                        <span key={s.id} className="px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded text-[9px] font-bold">
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-8 border border-rose-100 bg-rose-50/10">
+              <h3 className="text-lg font-bold text-rose-900 mb-2 flex items-center gap-2">
+                <AlertTriangle size={20} className="text-rose-600" />
+                Zona de Perigo: Ações Críticas
+              </h3>
+              <p className="text-xs text-zinc-500 mb-6">
+                Estas ações são irreversíveis e afetam permanentemente os dados do sistema. Certifique-se do que está fazendo.
+              </p>
+              
+              <div className="p-5 bg-white border border-rose-200/50 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-sm transition-all duration-200">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-zinc-900">Zerar Relatórios & Histórico de Produção</h4>
+                  <p className="text-xs text-zinc-500 max-w-xl leading-relaxed">
+                    Apaga permanentemente todos os registros de tempos operacionais e pausas (<code className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded text-[10px] font-mono">stage_executions</code> e <code className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded text-[10px] font-mono">pauses</code>). 
+                    Os pedidos, clientes e configurações <strong>não serão excluídos</strong>, mas todas as métricas de relatórios e produtividade voltarão a zero.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const promptVal = prompt("⚠️ AVISO CRÍTICO: Isto irá zerar todas as estatísticas de relatórios operacionais e produtividade dos colaboradores permanentemente.\n\nPara prosseguir, digite \"CONFIRMAR\" abaixo:");
+                    if (promptVal !== "CONFIRMAR") {
+                      if (promptVal !== null) {
+                        alert("Operação cancelada. A confirmação não foi digitada corretamente.");
+                      }
+                      return;
+                    }
+
+                    try {
+                      const res = await fetch('/api/admin/reset-production', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || '',
+                          'x-user-name': currentUser?.name || 'Admin'
+                        }
+                      });
+
+                      const data = await res.json();
+                      if (res.ok && data.success) {
+                        alert("✅ " + data.message);
+                        fetchData(); // Recarrega todas as informações
+                      } else {
+                        alert("❌ Falha ao zerar relatórios: " + (data.error || "Erro desconhecido"));
+                      }
+                    } catch (err: any) {
+                      console.error("Erro ao resetar:", err);
+                      alert("❌ Erro de rede ou servidor ao realizar a limpeza.");
+                    }
+                  }}
+                  className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all duration-200 shadow-sm shadow-rose-100 hover:shadow active:scale-98 whitespace-nowrap self-start md:self-center pointer-events-auto"
+                >
+                  Zerar Relatórios e Tempos
+                </button>
+              </div>
+            </Card>
+          </div>
+        )
+        }
+
+        {/* Order Details Drawer */}
+        <AnimatePresence>
+          {
+            selectedOrder && (
+              <div className="fixed inset-0 z-[60] flex justify-end bg-black/40 backdrop-blur-sm">
+                <motion.div
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  className="bg-white w-full h-full shadow-2xl overflow-y-auto"
+                >
+                  <div className="sticky top-0 bg-white/80 backdrop-blur-md z-10 p-3 sm:p-4 border-b border-zinc-100 flex justify-between items-center px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setSelectedOrder(null)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg transition-all font-bold text-xs active:scale-95"
+                      >
+                        <ArrowLeft size={16} />
+                        Voltar <kbd className="ml-1 px-1 py-0.5 text-[9px] font-mono bg-zinc-200 border border-zinc-300 rounded text-zinc-500 font-normal">Esc</kbd>
+                      </button>
+                      <div className="h-6 w-[1px] bg-zinc-200 hidden sm:block" />
+                      <div>
+                        <h2 className="text-xl font-black tracking-tight text-zinc-900 leading-tight">{selectedOrder.client_name}</h2>
+                        <p className="text-[10px] text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {selectedOrder.print_type === 'DTF' && (
+                        <div className="flex items-center gap-1">
+                          {confirmingDtfOrderId === selectedOrder.id ? (
+                            <div className="flex items-center gap-1 bg-zinc-50 border border-zinc-200 rounded-lg p-1 shadow-sm">
+                              <span className="text-[10px] font-bold text-zinc-500 px-1 animate-pulse">Confirmar?</span>
+                              <button
+                                onClick={() => {
+                                  if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                  setConfirmingDtfOrderId(null);
+                                  handleToggleDtf(selectedOrder.id, selectedOrder.dtf_complete || false);
+                                }}
+                                className="p-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                title="Confirmar"
+                              >
+                                <Check size={12} className="stroke-[3]" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                                  setConfirmingDtfOrderId(null);
+                                }}
+                                className="p-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-600 rounded text-xs cursor-pointer shadow-sm flex items-center justify-center w-5 h-5 transition-all active:scale-95"
+                                title="Cancelar"
+                              >
+                                <X size={12} className="stroke-[2]" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => handleRequestToggleDtf(selectedOrder.id, e)}
+                              className={cn(
+                                "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm",
+                                selectedOrder.dtf_complete
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
+                              )}
+                              title="Checklist da Designer (DTF Feito)"
+                            >
+                              {selectedOrder.dtf_complete ? (
+                                <>
+                                  <CheckCircle size={13} className="stroke-[3] text-emerald-600" />
+                                  <span>DTF Pronto</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Timer size={13} className="text-amber-500" />
+                                  <span>DTF Pendente</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="relative flex items-center" title="Gaveteiro / Obs Interna">
+                        <Archive size={13} className="absolute left-2.5 text-zinc-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Gaveta / Obs..."
+                          defaultValue={selectedOrder.dtf_location || ''}
+                          key={`modal-dtf-loc-header-${selectedOrder.id}-${selectedOrder.dtf_location || ''}`}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (selectedOrder.dtf_location || '')) {
+                              handleUpdateDtfLocation(selectedOrder.id, val);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                          className="pl-7 pr-2.5 py-1.5 text-xs border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 bg-white hover:bg-zinc-50 text-zinc-800 placeholder:text-zinc-400 w-36 shadow-sm transition-all font-medium"
+                        />
+                      </div>
+
+                      {((currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado') && (
+                        <>
+                          <button
+                            onClick={() => openEditOrderModal(selectedOrder)}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg transition-all font-bold text-xs"
+                            title="Editar"
+                          >
+                            <Edit2 size={13} />
+                            <span className="hidden xl:inline">Editar</span>
+                          </button>
+                          <button
+                            onClick={() => handleCancelOrder(selectedOrder.id)}
+                            disabled={isCancellingOrder}
+                            className={cn(
+                              "flex items-center gap-1 px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-lg transition-all font-bold text-xs",
+                              isCancellingOrder && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            {isCancellingOrder ? <RefreshCw size={13} className="animate-spin" /> : <X size={13} />}
+                            <span className="hidden xl:inline">Cancelar</span>
+                          </button>
+                        </>
+                      )}
+                      {selectedOrder.status !== 'Cancelado' && (
+                        <button
+                          onClick={() => handleGenerateTrackingLink(selectedOrder)}
+                          disabled={isGeneratingLink}
+                          className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-all font-bold text-xs active:scale-95"
+                          title="Gerar e copiar link de acompanhamento do cliente"
+                        >
+                          {isGeneratingLink ? <RefreshCw size={13} className="animate-spin" /> : <LinkIcon size={13} />}
+                          <span className="hidden xl:inline">Link Cliente</span>
+                          <span className="xl:hidden">Link</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleViewHistory(selectedOrder.id)}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-lg transition-all font-bold text-xs"
+                      >
+                        <FileText size={13} />
+                        <span className="hidden xl:inline">Histórico</span>
+                      </button>
+                      {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && (
+                        <button
+                          onClick={() => handleDeleteOrder(selectedOrder.id)}
+                          disabled={isDeletingOrder}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all font-bold text-xs",
+                            isDeletingOrder && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          {isDeletingOrder ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          <span className="hidden xl:inline">Excluir</span>
+                        </button>
+                      )}
+                      <Badge variant={
+                      selectedOrder.status === 'Entregue' ? 'success' :
+                          selectedOrder.status === 'Cancelado' ? 'error' : 'info'
+                      } className="text-[9px] py-0.5 px-2">
+                        {selectedOrder.status}
+                      </Badge>
+                      {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
+                        <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          🎨 {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-4 sm:p-5 lg:p-6 max-w-full mx-auto h-[calc(100vh-64px)] overflow-hidden">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 h-full">
+                          
+                          {/* Left Column: Order Information & Production Items */}
+                          <div className="lg:col-span-5 space-y-4 overflow-y-auto pr-1 custom-scrollbar">
+                            <section>
+                              <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <Package size={14} /> INFORMAÇÕES GERAIS
+                              </h3>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Tempo Total</p>
+                                  <p className="text-base font-mono font-bold">{formatSeconds(activeOrderTotalTime)}</p>
+                                </div>
+                                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
+                                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Estimado</p>
+                                  <p className="text-base font-mono font-bold text-zinc-500">{formatSeconds(selectedOrder.estimated_time_seconds)}</p>
+                                </div>
+                                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm col-span-2">
+                                  <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
+                                  {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
+                                    <input
+                                      type="date"
+                                      defaultValue={selectedOrder.deadline.split('T')[0]}
+                                      onChange={(e) => handleUpdateDeadline(selectedOrder.id, e.target.value)}
+                                      className="text-base font-bold bg-transparent border-none focus:ring-0 p-0 w-full cursor-pointer hover:text-zinc-600"
+                                    />
+                                  ) : (
+                                    <p className="text-base font-bold">{safeFormat(selectedOrder.deadline, 'dd/MM/yyyy')}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </section>
+                            <section className="p-4 sm:p-5 bg-white border border-zinc-200 rounded-2xl shadow-sm">
+                              <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">DETALHES DE PRODUÇÃO</h4>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Produto</span>
+                                  <span className="text-xs font-bold text-zinc-900">{selectedOrder.product_type}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Quantidade</span>
+                                  <span className="text-xs font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-zinc-500 font-medium text-[10px]">pçs</span></span>
+                                </div>
+                                <div className="col-span-2 pt-2 border-t border-zinc-50">
+                                  <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-1">Estampa</span>
+                                  <Badge variant="info" className="text-[10px] px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-100">
+                                    {selectedOrder.print_type}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </section>
+
+                            {selectedOrder.items && selectedOrder.items.length > 0 && (
+                              <div className="space-y-4">
+                                <section className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl shadow-sm space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-900 flex items-center gap-1.5">
+                                      <Package size={13} className="text-indigo-600" /> LISTA DE ITENS DO PEDIDO
+                                    </h4>
+                                    <span className="text-[10px] font-bold text-indigo-600 font-mono">{selectedOrder.items.length} SKUs</span>
+                                  </div>
+                                  <div className="overflow-x-auto border border-indigo-100 rounded-xl bg-white shadow-sm">
+                                    <table className="w-full text-left text-xs">
+                                      <thead>
+                                        <tr className="bg-indigo-100/60 text-indigo-950 font-bold uppercase text-[9px] border-b border-indigo-100">
+                                          <th className="px-3 py-2.5">Item / Descrição</th>
+                                          <th className="px-3 py-2.5 text-center">Tamanho</th>
+                                          <th className="px-3 py-2.5 text-right">Qtd Total</th>
+                                          <th className="px-3 py-2.5 text-center">Falta (Corte)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-indigo-50">
+                                        {selectedOrder.items.map((item, idx) => {
+                                          const qty = item.quantity ?? item.quantidade ?? 1;
+                                          const corteQty = item.qty_corte ?? item.total_via_corte ?? (item.stock_available !== undefined && item.stock_available !== null ? Math.max(0, qty - Math.min(qty, item.stock_available)) : 0);
+                                          const displaySize = getItemDisplaySize(item);
+                                          return (
+                                            <tr key={idx} className="hover:bg-indigo-50/40 text-xs">
+                                              <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
+                                              <td className="px-3 py-2.5 text-center">
+                                                <span className="inline-block px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
+                                                  {displaySize}
+                                                </span>
+                                              </td>
+                                              <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-zinc-900">{qty} un</td>
+                                              <td className="px-3 py-2.5 text-center">
+                                                {corteQty > 0 ? (
+                                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 text-white rounded-lg text-xs font-black font-mono shadow-xs">
+                                                    <Scissors size={11} className="text-white" /> {corteQty} un (FALTA)
+                                                  </span>
+                                                ) : (
+                                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold font-mono">
+                                                    <CheckCircle2 size={11} className="text-emerald-600" /> 0 un (Estoque)
+                                                  </span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </section>
+
+                                {/* Resumo de Peças para Corte (Abaixo da Lista do Pedido) */}
+                                {(() => {
+                                  const cuttingItems = selectedOrder.items.filter(it => {
+                                    const qtyPedida = it.quantity ?? it.quantidade ?? 1;
+                                    const corteQty = it.qty_corte ?? it.total_via_corte ?? (it.stock_available !== undefined && it.stock_available !== null ? Math.max(0, qtyPedida - Math.min(qtyPedida, it.stock_available)) : 0);
+                                    return corteQty > 0;
+                                  });
+
+                                  if (cuttingItems.length === 0) return null;
+
+                                  const totalCuttingQty = cuttingItems.reduce((sum, it) => sum + (it.qty_corte ?? it.total_via_corte ?? 1), 0);
+
+                                  return (
+                                    <section className="p-4 bg-amber-50/90 border border-amber-200/90 rounded-2xl shadow-sm space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-950 flex items-center gap-1.5">
+                                          <Scissors size={13} className="text-amber-600 animate-pulse" /> RESUMO DE PEÇAS PARA CORTE (FALTA EM ESTOQUE OLIST)
+                                        </h4>
+                                        <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
+                                          {totalCuttingQty} {totalCuttingQty === 1 ? 'PEÇA A CORTAR' : 'PEÇAS A CORTAR'}
+                                        </span>
+                                      </div>
+
+                                      <div className="overflow-x-auto border border-amber-200/70 rounded-xl bg-white shadow-sm">
+                                        <table className="w-full text-left text-xs">
+                                          <thead>
+                                            <tr className="bg-amber-100/70 text-amber-950 font-bold uppercase text-[9px] border-b border-amber-200">
+                                              <th className="px-3 py-2.5">Item a Cortar</th>
+                                              <th className="px-3 py-2.5 text-center">Tamanho</th>
+                                              <th className="px-3 py-2.5 text-center">Estoque Olist</th>
+                                              <th className="px-3 py-2.5 text-right">Qtd a Cortar</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-amber-100/60">
+                                            {cuttingItems.map((item, idx) => {
+                                              const corteQty = item.qty_corte ?? item.total_via_corte ?? 1;
+                                              const stockAvail = item.stock_available ?? 0;
+                                              const displaySize = getItemDisplaySize(item);
+                                              return (
+                                                <tr key={idx} className="hover:bg-amber-50/50 text-xs">
+                                                  <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
+                                                  <td className="px-3 py-2.5 text-center">
+                                                    <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
+                                                      {displaySize}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-3 py-2.5 text-center font-mono text-xs font-bold text-zinc-700">{stockAvail > 0 ? `${stockAvail} un` : '0 un (Sem Estoque)'}</td>
+                                                  <td className="px-3 py-2.5 text-right">
+                                                    <span className="inline-block px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-sm font-black font-mono">
+                                                      {corteQty} un
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+
+                                      <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2.5 rounded-xl flex items-center gap-2 border border-amber-200/60">
+                                        <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                                        <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
+                                      </div>
+                                    </section>
+                                  );
+                                })()}
+                              </div>
+                            )}
+
+                            {selectedOrder.observations && (
+                              <section>
+                                <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                                  <ClipboardList size={12} /> OBSERVAÇÕES
+                                </h3>
+                                <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs font-medium text-amber-900 leading-relaxed italic">
+                                  "{selectedOrder.observations}"
+                                </div>
+                              </section>
+                            )}
+                            
+                            {activeOrderTotalTime > selectedOrder.estimated_time_seconds * 1.2 && (
+                              <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-700">
+                                <AlertCircle size={16} />
+                                <p className="text-[9px] font-bold uppercase tracking-tight">ALERTA: Tempo real +20% acima do esperado.</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Middle Column: Stage Management */}
+                          <div className="lg:col-span-4 space-y-4 flex flex-col h-full border-x lg:border-zinc-100 px-4">
+                            <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
+                              </div>
+                              {(() => {
+                                const stagesStatusList = selectedOrder.stages_status || [];
+                                return (
+                                  <Badge variant="info" className="text-[8px] py-0 px-1.5">
+                                    {stagesStatusList.filter(s => s.finished).length}/{stagesStatusList.length}
+                                  </Badge>
+                                );
+                              })()}
+                            </h3>
+
+                            <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
+                              {(() => {
+                                const stagesStatusList = selectedOrder.stages_status || [];
+                                const firstUnfinishedId = stagesStatusList.find(s => !s.finished)?.id;
+                                return stagesStatusList.map(orderStage => {
+                                  const stage = stages.find(s => s.id === orderStage.id);
+                                  if (!stage) return null;
+                                  const execution = executions.find(e => e.stage_id === stage.id);
+                                  const stageTimes = execution ? calculateExecutionTimes(execution, execution.pauses || [], now.getTime()) : null;
+                                  const isSelected = selectedStageId === stage.id;
+                                  const isNextToStart = !execution && stage.id === firstUnfinishedId;
+
+                                  return (
+                                    <div key={stage.id} 
+                                      onClick={() => setSelectedStageId(stage.id)}
+                                      className={cn(
+                                        "p-3 rounded-lg border transition-all duration-200 cursor-pointer",
+                                        isSelected ? "ring-2 ring-sky-500 bg-sky-50/20 border-sky-200" :
+                                        execution?.status === 'Em andamento' ? "bg-white border-zinc-900 shadow-md ring-1 ring-zinc-900" :
+                                        execution?.status === 'Pausado' ? "bg-amber-50/30 border-amber-100" :
+                                        orderStage.finished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2.5 overflow-hidden">
+                                          <div className={cn(
+                                            "w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors",
+                                            orderStage.finished ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"
+                                          )}>
+                                            {orderStage.finished ? <CheckCircle2 size={14} /> : stage.sort_order}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className={cn(
+                                              "font-bold text-xs truncate",
+                                              orderStage.finished ? "text-zinc-500" : "text-zinc-900"
+                                            )}>
+                                              {stage.name}
+                                            </p>
+                                            {execution && stageTimes && (
+                                              <p className="text-[9px] text-zinc-400 truncate font-medium">
+                                                <span className="uppercase font-bold text-zinc-600">{execution.user_name}</span>
+                                                <span className="opacity-30 mx-1">•</span>
+                                                <span className="font-mono text-zinc-500">Total: {formatSeconds(stageTimes.totalAccumulatedSeconds)}</span>
+                                              </p>
+                                            )}
+                                            {(() => {
+                                               const stageObs = orderStageObservations.filter((o: any) => o.stage_id === stage.id);
+                                               if (stageObs.length === 0) return null;
+                                               return (
+                                                 <div className="mt-1 p-1.5 bg-zinc-50 border border-zinc-100 rounded text-[9px] text-zinc-600 leading-normal max-w-xs space-y-1">
+                                                   {stageObs.map((obs: any, oIdx: number) => (
+                                                     <div key={oIdx} className="border-t border-zinc-200/50 first:border-t-0 pt-0.5 first:pt-0">
+                                                       <div className="flex items-center justify-between text-[7px] text-zinc-400 font-bold mb-0.5">
+                                                         <span>{obs.user_name || 'Operador'}</span>
+                                                         <span>{safeFormat(obs.created_at, 'dd/MM HH:mm')}</span>
+                                                       </div>
+                                                       <p className="italic">"{obs.observation}"</p>
+                                                     </div>
+                                                   ))}
+                                                 </div>
+                                               );
+                                             })()}
+                                          </div>
+                                        </div>
+                                        
+                                        {execution?.status === 'Em andamento' && stageTimes && (
+                                          <div className="shrink-0 py-0.5 px-2 border border-emerald-200 bg-emerald-50 rounded-md text-emerald-700 font-mono text-[10px] font-bold flex items-center gap-1 shadow-xs">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                            <span>Sessão: {formatSeconds(stageTimes.currentSessionSeconds)}</span>
+                                          </div>
+                                        )}
+
+                                        {execution?.status === 'Pausado' && stageTimes && (
+                                          <div className="shrink-0 py-0.5 px-1.5 border border-amber-200 bg-amber-50 rounded-md text-amber-700 font-mono text-[10px] font-bold">
+                                            Pausado ({formatSeconds(stageTimes.totalAccumulatedSeconds)})
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {stage.calculation_type !== 'por_pedido' && (
+                                        <div className="mt-2 text-[10px] space-y-1 bg-zinc-50/80 p-2 rounded-md border border-zinc-100">
+                                          <div className="flex items-center justify-between text-zinc-700 font-bold">
+                                            <span>Progresso de peças:</span>
+                                            <span className="font-mono text-emerald-700">
+                                              {orderStage.quantidade_boa || 0} / {orderStage.quantidade_pedido || selectedOrder.quantity}
+                                            </span>
+                                          </div>
+                                          <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
+                                            <div
+                                              className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                                              style={{ width: `${Math.min(100, Math.round(((orderStage.quantidade_boa || 0) / (orderStage.quantidade_pedido || selectedOrder.quantity || 1)) * 100))}%` }}
+                                            />
+                                          </div>
+                                          <div className="flex flex-wrap items-center justify-between gap-1 text-[9px] pt-1">
+                                            {orderStage.quantidade_perdida ? (
+                                              <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
+                                                Perdas: {orderStage.quantidade_perdida} pc
+                                              </span>
+                                            ) : <span />}
+                                            {orderStage.pendencia_reposicao ? (
+                                              <span className="bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold animate-pulse">
+                                                Reposição pendente: +{orderStage.pendencia_reposicao} pc
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {!orderStage.finished && (
+                                        <div className="mt-2 space-y-1.5">
+
+                                          <div className="flex items-center gap-1.5">
+                                            {!execution && (
+                                              <button
+                                                onClick={() => handleStartStage(stage.id)}
+                                                className={cn(
+                                                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
+                                                  isNextToStart 
+                                                    ? "bg-zinc-900 text-white hover:bg-zinc-800" 
+                                                    : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
+                                                )}
+                                              >
+                                                <Play size={12} fill="currentColor" />
+                                                INICIAR {isSelected && <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>}
+                                              </button>
+                                            )}
+
+                                            {execution?.status === 'Em andamento' && (
+                                              <>
+                                                <button
+                                                  onClick={() => handlePauseStage(execution.id, stage.id)}
+                                                  className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
+                                                >
+                                                  <Pause size={12} fill="currentColor" />
+                                                  PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
+                                                </button>
+                                                <button
+                                                  onClick={() => handleFinishStage(execution.id, stage.id)}
+                                                  className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                                >
+                                                  <CheckCircle size={12} />
+                                                  FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
+                                                </button>
+                                              </>
+                                            )}
+
+                                            {execution?.status === 'Pausado' && (
+                                              <button
+                                                onClick={() => handleResumeStage(execution.id)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
+                                              >
+                                                <Play size={12} fill="currentColor" />
+                                                RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
+
+                      {/* Right Column: Files & Attachments */}
+                      <div className="lg:col-span-3 space-y-4 flex flex-col h-full">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-black text-zinc-900 flex items-center gap-2">
+                            <ImageIcon size={16} className="text-sky-500" /> FICHAS E ARQUIVOS
+                          </h3>
+                          <label className={cn(
+                            "flex items-center gap-1.5 px-2 py-1 bg-zinc-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-zinc-800 transition-all cursor-pointer shadow-sm active:scale-95",
+                            isUploadingArt && "opacity-50 cursor-not-allowed"
+                          )}>
+                            {isUploadingArt ? (
+                              <RefreshCw size={12} className="animate-spin" />
+                            ) : (
+                                <Plus size={12} />
+                            )}
+                            <span>{isUploadingArt ? '...' : 'Adicionar'}</span>
+                            <input
+                              type="file"
+                              multiple
+                              className="hidden"
+                              disabled={isUploadingArt}
+                              onChange={(e) => {
+                                if (e.target.files) handleAddImages(selectedOrder.id, e.target.files);
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4">
+                          {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-4">
+                              {selectedOrder.art_urls.map((url, i) => (
+                                <div
+                                  key={i}
+                                  onClick={() => {
+                                    if (isImage(url)) {
+                                      setSelectedFullImage(url);
+                                    } else {
+                                      window.open(url, '_blank');
+                                    }
+                                  }}
+                                  className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-900 transition-all"
+                                >
+                                  {isImage(url) ? (
+                                    <img
+                                      src={url}
+                                      alt={`Ficha ${i + 1}`}
+                                      className="max-w-full max-h-full object-contain"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : isPdf(url) ? (
+                                    <div className="flex flex-col items-center gap-2 text-rose-500">
+                                      <div className="p-3 bg-rose-50 rounded-full border border-rose-100">
+                                        <FileText size={24} />
+                                      </div>
+                                      <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Documento PDF</span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex flex-col items-center gap-2 text-zinc-400">
+                                      <FileText size={24} />
+                                      <span className="text-[10px] uppercase font-bold text-zinc-500">Arquivo</span>
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-2">
+                                    <Search size={14} /> AMPLIAR
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-16 bg-zinc-50/50 rounded-xl border border-dashed border-zinc-200 text-zinc-400 gap-3">
+                              <ImageIcon size={32} className="opacity-20" />
+                              <p className="text-[10px] font-bold uppercase tracking-widest">Sem arquivos</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* New Order Modal (Simplified for MVP) */}
+        <AnimatePresence>
+          {
+            showNewOrderModal && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">Novo Pedido</h3>
+                    <button onClick={() => setShowNewOrderModal(false)}><X size={20} /></button>
+                  </div>
+
+
+                  <form className="space-y-4" onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (isCreatingOrder) return;
+                    setIsCreatingOrder(true);
+                    const form = e.currentTarget;
+                    const formData = new FormData(form);
+
+                    // Validação: Não permitir pedido sem nenhuma etapa
+                    if (newOrderRequiredStages.length === 0) {
+                      alert("Por favor, selecione pelo menos uma etapa para o pedido.");
+                      return;
+                    }
+
+                    formData.append('required_stages', JSON.stringify(newOrderRequiredStages));
+
+                    // Explicitly append all files from the input
+                    const fileInput = form.querySelector('input[name="art_files"]') as HTMLInputElement;
+                    if (fileInput && fileInput.files) {
+                      const MAX_FILE_SIZE = 4 * 1024 * 1024;
+                      for (let i = 0; i < fileInput.files.length; i++) {
+                        if (fileInput.files[i].size > MAX_FILE_SIZE) {
+                          alert(`O arquivo "${fileInput.files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+                          setIsCreatingOrder(false);
+                          return;
+                        }
+                      }
+                      
+                      // Clear any existing art_files to be sure
+                      formData.delete('art_files');
+                      for (let i = 0; i < fileInput.files.length; i++) {
+                        formData.append('art_files', fileInput.files[i]);
+                      }
+                    }
+
+                    try {
+                      const res = await fetch('/api/orders', {
+                        method: 'POST',
+                        headers: { 'x-user-role': currentUser?.role || '' },
+                        body: formData
+                      });
+
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => null);
+                        const details = errData?.details ? `\n\nDetalhes:\n${errData.details.join('\n')}` : '';
+                        alert(`Erro ao criar pedido: ${errData?.error || 'Falha no servidor'}${details}`);
+                        setIsCreatingOrder(false);
+                        return;
+                      }
+
+                      setShowNewOrderModal(false);
+                      setNewOrderForm({
+                        client_name: '',
+                        product_type: 'Dry Fit',
+                        print_type: 'Silk',
+                        quantity: '',
+                        deadline: '',
+                        observations: ''
+                      });
+                      setNewOrderRequiredStages([]);
+                      fetchData();
+                    } catch (error) {
+                      alert("Erro ao conectar com o servidor.");
+                    } finally {
+                      setIsCreatingOrder(false);
+                    }
+                  }}>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente / Card</label>
+                      <input
+                        name="client_name"
+                        type="text"
+                        value={newOrderForm.client_name}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, client_name: e.target.value })}
+                        placeholder="Ex: Camisetas Evento X"
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Mockup / Ficha (Arquivos)</label>
+                      <div className="flex items-center justify-center w-full">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-zinc-300 border-dashed rounded-lg cursor-pointer bg-zinc-50 hover:bg-zinc-100 transition-colors">
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Upload className="w-8 h-8 mb-3 text-zinc-400" />
+                            <p className="mb-2 text-sm text-zinc-500 text-center px-4"><span className="font-semibold">Clique para upload</span> ou arraste</p>
+                            <p className="text-[10px] text-zinc-400 font-medium">PDF, JPG, PNG, etc</p>
+                          </div>
+                          <input
+                            name="art_files"
+                            type="file"
+                            className="hidden"
+                            multiple
+                            onChange={(e) => {
+                              const files = e.target.files;
+                              if (files && files.length > 0) {
+                                // Simple visual feedback for multiple files
+                                const label = e.currentTarget.previousElementSibling?.querySelector('p');
+                                if (label) label.textContent = `${files.length} arquivo(s) selecionado(s)`;
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
+                        <select
+                          name="product_type"
+                          value={newOrderForm.product_type}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, product_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Dry Fit</option>
+                          <option>Algodão</option>
+                          <option>Poliamida</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
+                        <select
+                          name="print_type"
+                          value={newOrderForm.print_type}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, print_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Silk</option>
+                          <option>DTF</option>
+                          <option>Sublimação</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
+                        <input
+                          name="quantity"
+                          type="number"
+                          value={newOrderForm.quantity}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, quantity: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo</label>
+                        <input
+                          name="deadline"
+                          type="date"
+                          value={newOrderForm.deadline}
+                          onChange={(e) => setNewOrderForm({ ...newOrderForm, deadline: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
+                      <textarea
+                        name="observations"
+                        value={newOrderForm.observations}
+                        onChange={(e) => setNewOrderForm({ ...newOrderForm, observations: e.target.value })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                      ></textarea>
+                    </div>
+
+                    {/* Templates Section Relocated */}
+                    <div className="mt-4 mb-2">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
+                        {currentUser?.role === 'Admin' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTemplate(null);
+                              setTemplateFormStages(stages.filter(s => s.active).map(s => s.id));
+                              setIsTemplateEditorOpen(true);
+                            }}
+                            className="flex items-center gap-1 text-[10px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors uppercase tracking-wider"
+                          >
+                            <Settings size={10} />
+                            Gerenciar
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {templates.map(template => (
+                          <button
+                            key={template.id}
+                            type="button"
+                            onClick={() => applyTemplate(template)}
+                            className="px-3 py-1.5 bg-zinc-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-zinc-700 rounded-lg text-xs font-bold transition-all border border-zinc-200"
+                          >
+                            {template.name}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
+                          }}
+                          className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-xs font-bold hover:bg-zinc-800 transition-colors"
+                        >
+                          Marcar Todas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderRequiredStages([]);
+                          }}
+                          className="px-3 py-1.5 bg-white text-zinc-600 rounded-lg text-xs font-bold hover:bg-zinc-100 transition-colors border border-zinc-200"
+                        >
+                          Limpar Todas
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Step Selection */}
+                    <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase leading-none">Etapas Deste Pedido ({newOrderRequiredStages.length} selecionadas)</label>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {stages.filter(s => s.active).map(stage => (
+                          <label key={stage.id} className={cn(
+                            "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                            newOrderRequiredStages.includes(stage.id)
+                              ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                              : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                          )}>
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={newOrderRequiredStages.includes(stage.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewOrderRequiredStages([...newOrderRequiredStages, stage.id]);
+                                } else {
+                                  setNewOrderRequiredStages(newOrderRequiredStages.filter(id => id !== stage.id));
+                                }
+                              }}
+                            />
+                            <div className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                              newOrderRequiredStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                            )}>
+                              {newOrderRequiredStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                            </div>
+                            <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Preview do Tempo de Produção */}
+                    {(() => {
+                      const qty = Number(newOrderForm.quantity) || 0;
+                      let totalTimeSec = 0;
+                      if (qty > 0 && newOrderRequiredStages.length > 0) {
+                        newOrderRequiredStages.forEach(id => {
+                          const s = stages.find(st => st.id === id);
+                          if (s) {
+                            const base = (s.ideal_time || s.average_time_seconds || 0);
+                            if (s.calculation_type === 'por_peca') {
+                              totalTimeSec += base * qty;
+                            } else if (s.calculation_type === 'por_lote') {
+                              totalTimeSec += base * Math.ceil(qty / 10);
+                            } else {
+                              // por_pedido ou default
+                              totalTimeSec += base;
+                            }
+                          }
+                        });
+                      }
+                      
+                      const hours = Math.floor(totalTimeSec / 3600);
+                      const minutes = Math.floor((totalTimeSec % 3600) / 60);
+
+                      if (qty > 0 && newOrderRequiredStages.length > 0) {
+                        return (
+                          <div className={cn(
+                            "mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-xl gap-4",
+                            totalTimeSec > 0 ? "bg-emerald-50 border-emerald-100" : "bg-amber-50 border-amber-100"
+                          )}>
+                             <div className="flex items-center gap-3">
+                               <div className={cn("p-2 rounded-lg", totalTimeSec > 0 ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600")}>
+                                 <Clock size={20} />
+                               </div>
+                               <div>
+                                 <p className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5", totalTimeSec > 0 ? "text-emerald-600" : "text-amber-600")}>
+                                   Previsão Tempo de Produção
+                                 </p>
+                                 <p className={cn("text-sm font-medium", totalTimeSec > 0 ? "text-emerald-800" : "text-amber-800")}>
+                                   Custo de tempo com base em {qty} peça(s)
+                                 </p>
+                                 {totalTimeSec === 0 && (
+                                   <p className="text-[10px] text-amber-700 mt-1 font-semibold leading-tight max-w-[250px]">
+                                     ⚠️ Estas etapas ainda não possuem o "Tempo Ideal" configurado no painel da Engrenagem.
+                                   </p>
+                                 )}
+                               </div>
+                             </div>
+                             <div className="text-right whitespace-nowrap">
+                               <p className={cn("text-xl font-black", totalTimeSec > 0 ? "text-emerald-600" : "text-amber-600")}>
+                                 {hours}h {minutes}m
+                               </p>
+                             </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
+                    <button
+                      type="submit"
+                      disabled={isCreatingOrder}
+                      className={cn(
+                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                        isCreatingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                      )}
+                    >
+                      {isCreatingOrder ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Criando Pedido...
+                        </>
+                      ) : (
+                        "Criar Pedido"
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* User Modal (Collaborators) */}
+        <AnimatePresence>
+          {
+            showUserModal && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">
+                      {selectedUserForEdit ? 'Editar Colaborador' : 'Convidar Colaborador'}
+                    </h3>
+                    <button onClick={() => setShowUserModal(false)}><X size={20} /></button>
+                  </div>
+                  <form className="space-y-4" onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (isSubmitting) return;
+                    setIsSubmitting(true);
+                    const form = e.currentTarget;
+                    const formData = new FormData(form);
+                    const data = Object.fromEntries(formData.entries());
+
+                    const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
+                    const method = selectedUserForEdit ? 'PATCH' : 'POST';
+
+                    try {
+                      const res = await fetch(url, {
+                        method,
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || ''
+                        },
+                        body: JSON.stringify({
+                          ...data,
+                          hourly_cost: Number(data.hourly_cost),
+                          active: data.active === 'on' || !selectedUserForEdit
+                        })
+                      });
+
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => null);
+                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                        return;
+                      }
+
+                      setShowUserModal(false);
+                      fetchUsers();
+                    } catch (error) {
+                      alert("Erro ao conectar com o servidor.");
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
+                      <input
+                        name="name"
+                        type="text"
+                        defaultValue={selectedUserForEdit?.name}
+                        placeholder="Ex: João Silva"
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">E-mail</label>
+                      <input
+                        name="email"
+                        type="email"
+                        defaultValue={selectedUserForEdit?.email}
+                        placeholder="joao@uniflow.com"
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        required
+                      />
+                    </div>
+                    {!selectedUserForEdit && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
+                        <input
+                          name="password"
+                          type="password"
+                          placeholder="Mínimo 6 caracteres"
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
+                        <select
+                          name="role"
+                          defaultValue={selectedUserForEdit?.role || 'Produção'}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option value="Admin">Admin</option>
+                          <option value="Produção">Produção</option>
+                          <option value="Comercial">Comercial</option>
+                        </select>
+                      </div>
+                      {currentUser?.role === 'Admin' && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
+                          <input
+                            name="hourly_cost"
+                            type="number"
+                            step="0.01"
+                            defaultValue={selectedUserForEdit?.hourly_cost || 0}
+                            placeholder="0,00"
+                            className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
+                            required
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {selectedUserForEdit && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          name="active"
+                          type="checkbox"
+                          defaultChecked={selectedUserForEdit.active}
+                          id="user-active"
+                        />
+                        <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={cn(
+                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                        isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* Template Editor Modal */}
+        <AnimatePresence>
+          {
+            isTemplateEditorOpen && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white w-full max-w-xl rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">{editingTemplate ? 'Editar Template' : 'Novo Template'}</h3>
+                    <button onClick={() => setIsTemplateEditorOpen(false)}><X size={20} /></button>
+                  </div>
+
+                  <form className="space-y-6" onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (isSubmitting) return;
+                    setIsSubmitting(true);
+                    const form = e.currentTarget;
+                    const formData = new FormData(form);
+                    const data = {
+                      name: formData.get('name'),
+                      product_type: formData.get('product_type'),
+                      print_type: formData.get('print_type'),
+                      quantity: formData.get('quantity'),
+                      observations: formData.get('observations'),
+                      required_stages: templateFormStages
+                    };
+
+                    const url = editingTemplate ? `/api/order-templates/${editingTemplate.id}` : '/api/order-templates';
+                    const method = editingTemplate ? 'PATCH' : 'POST';
+
+                    try {
+                      const res = await fetch(url, {
+                        method,
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-user-role': currentUser?.role || ''
+                        },
+                        body: JSON.stringify(data)
+                      });
+
+                      if (!res.ok) {
+                        const errData = await res.json().catch(() => null);
+                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
+                        return;
+                      }
+
+                      setIsTemplateEditorOpen(false);
+                      fetchData();
+                    } catch (error) {
+                      alert("Erro ao conectar com o servidor.");
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Template</label>
+                        <input
+                          name="name"
+                          type="text"
+                          defaultValue={editingTemplate?.name}
+                          placeholder="Ex: Silk 2 Cores Frente"
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
+                        <input
+                          name="quantity"
+                          type="number"
+                          defaultValue={editingTemplate?.quantity}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
+                        <select
+                          name="product_type"
+                          defaultValue={editingTemplate?.product_type || 'Dry Fit'}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Dry Fit</option>
+                          <option>Algodão</option>
+                          <option>Poliamida</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
+                        <select
+                          name="print_type"
+                          defaultValue={editingTemplate?.print_type || 'Silk'}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
+                        >
+                          <option>Silk</option>
+                          <option>DTF</option>
+                          <option>Sublimação</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                        {stages.filter(s => s.active).map(stage => (
+                          <label key={stage.id} className={cn(
+                            "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none",
+                            templateFormStages.includes(stage.id)
+                              ? "bg-zinc-900 border-zinc-900 text-white shadow-sm"
+                              : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                          )}>
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={templateFormStages.includes(stage.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setTemplateFormStages([...templateFormStages, stage.id]);
+                                } else {
+                                  setTemplateFormStages(templateFormStages.filter(id => id !== stage.id));
+                                }
+                              }}
+                            />
+                            <div className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                              templateFormStages.includes(stage.id) ? "bg-white text-zinc-900 border-white" : "border-zinc-300"
+                            )}>
+                              {templateFormStages.includes(stage.id) && <CheckCircle size={10} strokeWidth={4} />}
+                            </div>
+                            <span className="text-[11px] font-bold truncate">{stage.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
+                      <textarea
+                        name="observations"
+                        defaultValue={editingTemplate?.observations}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24"
+                      ></textarea>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={cn(
+                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
+                        isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          Salvando...
+                        </>
+                      ) : (
+                        editingTemplate ? 'Salvar Alterações' : 'Criar Template'
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* Photo Lightbox */}
+        <AnimatePresence>
+          {
+            selectedFullImage && (() => {
+              const currentList = editOrderForm?.art_urls?.includes(selectedFullImage)
+                ? editOrderForm.art_urls
+                : selectedOrder?.art_urls?.includes(selectedFullImage)
+                  ? selectedOrder.art_urls
+                  : [selectedFullImage];
+
+              const currentIndex = currentList ? currentList.indexOf(selectedFullImage) : -1;
+              const hasPrevious = currentIndex > 0;
+              const hasNext = currentList && currentIndex < currentList.length - 1;
+
+              return (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-12 cursor-zoom-out"
+                onClick={() => setSelectedFullImage(null)}
+              >
+                {currentList && currentList.length > 1 && (
+                  <div className="absolute top-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full text-white text-xs font-bold tracking-widest z-[110] shadow-xl border border-white/20">
+                    {currentIndex + 1} / {currentList.length}
+                  </div>
+                )}
+
+                {hasPrevious && (
+                  <motion.button
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 z-[110] shadow-xl border border-white/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (currentList) setSelectedFullImage(currentList[currentIndex - 1]);
+                    }}
+                  >
+                    <ChevronLeft size={24} />
+                  </motion.button>
+                )}
+
+                {hasNext && (
+                  <motion.button
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 z-[110] shadow-xl border border-white/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (currentList) setSelectedFullImage(currentList[currentIndex + 1]);
+                    }}
+                  >
+                    <ChevronRight size={24} />
+                  </motion.button>
+                )}
+
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all hover:scale-110 z-[110] shadow-xl border border-white/10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedFullImage(null);
+                  }}
+                >
+                  <X size={24} />
+                </motion.button>
+
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  key={selectedFullImage}
+                  className="relative w-full h-full flex items-center justify-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {isImage(selectedFullImage) ? (
+                    <img
+                      src={selectedFullImage}
+                      alt="Detalhe da Estampa"
+                      className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="bg-white p-12 rounded-2xl flex flex-col items-center gap-4">
+                      <FileText size={64} className="text-zinc-400" />
+                      <div className="text-center">
+                        <p className="font-bold text-lg mb-1">Arquivo: {selectedFullImage.split('/').pop()}</p>
+                        <p className="text-zinc-500 text-sm">Este arquivo não pode ser visualizado diretamente.</p>
+                      </div>
+                      <a
+                        href={selectedFullImage}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 px-6 py-3 bg-zinc-900 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-zinc-800 transition-all"
+                      >
+                        <Download size={20} />
+                        Baixar Arquivo
+                      </a>
+                    </div>
+                  )}
+                </motion.div>
+              </motion.div>
+              );
+            })()
+          }
+        </AnimatePresence >
+
+        {/* ── Edit Order Modal ──────────────────────────────────────────────── */}
+        <AnimatePresence>
+          {
+            showEditOrderModal && selectedOrder && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setShowEditOrderModal(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                    <div>
+                      <h2 className="font-bold text-lg">Editar Pedido</h2>
+                      <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                    </div>
+                    <button onClick={() => setShowEditOrderModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  {editOrderHasExecutions && (
+                    <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                      <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                      <p className="text-amber-700 text-xs font-medium">
+                        Este pedido já possui tempo registrado em execuções. Alterar quantidade ou tipo pode afetar indicadores históricos.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="p-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente</label>
+                        <input
+                          type="text"
+                          value={editOrderForm.client_name || ''}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, client_name: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto</label>
+                        <select
+                          value={editOrderForm.product_type || 'Dry Fit'}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, product_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        >
+                          <option>Dry Fit</option>
+                          <option>Algodão</option>
+                          <option>Poliamida</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa</label>
+                        <select
+                          value={editOrderForm.print_type || 'Silk'}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, print_type: e.target.value as any })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        >
+                          <option>Silk</option>
+                          <option>DTF</option>
+                          <option>Sublimação</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editOrderForm.quantity || ''}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, quantity: Number(e.target.value) })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº de Cores</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editOrderForm.num_colors || 1}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, num_colors: Number(e.target.value) })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Prazo de Entrega</label>
+                        <input
+                          type="date"
+                          value={editOrderForm.deadline?.split('T')[0] || ''}
+                          onChange={(e) => setEditOrderForm({ ...editOrderForm, deadline: e.target.value })}
+                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Etapas de Produção</label>
+                      <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                        {stages.filter(s => s.active).map(stage => {
+                          const checked = (editOrderForm.required_stages || []).includes(stage.id);
+                          return (
+                            <label key={stage.id} className={cn(
+                              "flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none text-[11px] font-bold",
+                              checked ? "bg-zinc-900 border-zinc-900 text-white" : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                            )}>
+                              <input
+                                type="checkbox"
+                                className="hidden"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const prev = editOrderForm.required_stages || [];
+                                  setEditOrderForm({
+                                    ...editOrderForm,
+                                    required_stages: e.target.checked
+                                      ? [...prev, stage.id]
+                                      : prev.filter(id => id !== stage.id)
+                                  });
+                                }}
+                              />
+                              <div className={cn("w-4 h-4 rounded border flex items-center justify-center", checked ? "bg-white border-white text-zinc-900" : "border-zinc-300")}>
+                                {checked && <CheckCircle size={10} strokeWidth={4} />}
+                              </div>
+                              {stage.name}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Fichas / Arquivos</label>
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById('edit-modal-upload')?.click()}
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-900 bg-zinc-100 hover:bg-zinc-200 px-2 py-1 rounded-md transition-colors"
+                        >
+                          <Plus size={12} /> Adicionar Arquivo
+                        </button>
+                        <input
+                          id="edit-modal-upload"
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={async (e) => {
+                            if (e.target.files && selectedOrder) {
+                              setIsUploadingArt(true);
+                              const formData = new FormData();
+                              for (let i = 0; i < e.target.files.length; i++) {
+                                formData.append('art_files', e.target.files[i]);
+                              }
+                              try {
+                                const res = await fetch(`/api/orders/${selectedOrder.id}/images`, {
+                                  method: 'POST',
+                                  body: formData
+                                });
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  setEditOrderForm({
+                                    ...editOrderForm,
+                                    art_urls: data.art_urls,
+                                    art_url: data.art_urls[0]
+                                  });
+                                  if (selectedOrder) {
+                                    setSelectedOrder({
+                                      ...selectedOrder,
+                                      art_urls: data.art_urls,
+                                      art_url: data.art_urls[0]
+                                    });
+                                  }
+                                  fetchData();
+                                }
+                              } catch (err) {
+                                alert('Erro no upload');
+                              } finally {
+                                setIsUploadingArt(false);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-zinc-50 rounded-xl border border-zinc-100">
+                        {(editOrderForm.art_urls || []).length > 0 ? (
+                          (editOrderForm.art_urls || []).map((url, i) => (
+                            <div key={url + i} className="relative group">
+                              <div
+                                className="w-12 h-12 rounded-lg border border-zinc-200 overflow-hidden bg-white flex items-center justify-center cursor-pointer hover:border-zinc-400 transition-all"
+                                onClick={() => {
+                                  if (isImage(url)) {
+                                    setSelectedFullImage(url);
+                                  } else {
+                                    window.open(url, '_blank');
+                                  }
+                                }}
+                              >
+                                {isImage(url) ? (
+                                  <img src={url} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <FileText size={16} className="text-zinc-400" />
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updatedUrls = (editOrderForm.art_urls || []).filter(u => u !== url);
+                                  setEditOrderForm({
+                                    ...editOrderForm,
+                                    art_urls: updatedUrls,
+                                    art_url: updatedUrls.length > 0 ? updatedUrls[0] : undefined
+                                  });
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-zinc-900 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="w-full h-12 flex items-center justify-center border-2 border-dashed border-zinc-200 rounded-lg">
+                            <span className="text-[10px] text-zinc-400 font-medium">Nenhum arquivo anexado</span>
+                          </div>
+                        )}
+                        {isUploadingArt && (
+                          <div className="w-12 h-12 rounded-lg border border-zinc-200 bg-white flex items-center justify-center">
+                            <RefreshCw size={16} className="text-zinc-400 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
+                      <textarea
+                        value={editOrderForm.observations || ''}
+                        onChange={(e) => setEditOrderForm({ ...editOrderForm, observations: e.target.value })}
+                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm h-24 resize-none focus:outline-none focus:ring-2 focus:ring-zinc-900"
+                      />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => setShowEditOrderModal(false)}
+                        className="flex-1 py-2.5 border border-zinc-200 rounded-xl text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleEditOrderSubmit}
+                        disabled={isEditingOrder}
+                        className={cn(
+                          "flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all",
+                          isEditingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
+                        )}
+                      >
+                        {isEditingOrder ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle size={16} /> Salvar Alterações</>}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            )
+          }
+        </AnimatePresence >
+
+        {/* ── Order History Modal ───────────────────────────────────────────── */}
+        <AnimatePresence>
+          {
+            showHistoryModal && selectedOrder && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setShowHistoryModal(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+                    <div>
+                      <h2 className="font-bold text-lg">Histórico de Alterações</h2>
+                      <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
+                    </div>
+                    <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="overflow-y-auto flex-1 p-6">
+                    {isLoadingHistory ? (
+                      <div className="flex items-center justify-center py-12 text-zinc-400">
+                        <RefreshCw size={24} className="animate-spin" />
+                      </div>
+                    ) : orderHistory.length === 0 ? (
+                      <div className="text-center py-12 text-zinc-400">
+                        <FileText size={32} className="mx-auto mb-3 opacity-50" />
+                        <p className="text-sm">Nenhum registro de alteração encontrado.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {orderHistory.map((entry) => {
+                          const acaoColors: Record<string, string> = {
+                            criou: 'bg-emerald-100 text-emerald-700',
+                            editou: 'bg-sky-100 text-sky-700',
+                            cancelou: 'bg-amber-100 text-amber-700',
+                            excluiu: 'bg-rose-100 text-rose-700',
+                            restaurou: 'bg-violet-100 text-violet-700',
+                          };
+                          const acaoLabels: Record<string, string> = {
+                            criou: 'Criou', editou: 'Editou', cancelou: 'Cancelou',
+                            excluiu: 'Excluiu', restaurou: 'Restaurou'
+                          };
+                          return (
+                            <div key={entry.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider", acaoColors[entry.acao] || 'bg-zinc-100 text-zinc-600')}>
+                                    {acaoLabels[entry.acao] || entry.acao}
+                                  </span>
+                                  <span className="text-xs font-semibold text-zinc-700">{entry.usuario}</span>
+                                </div>
+                                <span className="text-[10px] text-zinc-400">
+                                  {format(new Date(entry.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
+                                </span>
+                              </div>
+                              {entry.acao === 'editou' && entry.antes && entry.depois && (() => {
+                                const campos = ['client_name', 'product_type', 'print_type', 'quantity', 'deadline', 'observations', 'num_colors'];
+                                const alterados = campos.filter(c => JSON.stringify(entry.antes[c]) !== JSON.stringify(entry.depois[c]));
+                                return alterados.length > 0 ? (
+                                  <div className="space-y-1 mt-2">
+                                    {alterados.map(campo => (
+                                      <div key={campo} className="text-xs flex items-center gap-2">
+                                        <span className="font-bold text-zinc-500 uppercase text-[9px] w-20 shrink-0">{campo.replace('_', ' ')}</span>
+                                        <span className="text-rose-500 line-through truncate">{String(entry.antes[campo] ?? '-')}</span>
+                                        <ChevronRight size={10} className="text-zinc-300 shrink-0" />
+                                        <span className="text-emerald-600 font-medium truncate">{String(entry.depois[campo] ?? '-')}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              </div>
+            )}
+        </AnimatePresence>
+      </main >
+
+      <InfoModal
+        isOpen={!!infoModal}
+        onClose={() => setInfoModal(null)}
+        title={infoModal?.title || ''}
+        description={infoModal?.description || ''}
+      />
+
+      <AnimatePresence>
+        {isPrintModalOpen && (
+          <PrintableReport
+            isOpen={isPrintModalOpen}
+            onClose={() => setIsPrintModalOpen(false)}
+            reportStartDate={reportStartDate}
+            reportEndDate={reportEndDate}
+            reportPeriod={reportPeriod}
+            reportUser={reportUser}
+            reportStage={reportStage}
+            reportPrintType={reportPrintType}
+            users={users}
+            stages={stages}
+            reportData={reportData}
+            operationalReportData={operationalReportData}
+            goalsProductivityData={goalsProductivityData}
+            isAdmin={currentUser?.role === 'Admin'}
+          />
+        )}
+      </AnimatePresence>
+      {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de Produção e Perdas */}
+      {executionActionModal && selectedOrder && (() => {
+        const { type, executionId, stageId } = executionActionModal;
+        const isPause = type === 'pause';
+        const stage = stages.find(s => s.id === stageId);
+        const orderStage = (selectedOrder.stages_status || []).find(s => s.id === stageId);
+        const currentGood = orderStage?.quantidade_boa || 0;
+        const currentLoss = orderStage?.quantidade_perdida || 0;
+        const totalReq = selectedOrder.quantity || 0;
+        const remaining = Math.max(0, totalReq - currentGood);
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className={cn("bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar relative", isActionLoading && "pointer-events-none")}>
+              {isActionLoading && (
+                <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 rounded-2xl flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 size={32} className="animate-spin text-zinc-600" />
+                    <span className="text-xs font-bold text-zinc-600">Processando...</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
+                    <ClipboardList size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm">
+                      Apontamento de Produção
+                    </h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button onClick={() => setExecutionActionModal(null)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600" disabled={isActionLoading}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="py-1 space-y-4">
+                {/* Barra de Progresso Visual */}
+                {(() => {
+                  const projected = currentGood + actionQuantityInput;
+                  const pctCurrent = totalReq > 0 ? Math.min(100, Math.round((currentGood / totalReq) * 100)) : 0;
+                  const pctProjected = totalReq > 0 ? Math.min(100, Math.round((projected / totalReq) * 100)) : 0;
+                  const isComplete = projected >= totalReq;
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                        <span>Progresso da Etapa</span>
+                        <span className={cn("font-mono text-xs", isComplete ? "text-emerald-600" : "text-amber-600")}>
+                          {projected} / {totalReq} ({pctProjected}%)
+                        </span>
+                      </div>
+                      <div className="w-full h-3 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                        <div className="h-full rounded-full relative overflow-hidden" style={{ width: `${pctProjected}%`, transition: 'width 0.4s ease' }}>
+                          <div className={cn("absolute inset-0", isComplete ? "bg-emerald-500" : "bg-amber-400")} style={{ width: `${totalReq > 0 ? Math.min(100, Math.round((currentGood / Math.max(projected, 1)) * 100)) : 0}%` }} />
+                          <div className={cn("absolute inset-0", isComplete ? "bg-emerald-400" : "bg-amber-300 animate-pulse")} style={{ left: `${totalReq > 0 ? Math.min(100, Math.round((currentGood / Math.max(projected, 1)) * 100)) : 0}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1.5">
+                  <div className="flex justify-between font-medium text-zinc-600">
+                    <span>Peças boas concluídas até agora:</span>
+                    <span className="font-bold text-zinc-900 font-mono">{currentGood} / {totalReq}</span>
+                  </div>
+                  {currentLoss > 0 && (
+                    <div className="flex justify-between font-medium text-rose-600">
+                      <span>Perdas registradas no pedido:</span>
+                      <span className="font-bold font-mono">{currentLoss} peças</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-medium text-amber-700">
+                    <span>Peças restantes para finalizar:</span>
+                    <span className="font-bold font-mono">{remaining} peças</span>
+                  </div>
+                </div>
+
+                {/* Seção 1: Peças Boas Produzidas */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                      <TrendingUp size={14} className="text-emerald-600" />
+                      Peças boas produzidas nesta sessão (+):
+                    </label>
+                    {remaining > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setActionQuantityInput(remaining)}
+                        className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
+                      >
+                        + Preencher restantes ({remaining})
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={actionQuantityInput}
+                    onChange={(e) => setActionQuantityInput(Math.max(0, Number(e.target.value)))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Seção 2: Registrar Perda (Opcional / Expansível) */}
+                <div className="pt-2 border-t border-zinc-100 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowActionLossSection(!showActionLossSection)}
+                    className="w-full flex items-center justify-between p-2 rounded-xl bg-rose-50/50 hover:bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <AlertTriangle size={14} />
+                      {actionLossQuantityInput > 0
+                        ? `⚠️ Perda registrada nesta sessão: ${actionLossQuantityInput} peça(s)`
+                        : '⚠️ Houve alguma perda / refugo nesta sessão?'}
+                    </span>
+                    <span className="text-[10px] underline">
+                      {showActionLossSection ? 'Ocultar' : (actionLossQuantityInput > 0 ? 'Editar Perda' : '+ Adicionar Perda')}
+                    </span>
+                  </button>
+
+                  {(showActionLossSection || actionLossQuantityInput > 0) && (
+                    <div className="p-3 bg-rose-50/30 rounded-xl border border-rose-100 space-y-3 animate-in fade-in duration-200 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                          Quantidade de peças perdidas nesta sessão:
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={actionLossQuantityInput}
+                          onChange={(e) => setActionLossQuantityInput(Math.max(0, Number(e.target.value)))}
+                          className="w-full p-2 border border-rose-200 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {actionLossQuantityInput > 0 && (
+                        <>
+                          <div>
+                            <label className="block text-[11px] font-bold text-zinc-700 mb-1">Motivo da perda:</label>
+                            <select
+                              value={actionLossReasonInput}
+                              onChange={(e) => {
+                                const newReason = e.target.value;
+                                setActionLossReasonInput(newReason);
+                                const defaultReentry = lossReasonsList.find(r => r.motivo === newReason)?.etapa_reentrada_id || stageId;
+                                setActionLossReentryStageIdInput(defaultReentry);
+                              }}
+                              className="w-full p-2 border border-zinc-200 rounded-lg bg-white text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                            >
+                              {lossReasonsList.map((r, i) => (
+                                <option key={i} value={r.motivo}>{r.motivo}</option>
+                              ))}
+                              {!lossReasonsList.some(r => r.motivo === 'Outro') && (
+                                <option value="Outro">Outro</option>
+                              )}
+                            </select>
+                          </div>
+
+                          {actionLossReasonInput === 'Outro' && (
+                            <div>
+                              <label className="block text-[11px] font-bold text-zinc-700 mb-1">Detalhamento do motivo (obrigatório):</label>
+                              <input
+                                type="text"
+                                placeholder="Explique o motivo..."
+                                value={actionLossReasonDetailInput}
+                                onChange={(e) => setActionLossReasonDetailInput(e.target.value)}
+                                className="w-full p-2 border border-zinc-200 rounded-lg bg-white text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-zinc-700 mb-1">Etapa para reentrada de reposição:</label>
+                            <select
+                              value={actionLossReentryStageIdInput || stageId}
+                              onChange={(e) => setActionLossReentryStageIdInput(Number(e.target.value))}
+                              className="w-full p-2 border border-zinc-200 rounded-lg bg-white text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                            >
+                              {stages.map((st) => (
+                                <option key={st.id} value={st.id}>{st.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Seção 3: Observação do Apontamento (Opcional) */}
+                <div className="pt-2 border-t border-zinc-100 space-y-1.5">
+                  <label className="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                    <ClipboardList size={14} className="text-zinc-500" />
+                    Observação da etapa (opcional):
+                  </label>
+                  <textarea
+                    placeholder="Adicione alguma observação sobre esta sessão..."
+                    value={actionObservationInput}
+                    onChange={(e) => setActionObservationInput(e.target.value)}
+                    rows={2}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs focus:ring-2 focus:ring-zinc-500 focus:outline-none resize-none font-medium text-zinc-700 bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setExecutionActionModal(null)}
+                  disabled={isActionLoading}
+                  className="py-2.5 px-4 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmExecutionAction('pause')}
+                  disabled={isActionLoading}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  {isActionLoading && executionActionModal?.type === 'pause' ? (
+                    <><Loader2 size={14} className="animate-spin" /> Pausando...</>
+                  ) : (
+                    <><Pause size={14} /> Pausar</>
+                  )}
+                </button>
+                {(() => {
+                  const canFinish = (currentGood + actionQuantityInput) >= totalReq;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmExecutionAction('finish')}
+                      disabled={isActionLoading || !canFinish}
+                      title={!canFinish ? `Faltam ${remaining - actionQuantityInput} peças para finalizar. Preencha a quantidade restante.` : 'Finalizar etapa'}
+                      className={cn(
+                        "flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5",
+                        canFinish
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : "bg-zinc-300 cursor-not-allowed text-zinc-500",
+                        "disabled:opacity-60 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      {isActionLoading && executionActionModal?.type === 'finish' ? (
+                        <><Loader2 size={14} className="animate-spin" /> Finalizando...</>
+                      ) : (
+                        <><CheckCircle size={14} /> Finalizar</>
+                      )}
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: Registrar Progresso Parcial */}
+      {isProgressModalOpen && selectedOrder && progressStageId && (() => {
+        const stage = stages.find(s => s.id === progressStageId);
+        const orderStage = (selectedOrder.stages_status || []).find(s => s.id === progressStageId);
+        const currentGood = orderStage?.quantidade_boa || 0;
+        const totalReq = selectedOrder.quantity || 0;
+        const remaining = Math.max(0, totalReq - currentGood);
+
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm">Registrar Progresso Parcial</h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsProgressModalOpen(false)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="py-2 space-y-4">
+                <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1">
+                  <div className="flex justify-between font-medium text-zinc-600">
+                    <span>Peças concluídas até agora:</span>
+                    <span className="font-bold text-zinc-900 font-mono">{currentGood} / {totalReq}</span>
+                  </div>
+                  <div className="flex justify-between font-medium text-amber-700">
+                    <span>Peças restantes para finalizar:</span>
+                    <span className="font-bold font-mono">{remaining} peças</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Quantidade de peças concluídas agora (+):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={progressIncrementInput}
+                    onChange={(e) => setProgressIncrementInput(Math.max(0, Number(e.target.value)))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    Isso somará à produção diária do dia e atualizará o total acumulado do pedido.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setIsProgressModalOpen(false)}
+                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveProgress}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs hover:bg-emerald-700 transition-colors"
+                >
+                  Confirmar (+{progressIncrementInput} peças)
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: Registrar Perda */}
+      {isLossModalOpen && selectedOrder && lossStageId && (() => {
+        const stage = stages.find(s => s.id === lossStageId);
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-zinc-200 animate-in fade-in zoom-in duration-200 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-rose-100 text-rose-700 rounded-lg">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 text-sm">Registrar Perda de Peça</h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsLossModalOpen(false)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-[11px] text-amber-800 space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  ℹ️ Regra de Reposição
+                </p>
+                <p>
+                  A quantidade do pedido <strong>nunca diminui</strong>. O registro de perda gera automaticamente uma <strong>pendência de reposição</strong> na etapa de reentrada.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Quantidade de Peças Perdidas:
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={lossQtyInput}
+                    onChange={(e) => setLossQtyInput(Math.max(1, Number(e.target.value)))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Motivo da Perda (Categorizado):
+                  </label>
+                  <select
+                    value={lossReasonInput}
+                    onChange={(e) => {
+                      const selectedReason = e.target.value;
+                      setLossReasonInput(selectedReason);
+                      const defaultReentry = lossReasonsList.find(r => r.motivo === selectedReason)?.etapa_reentrada_id || lossStageId;
+                      setLossReentryStageIdInput(defaultReentry);
+                    }}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  >
+                    {lossReasonsList.map((r, i) => (
+                      <option key={i} value={r.motivo}>{r.motivo}</option>
+                    ))}
+                    {lossReasonsList.length === 0 && (
+                      <>
+                        <option value="Falta de matéria-prima/peça (estoque)">Falta de matéria-prima/peça (estoque)</option>
+                        <option value="Defeito de corte">Defeito de corte</option>
+                        <option value="Falha na estampa/DTF">Falha na estampa/DTF</option>
+                        <option value="Defeito de costura">Defeito de costura</option>
+                        <option value="Extravio">Extravio</option>
+                        <option value="Reprovado na conferência (qualidade)">Reprovado na conferência (qualidade)</option>
+                        <option value="Outro">Outro</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {lossReasonInput === 'Outro' && (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1">
+                      Detalhamento do Motivo (Obrigatório):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Descreva a causa específica..."
+                      value={lossReasonDetailInput}
+                      onChange={(e) => setLossReasonDetailInput(e.target.value)}
+                      className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Etapa de Reentrada da Reposição:
+                  </label>
+                  <select
+                    value={lossReentryStageIdInput || lossStageId}
+                    onChange={(e) => setLossReentryStageIdInput(Number(e.target.value))}
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs bg-white font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  >
+                    {stages.map(st => (
+                      <option key={st.id} value={st.id}>
+                        {st.name} {st.id === lossStageId ? '(Etapa Atual)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    Sugerido automaticamente com base no motivo. Você pode ajustar manualmente para casos atípicos.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setIsLossModalOpen(false)}
+                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-700 font-bold rounded-xl text-xs hover:bg-zinc-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveLoss}
+                  className="flex-1 py-2.5 bg-rose-600 text-white font-bold rounded-xl text-xs hover:bg-rose-700 transition-colors"
+                >
+                  Confirmar Perda e Gerar Reposição
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Olist Draft Order Review Modal */}
+      {selectedDraftOrder && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
+            <div className="bg-indigo-900 text-white p-6 relative">
+              <button
+                onClick={() => setSelectedDraftOrder(null)}
+                className="absolute top-5 right-5 p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+              <div className="flex items-center gap-2 text-indigo-300 text-xs font-mono font-bold uppercase tracking-wider mb-1">
+                <Package size={16} /> Importado do Olist ERP
+              </div>
+              <h2 className="text-xl font-black">{selectedDraftOrder.client_name}</h2>
+              <p className="text-xs text-indigo-200 font-mono mt-0.5">Pedido: {selectedDraftOrder.order_number}</p>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
+                <div>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Qtd Total</span>
+                  <span className="text-base font-black text-indigo-950 font-mono">{selectedDraftOrder.quantity} pcs</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Prazo Entrega</span>
+                  <span className="text-sm font-bold text-zinc-800">{safeFormat(selectedDraftOrder.deadline, 'dd/MM/yyyy')}</span>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Status Importação</span>
+                  <span className="inline-flex px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold uppercase">Rascunho</span>
+                </div>
+              </div>
+
+              {/* Grade de Tamanhos Table & Resumo de Corte */}
+              {selectedDraftOrder.items && selectedDraftOrder.items.length > 0 && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Package size={14} className="text-indigo-600" /> Lista de Itens do Pedido ({selectedDraftOrder.items.length} SKUs)
+                      </h3>
+                      <span className="text-[10px] font-bold text-zinc-400 font-mono">Total: {selectedDraftOrder.quantity} pcs</span>
+                    </div>
+                    <div className="overflow-x-auto border border-zinc-200 rounded-xl bg-white shadow-sm">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-zinc-50 text-zinc-600 font-bold uppercase text-[9px] border-b border-zinc-200">
+                            <th className="px-3 py-2">Item / Descrição</th>
+                            <th className="px-2 py-2 text-center">Tamanho</th>
+                            <th className="px-2 py-2 text-right">Qtd Total</th>
+                            <th className="px-2 py-2 text-center">Falta (Corte)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {selectedDraftOrder.items.map((item, idx) => {
+                            const qty = item.quantity ?? item.quantidade ?? 1;
+                            const corteQty = item.qty_corte ?? item.total_via_corte ?? (item.stock_available !== undefined && item.stock_available !== null ? Math.max(0, qty - Math.min(qty, item.stock_available)) : 0);
+                            const displaySize = getItemDisplaySize(item);
+                            return (
+                              <tr key={idx} className="hover:bg-zinc-50/50 text-xs">
+                                <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className="inline-block px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
+                                    {displaySize}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-zinc-900">{qty} un</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {corteQty > 0 ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 text-white rounded-lg text-xs font-black font-mono shadow-xs">
+                                      <Scissors size={11} className="text-white" /> {corteQty} un (FALTA)
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold font-mono">
+                                      <CheckCircle2 size={11} className="text-emerald-600" /> 0 un (Estoque)
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Resumo de Peças para Corte (Abaixo do Lista do Pedido) */}
+                  {(() => {
+                    const cuttingItems = selectedDraftOrder.items.filter(it => {
+                      const qtyPedida = it.quantity ?? it.quantidade ?? 1;
+                      const corteQty = it.qty_corte ?? it.total_via_corte ?? (it.stock_available !== undefined && it.stock_available !== null ? Math.max(0, qtyPedida - Math.min(qtyPedida, it.stock_available)) : 0);
+                      return corteQty > 0;
+                    });
+
+                    if (cuttingItems.length === 0) return null;
+
+                    const totalCuttingQty = cuttingItems.reduce((sum, it) => sum + (it.qty_corte ?? it.total_via_corte ?? 1), 0);
+
+                    return (
+                      <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-4 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-2">
+                            <Scissors size={15} className="text-amber-600 animate-pulse" />
+                            Resumo de Peças para Corte (Falta em Estoque Olist)
+                          </h4>
+                          <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
+                            {totalCuttingQty} {totalCuttingQty === 1 ? 'peça a cortar' : 'peças a cortar'}
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto border border-amber-200/70 rounded-xl bg-white shadow-sm">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="bg-amber-100/70 text-amber-950 font-bold uppercase text-[9px] border-b border-amber-200">
+                                <th className="px-3 py-2.5">Item a Cortar</th>
+                                <th className="px-3 py-2.5 text-center">Tamanho</th>
+                                <th className="px-3 py-2.5 text-center">Estoque Olist</th>
+                                <th className="px-3 py-2.5 text-right">Qtd a Cortar</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-amber-100/60">
+                              {cuttingItems.map((item, idx) => {
+                                const corteQty = item.qty_corte ?? item.total_via_corte ?? 1;
+                                const stockAvail = item.stock_available ?? 0;
+                                const displaySize = getItemDisplaySize(item);
+                                return (
+                                  <tr key={idx} className="hover:bg-amber-50/50 text-xs">
+                                    <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
+                                    <td className="px-3 py-2.5 text-center">
+                                      <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
+                                        {displaySize}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center font-mono text-xs font-bold text-zinc-700">{stockAvail > 0 ? `${stockAvail} un` : '0 un (Sem Estoque)'}</td>
+                                    <td className="px-3 py-2.5 text-right">
+                                      <span className="inline-block px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-sm font-black font-mono">
+                                        {corteQty} un
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2 rounded-lg flex items-center gap-1.5 border border-amber-200/60">
+                          <AlertTriangle size={13} className="text-amber-600 shrink-0" />
+                          <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Form Controls */}
+              <div className="space-y-4 pt-2 border-t border-zinc-100">
+                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Definições para Produção</h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Tipo de Estampa */}
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1">
+                      Tipo de Estampa <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={confirmDraftForm.print_type}
+                      onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, print_type: e.target.value as any }))}
+                      className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="DTF">DTF (Direct to Film)</option>
+                      <option value="Silk">Silk-screen (Serigrafia)</option>
+                      <option value="Sublimação">Sublimação Total</option>
+                      <option value="Bordado">Bordado Computadorizado</option>
+                    </select>
+                  </div>
+
+                  {/* Produto / Tecido */}
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 mb-1">
+                      Tecido / Linha de Produto
+                    </label>
+                    <input
+                      type="text"
+                      value={confirmDraftForm.product_type}
+                      onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, product_type: e.target.value }))}
+                      placeholder="Ex: Dry Fit, Algodão 30.1, Poliéster..."
+                      className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Num Cores (if Silk/Sublimacao) */}
+                  {(confirmDraftForm.print_type === 'Silk' || confirmDraftForm.print_type === 'Sublimação') && (
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-700 mb-1">
+                        Número de Cores da Estampa
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={confirmDraftForm.num_colors}
+                        onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, num_colors: parseInt(e.target.value) || 1 }))}
+                        className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Observações */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Observações de Produção
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={confirmDraftForm.observations}
+                    onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, observations: e.target.value }))}
+                    placeholder="Instruções para o corte, estampa ou costura..."
+                    className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Required Stages Checkboxes */}
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-2">
+                    Etapas do Fluxo de Produção
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {stages.filter(st => st.active).map(st => {
+                      const isChecked = confirmDraftForm.required_stages.includes(st.id);
+                      return (
+                        <label
+                          key={st.id}
+                          className={cn(
+                            "flex items-center gap-2 p-2 rounded-xl border text-xs font-medium cursor-pointer transition-all",
+                            isChecked ? "bg-indigo-50 border-indigo-200 text-indigo-950 font-bold" : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setConfirmDraftForm(prev => ({ ...prev, required_stages: [...prev.required_stages, st.id] }));
+                              } else {
+                                setConfirmDraftForm(prev => ({ ...prev, required_stages: prev.required_stages.filter(id => id !== st.id) }));
+                              }
+                            }}
+                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span>{st.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-50 p-4 border-t border-zinc-100 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteDraftOrder(selectedDraftOrder.id)}
+                className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                <span>Excluir Rascunho</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDraftOrder(null)}
+                  className="px-4 py-2.5 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDraftOrder}
+                  disabled={isConfirmingDraft}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isConfirmingDraft ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  <span>Liberar para Produção</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Olist Draft Orders Full List Modal */}
+      {isDraftsListModalOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
+            <div className="bg-indigo-900 text-white p-6 relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-indigo-300 text-xs font-mono font-bold uppercase tracking-wider mb-1">
+                  <Package size={16} /> Integração Olist ERP
+                </div>
+                <h2 className="text-xl font-black">Rascunhos de Pedidos Importados ({draftOrders.length})</h2>
+                <p className="text-xs text-indigo-200 mt-0.5">
+                  Estes pedidos aguardam revisão da vendedora para definição de estampa e liberação para produção.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {draftOrders.length > 0 && (
+                  <button
+                    onClick={handleCleanOldDrafts}
+                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5"
+                    title="Excluir rascunhos com mais de 7 dias"
+                  >
+                    <Trash2 size={13} />
+                    Limpar Antigos (&gt; 7 dias)
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsDraftsListModalOpen(false)}
+                  className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              {draftOrders.length === 0 ? (
+                <div className="py-12 text-center text-zinc-500">
+                  <Package size={48} className="mx-auto text-zinc-300 mb-3" />
+                  <p className="font-bold text-sm">Nenhum rascunho de pedido pendente.</p>
+                  <p className="text-xs text-zinc-400 mt-1">Clique em "Sincronizar Olist" no menu superior para buscar novos pedidos do ERP.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-sm">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-600 font-bold uppercase text-[10px]">
+                        <th className="px-4 py-3">Nº Pedido Olist</th>
+                        <th className="px-4 py-3">Cliente</th>
+                        <th className="px-4 py-3 text-center">Itens / Quantidade</th>
+                        <th className="px-4 py-3 text-center">Prazo Estimado</th>
+                        <th className="px-4 py-3 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {draftOrders.map((draft) => (
+                        <tr key={draft.id} className="hover:bg-zinc-50/60 transition-colors">
+                          <td className="px-4 py-3 font-bold font-mono text-indigo-950">{draft.order_number}</td>
+                          <td className="px-4 py-3 font-semibold text-zinc-800">{draft.client_name}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center gap-1 font-mono font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs">
+                              {draft.quantity} pçs {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center font-medium text-zinc-600">
+                            {safeFormat(draft.deadline, 'dd/MM/yyyy')}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setIsDraftsListModalOpen(false);
+                                  handleOpenDraftReview(draft);
+                                }}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                              >
+                                <Edit2 size={13} />
+                                Revisar &amp; Liberar
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDraftOrder(draft.id)}
+                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors border border-rose-200"
+                                title="Excluir este rascunho"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-50 p-4 border-t border-zinc-100 flex items-center justify-between">
+              <span className="text-xs text-zinc-500 font-medium">Total: {draftOrders.length} rascunhos pendentes</span>
+              <button
+                onClick={() => setIsDraftsListModalOpen(false)}
+                className="px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-bold rounded-xl text-xs transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Toast Message */}
+      {toastMessage && (
+        <div className="fixed bottom-4 right-4 bg-zinc-900 border border-zinc-800 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-bold z-[100] flex items-center gap-2 animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+    </div>
+  );
+}

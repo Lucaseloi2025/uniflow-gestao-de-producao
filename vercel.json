@@ -1,0 +1,31 @@
+{
+    "version": 2,
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "/api/index.ts"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ],
+    "functions": {
+        "api/index.ts": {
+            "maxDuration": 60
+        },
+        "api/ping.ts": {
+            "maxDuration": 30
+        }
+    },
+    "crons": [
+        {
+            "path": "/api/cron/cleanup-artworks",
+            "schedule": "0 3 * * *"
+        },
+        {
+            "path": "/api/integrations/olist/sync",
+            "schedule": "0 22 * * *"
+        }
+    ]
+}
