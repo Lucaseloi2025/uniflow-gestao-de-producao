@@ -115,51 +115,60 @@ export function getItemGradeCategory(size: string, productType: string = ''): 'A
 export function getItemDisplaySize(item: any): string {
   if (!item) return 'Tamanho não informado';
 
-  // 1. Structured size field from Olist / item object
+  const desc = (item.description || item.descricao || '').toString().trim();
+  const sku = (item.sku || item.codigo || '').toString().trim();
+  const text = `${desc} ${sku}`;
+
+  // 1. Adult size token match (G5 -> G4 -> G3 -> G2 -> G1 -> XGG -> EXG -> XXL -> GG -> PP -> P -> M -> G)
+  const adultMatch = text.match(/(?:^|[\s\-\–\/\|_,])(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G)(?:[\s\-\–\/\|_,]|$)/i);
+  if (adultMatch) {
+    return adultMatch[1].toUpperCase();
+  }
+
+  // 2. SKU Suffix match
+  const skuMatch = sku.match(/-(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G|16|14|12|10|8|6|4|2|1)$/i);
+  if (skuMatch) {
+    return skuMatch[1].toUpperCase();
+  }
+
+  // 3. Child numeric explicit pattern match (Tam 10, Tamanho 10, Infantil 10, Tam. 10)
+  const childExplicitMatch = text.match(/\b(?:tam|tamanho|inf|infantil|tam\.)\s*[:\-–]?\s*(16|14|12|10|8|6|4|2|1)\b/i);
+  if (childExplicitMatch) {
+    return childExplicitMatch[1];
+  }
+
+  // 4. Child numeric end-of-string pattern match (e.g. "- 2", "– 2", "/ 2", "- 10")
+  const childEndMatch = text.match(/(?:–|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
+  if (childEndMatch) {
+    return childEndMatch[1];
+  }
+
+  // 5. Child numeric match anywhere if text contains "infantil", "inf", "criança", or "kids"
+  if (/\b(?:infantil|inf|criança|kids)\b/i.test(text)) {
+    const childNumberMatch = text.match(/\b(16|14|12|10|8|6|4|2|1)\b/);
+    if (childNumberMatch) {
+      return childNumberMatch[1];
+    }
+  }
+
+  // 6. Structured raw size field from object (if valid specific size, e.g. P, M, G, GG, G1..G5, 1..16)
   const rawSize = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
   const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[aã]o|camiseta|vestu[aá]rio/i.test(rawSize);
 
   if (rawSize && !isMaterialOrTrash) {
     const normRaw = rawSize.toUpperCase();
-    if (normRaw === 'ÚNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ÚNICO') {
-      return 'Único';
-    }
     if (ADULT_SIZES.includes(normRaw) || CHILD_SIZES.includes(normRaw)) {
       return normRaw;
+    }
+    if (normRaw === 'ÚNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ÚNICO') {
+      return 'Único';
     }
     if (normRaw !== 'TAMANHO NÃO INFORMADO') {
       return normRaw;
     }
   }
 
-  const desc = (item.description || item.descricao || '').toString().trim();
-  const sku = (item.sku || item.codigo || '').toString().trim();
-  const text = `${desc} ${sku}`;
-
-  // 2. Adult size token match (G5 -> G4 -> G3 -> G2 -> G1 -> XGG -> EXG -> XXL -> GG -> PP -> P -> M -> G)
-  const adultMatch = text.match(/(?:^|[\s\-\–\/\|_,])(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G)(?:[\s\-\–\/\|_,]|$)/i);
-  if (adultMatch) {
-    return adultMatch[1].toUpperCase();
-  }
-
-  // 3. SKU Suffix match
-  const skuMatch = sku.match(/-(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G|16|14|12|10|8|6|4|2|1)$/i);
-  if (skuMatch) {
-    return skuMatch[1].toUpperCase();
-  }
-
-  // 4. Safe Child Numeric size match
-  const childExplicitMatch = text.match(/\b(?:tam|tamanho|inf|infantil|tam\.)\s*[:\-–]?\s*(16|14|12|10|8|6|4|2|1)\b/i);
-  if (childExplicitMatch) {
-    return childExplicitMatch[1];
-  }
-
-  const childEndMatch = text.match(/(?:–|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
-  if (childEndMatch) {
-    return childEndMatch[1];
-  }
-
-  // 5. Explicit "Único" check
+  // 7. Explicit "Único" check in description / SKU if no specific size token was matched
   if (/\b(tamanho\s*únic[oa]|tamanho\s*unico|tam\.\s*único|único|unica|tu)\b/i.test(text)) {
     return 'Único';
   }
@@ -242,11 +251,7 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
   }
 
   // 3. Extração do TAMANHO
-  let size = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
-  if (!size || size.toLowerCase() === 'único' || size.toLowerCase() === 'unica') {
-    const extractedSize = getItemDisplaySize(item);
-    size = (extractedSize !== 'Único' && extractedSize !== 'Única') ? extractedSize : (size || 'Único');
-  }
+  let size = getItemDisplaySize(item);
   if (!size) size = 'Tamanho não informado';
 
   // 4. Extração do MODELO

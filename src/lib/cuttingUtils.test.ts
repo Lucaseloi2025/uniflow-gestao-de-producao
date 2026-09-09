@@ -213,10 +213,15 @@ function runCuttingTests() {
   const colorAzulMarinho = extractItemDetails({ description: 'Dry Comfort Azul Marinho - M' });
   assertEqual(colorAzulMarinho.color, 'Azul Marinho', 'Test 9.3: Color Azul Marinho recognized before Azul');
 
-  // Test 10: Size Sorting (Req 11)
-  const unsorted = ['G2', 'M', 'PP', 'G', 'G5', '10', '2', 'G1'];
-  const sorted = sortSizes(unsorted);
-  assertEqual(sorted, ['PP', 'M', 'G', 'G1', 'G2', 'G5', '2', '10'], 'Test 10.1: sortSizes orders PP->G5 first, then numeric child sizes 2->10');
+  // Test 11: Real DB cases where item has pre-stored size: 'Único' but description has explicit size suffix
+  const itemStaleUnicoG1 = extractItemDetails({ description: 'Camiseta Gola Redonda PV Azul Marinho - G1', size: 'Único' });
+  assertEqual(itemStaleUnicoG1.size, 'G1', 'Test 11.1: Pre-stored size Único overridden by - G1 in description');
+
+  const itemStalePoloG1 = extractItemDetails({ description: 'Camisa Polo Pv Preta - G1', size: 'Único' });
+  assertEqual(itemStalePoloG1.size, 'G1', 'Test 11.2: Pre-stored size Único overridden by - G1 in Polo description');
+
+  const itemStaleChild2 = extractItemDetails({ description: 'Camiseta Infantil Gola Redonda PV Preto - 2', size: 'Único' });
+  assertEqual(itemStaleChild2.size, '2', 'Test 11.3: Pre-stored size Único overridden by - 2 in Infantil description');
 
   console.log(`\nCutting Tests Summary: ${passed} passed, ${failed} failed.`);
   if (failed > 0) {

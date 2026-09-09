@@ -154,12 +154,17 @@ export function extractItemSizeAndProduct(descricao: string, codigo: string, exp
         const childEndMatch = text.match(/(?:–|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
         if (childEndMatch) {
           size = childEndMatch[1];
+        } else if (/\b(?:infantil|inf|criança|kids)\b/i.test(text)) {
+          const childNumberMatch = text.match(/\b(16|14|12|10|8|6|4|2|1)\b/);
+          if (childNumberMatch) {
+            size = childNumberMatch[1];
+          }
         }
       }
     }
   }
 
-  if (/\b(tamanho\s*únic[oa]|tamanho\s*unico|tam\.\s*único|único|unica|tu)\b/i.test(text)) {
+  if ((!size || size === 'ÚNICO' || size === 'UNICO') && /\b(tamanho\s*únic[oa]|tamanho\s*unico|tam\.\s*único|único|unica|tu)\b/i.test(text)) {
     size = 'Único';
   }
 

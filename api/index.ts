@@ -53,21 +53,6 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
 
 function getItemDisplaySize(item: any): string {
   if (!item) return 'Tamanho não informado';
-  const rawSize = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
-  const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[aã]o|camiseta|vestu[aá]rio/i.test(rawSize);
-
-  if (rawSize && !isMaterialOrTrash) {
-    const normRaw = rawSize.toUpperCase();
-    if (normRaw === 'ÚNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ÚNICO') {
-      return 'Único';
-    }
-    if (ADULT_SIZES.includes(normRaw) || CHILD_SIZES.includes(normRaw)) {
-      return normRaw;
-    }
-    if (normRaw !== 'TAMANHO NÃO INFORMADO') {
-      return normRaw;
-    }
-  }
 
   const desc = (item.description || item.descricao || '').toString().trim();
   const sku = (item.sku || item.codigo || '').toString().trim();
@@ -91,6 +76,29 @@ function getItemDisplaySize(item: any): string {
   const childEndMatch = text.match(/(?:–|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
   if (childEndMatch) {
     return childEndMatch[1];
+  }
+
+  if (/\b(?:infantil|inf|criança|kids)\b/i.test(text)) {
+    const childNumberMatch = text.match(/\b(16|14|12|10|8|6|4|2|1)\b/);
+    if (childNumberMatch) {
+      return childNumberMatch[1];
+    }
+  }
+
+  const rawSize = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
+  const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[aã]o|camiseta|vestu[aá]rio/i.test(rawSize);
+
+  if (rawSize && !isMaterialOrTrash) {
+    const normRaw = rawSize.toUpperCase();
+    if (ADULT_SIZES.includes(normRaw) || CHILD_SIZES.includes(normRaw)) {
+      return normRaw;
+    }
+    if (normRaw === 'ÚNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ÚNICO') {
+      return 'Único';
+    }
+    if (normRaw !== 'TAMANHO NÃO INFORMADO') {
+      return normRaw;
+    }
   }
 
   if (/\b(tamanho\s*únic[oa]|tamanho\s*unico|tam\.\s*único|único|unica|tu)\b/i.test(text)) {
@@ -149,11 +157,7 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestuário'
     if (!color) color = 'Cor não informada';
   }
 
-  let size = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
-  if (!size || size.toLowerCase() === 'único' || size.toLowerCase() === 'unica') {
-    const extractedSize = getItemDisplaySize(item);
-    size = (extractedSize !== 'Único' && extractedSize !== 'Única') ? extractedSize : (size || 'Único');
-  }
+  let size = getItemDisplaySize(item);
   if (!size) size = 'Tamanho não informado';
 
   let productType = item.product_type || item.modelo;
