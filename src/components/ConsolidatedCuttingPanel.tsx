@@ -755,8 +755,6 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
               </div>
             )}
           </div>
-
-        </div>
       )}
 
       {/* SUBTAB 2: PLANOS APROVADOS DE ENFESTO (NOVA ABA COMFORTPRO) */}
