@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
+  History,
   Scissors,
   Calendar,
   PackageCheck,
@@ -486,8 +487,17 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             </p>
           </div>
 
-          {/* Subtabs Switcher */}
-          <div className="flex items-center gap-1.5 bg-slate-950/60 p-1.5 rounded-2xl border border-blue-800/50 backdrop-blur-md self-start md:self-auto font-sans">
+                      {/* Subtabs Switcher */}
+            <div className="flex flex-col md:flex-row items-end md:items-center gap-4">
+              <button
+                onClick={handleSyncStock}
+                disabled={isSyncingStock}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-70"
+              >
+                <History size={16} className={isSyncingStock ? "animate-spin" : ""} />
+                {isSyncingStock ? `Sincronizando... ${syncProgress.current}/${syncProgress.total}` : 'Sincronizar Estoque'}
+              </button>
+            <div className="flex items-center gap-1.5 bg-slate-950/60 p-1.5 rounded-2xl border border-blue-800/50 backdrop-blur-md self-start md:self-auto font-sans">
             <button
               onClick={() => setActiveSubTab('demand')}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -521,6 +531,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
               <History size={14} /> Histórico de Alocações
             </button>
           </div>
+            </div>
         </div>
       </div>
 
