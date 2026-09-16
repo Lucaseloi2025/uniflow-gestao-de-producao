@@ -24,10 +24,9 @@ import {
   Trash2,
   Edit2
 } from 'lucide-react';
-import { Order, User, CorteDemandItem, CorteAllocationLog } from '../types';
-import { aggregateCuttingDemand, sortSizes } from '../lib/cuttingUtils';
-import { EnfestoPlannerModal } from './EnfestoPlannerModal';
-import { PrintableEnfestoSheetModal } from './PrintableEnfestoSheetModal';
+import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
+import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
+import { CuttingPlanModal } from './CuttingPlanModal';
 import {
   ApprovedEnfestoPlan,
   getApprovedEnfestoPlans,
@@ -56,16 +55,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [sortBy, setSortBy] = useState<'urgency' | 'quantity' | 'orders_count'>('urgency');
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
-  // State for Planejamento de Enfesto Modal
-  const [selectedGroupForPlanner, setSelectedGroupForPlanner] = useState<{
-    model: string;
-    fabric: string;
-    color: string;
-    items: CorteDemandItem[];
-    totalPending: number;
-    maxUrgency: string;
-    ordersCount: number;
-  } | null>(null);
+  // State for Central de Corte - Visualização do Plano (Optitex CutPlan)
+  const [selectedGroupForPlanModal, setSelectedGroupForPlanModal] = useState<CorteGroupDemand | null>(null);
 
   // Modal State for registering cut
   const [selectedItemForCut, setSelectedItemForCut] = useState<CorteDemandItem | null>(null);
@@ -82,12 +73,14 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [allocationLogs, setAllocationLogs] = useState<CorteAllocationLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-  // Map of approved plans indexed by model+fabric+color to quickly identify existing plans
+  // Map of approved plans indexed by model+fabric+color AND by raw material (fabric__color)
   const approvedPlansByGroupKey = useMemo(() => {
     const map = new Map<string, ApprovedEnfestoPlan>();
     approvedPlans.forEach(p => {
-      const key = `${(p.model || '').trim().toLowerCase()}_${(p.fabric || '').trim().toLowerCase()}_${(p.color || '').trim().toLowerCase()}`;
-      map.set(key, p);
+      const legacyKey = `${(p.model || '').trim().toLowerCase()}_${(p.fabric || '').trim().toLowerCase()}_${(p.color || '').trim().toLowerCase()}`;
+      map.set(legacyKey, p);
+      const rawMatKey = `${(p.fabric || '').trim().toLowerCase()}__${(p.color || '').trim().toLowerCase()}`;
+      map.set(rawMatKey, p);
     });
     return map;
   }, [approvedPlans]);
@@ -155,6 +148,32 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       fetchApprovedPlans();
     }
   }, [activeSubTab]);
+
+  const handleOpenPlannerModalForGroup = (grp: CorteGroupDemand) => {
+    const combinedModelName = grp.models_breakdown.length === 1
+      ? grp.models_breakdown[0].model
+      : grp.models_breakdown.map(m => m.model).join(' + ');
+
+    setSelectedGroupForPlanner({
+      model: combinedModelName,
+      fabric: grp.fabric,
+      color: grp.color,
+      items: grp.all_items,
+      totalPending: grp.total_necessario,
+      maxUrgency: grp.prazo_mais_proximo,
+      ordersCount: grp.pedidos_count,
+      pedidos_waiting: grp.pedidos_waiting.map(p => ({
+        order_id: p.order_id,
+        order_number: p.order_number,
+        customer_name: p.client_name,
+        quantity: p.quantity
+      })),
+      description: `${combinedModelName} • ${grp.fabric} • ${grp.color}`,
+      tipo_tecido: grp.tipo_tecido,
+      largura_util: grp.largura_util,
+      models_breakdown: grp.models_breakdown
+    });
+  };
 
   const handleOpenPlannerModal = (group: {
     model: string;
@@ -361,65 +380,21 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   const [viewMode, setViewMode] = useState<'management' | 'operator'>('operator');
 
-  // Group demand items by Modelo + Tecido + Cor (Operator View)
-  const operatorGroupedCards = useMemo(() => {
-    const groups: {
-      [key: string]: {
-        model: string;
-        fabric: string;
-        color: string;
-        items: CorteDemandItem[];
-        totalPending: number;
-        maxUrgency: string;
-        ordersCount: number;
-      }
-    } = {};
+  // Group demand items strictly by TECIDO + COR + TIPO + LARGURA (Raw Material First)
+  const { groups: rawMaterialGroups, incompleteItems } = useMemo(() => {
+    const result = groupCuttingDemandByRawMaterial(filteredDemandItems);
 
-    allDemandItems.forEach(item => {
-      const key = `${item.product_type}__${item.fabric}__${item.color}`;
-      if (!groups[key]) {
-        groups[key] = {
-          model: item.product_type,
-          fabric: item.fabric,
-          color: item.color,
-          items: [],
-          totalPending: 0,
-          maxUrgency: item.prazo_mais_proximo,
-          ordersCount: 0
-        };
-      }
-      groups[key].items.push(item);
-      groups[key].totalPending += item.total_necessario;
+    // Apply user selected sorting
+    if (sortBy === 'quantity') {
+      result.groups.sort((a, b) => b.total_necessario - a.total_necessario);
+    } else if (sortBy === 'orders_count') {
+      result.groups.sort((a, b) => b.pedidos_count - a.pedidos_count);
+    } else {
+      result.groups.sort((a, b) => a.prazo_mais_proximo.localeCompare(b.prazo_mais_proximo));
+    }
 
-      if (item.prazo_mais_proximo.localeCompare(groups[key].maxUrgency) < 0) {
-        groups[key].maxUrgency = item.prazo_mais_proximo;
-      }
-    });
-
-    Object.values(groups).forEach(grp => {
-      const orderMap = new Map<number, { order_id: number; order_number?: string; client_name?: string; quantity: number }>();
-      grp.items.forEach(it => {
-        it.pedidos_waiting.forEach(w => {
-          const existing = orderMap.get(w.order_id);
-          if (existing) {
-            existing.quantity += w.qty_corte_needed || w.item_quantity || 1;
-          } else {
-            orderMap.set(w.order_id, {
-              order_id: w.order_id,
-              order_number: w.order_number || `#${w.order_id}`,
-              client_name: w.client_name || 'Cliente',
-              quantity: w.qty_corte_needed || w.item_quantity || 1
-            });
-          }
-        });
-      });
-      grp.ordersCount = orderMap.size;
-      (grp as any).pedidos_waiting = Array.from(orderMap.values());
-      (grp as any).description = grp.items[0]?.description || `${grp.model} ${grp.fabric} ${grp.color}`;
-    });
-
-    return Object.values(groups).sort((a, b) => a.maxUrgency.localeCompare(b.maxUrgency));
-  }, [allDemandItems]);
+    return result;
+  }, [filteredDemandItems, sortBy]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -429,11 +404,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-blue-400 text-xs font-black tracking-widest uppercase mb-1">
-              <Scissors size={18} className="text-blue-400" /> COMFORTPRO — SISTEMA DE CORTE INTELIGENTE
+              <Scissors size={18} className="text-blue-400" /> COMFORTPRO — CENTRAL DE CORTE
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Painel de Corte Consolidado</h2>
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Central de Corte</h2>
             <p className="text-blue-200/90 text-sm mt-1 max-w-2xl">
-              Gerencie demandas, elabore planos de enfesto com excedente estratégico e consulte planos aprovados.
+              Consolidação de demanda por matéria-prima para direcionamento ao Optitex CutPlan.
             </p>
           </div>
 
@@ -447,7 +422,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   : 'text-blue-200 hover:text-white hover:bg-white/10'
               }`}
             >
-              <Scissors size={14} /> Demanda de Corte
+              <Scissors size={14} /> Grupos de Matéria-Prima
             </button>
 
             <button
@@ -500,8 +475,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
               </div>
 
               <div className="bg-slate-900/70 p-4 rounded-2xl border border-blue-900/60">
-                <p className="text-xs font-bold uppercase tracking-wider text-blue-300/90">Modelos/Cores Pendentes</p>
-                <p className="text-3xl font-black font-mono mt-1 text-white">{operatorGroupedCards.length} <span className="text-sm font-sans font-normal text-blue-200">lotes</span></p>
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-300/90">Grupos de Matéria-Prima</p>
+                <p className="text-3xl font-black font-mono mt-1 text-white">{rawMaterialGroups.length} <span className="text-sm font-sans font-normal text-blue-200">grupos</span></p>
               </div>
 
               <div className="bg-slate-900/70 p-4 rounded-2xl border border-blue-900/60">
@@ -511,118 +486,177 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             </div>
           </div>
 
-          {/* Cards de Lotes em Grade */}
+          {/* Search, Filter & Sort Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Buscar tecido, cor, modelo, SKU..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-1.5 text-xs text-slate-600 font-bold">
+                <Filter size={14} className="text-slate-400" /> Ordenar por:
+              </div>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as any)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              >
+                <option value="urgency">Prazo Mais Urgente</option>
+                <option value="quantity">Maior Quantidade</option>
+                <option value="orders_count">Mais Pedidos</option>
+              </select>
+            </div>
+          </div>
+
+          {/* ALERTA DE DADOS INCOMPLETOS / NÃO CONFIÁVEIS */}
+          {incompleteItems.length > 0 && (
+            <div className="bg-amber-50/90 border-2 border-amber-300 rounded-2xl p-5 space-y-3 animate-in fade-in duration-150">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <h4 className="font-black text-amber-950 text-xs sm:text-sm uppercase tracking-wide">
+                      Dados insuficientes para agrupamento automático: confirme tecido e cor.
+                    </h4>
+                    <p className="text-[11px] sm:text-xs text-amber-800 mt-0.5 font-medium">
+                      Estes itens possuem especificações técnicas ausentes no pedido/ERP. Para segurança operacional, não são agrupados automaticamente na mesa de corte.
+                    </p>
+                  </div>
+                </div>
+                <span className="px-3 py-1 bg-amber-200 text-amber-950 font-mono font-black text-xs rounded-xl self-start sm:self-center shrink-0">
+                  {incompleteItems.reduce((acc, it) => acc + it.total_necessario, 0)} peças pendentes
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+                {incompleteItems.map(item => (
+                  <div key={item.item_key} className="bg-white p-3.5 rounded-xl border border-amber-200 text-xs space-y-2 shadow-2xs">
+                    <div className="flex justify-between items-start gap-2">
+                      <strong className="text-slate-900 font-bold">{item.product_type}</strong>
+                      <span className="text-rose-600 font-mono font-black shrink-0">{item.total_necessario} un</span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 space-y-0.5">
+                      <p><strong>Descrição:</strong> {item.description || '-'}</p>
+                      {item.sku && <p className="font-mono"><strong>SKU:</strong> {item.sku}</p>}
+                    </div>
+                    <div className="flex flex-wrap gap-1 text-[10px] font-mono">
+                      {item.missing_fields && item.missing_fields.map(field => (
+                        <span key={field} className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded font-bold border border-rose-200">
+                          ⚠️ Falta {field}
+                        </span>
+                      ))}
+                      <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded font-bold">
+                        Tam: {item.size}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-100">
+                      {item.pedidos_count} pedido(s) • Prazo: {formatDate(item.prazo_mais_proximo)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cards de Grupos de Matéria-Prima em Grade */}
           <div className="space-y-4">
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <Scissors className="text-blue-600" size={20} /> PRÓXIMOS CORTES RECOMENDADOS (LOTES CONSOLIDADOS)
+              <Scissors className="text-blue-600" size={20} /> GRUPOS POTENCIAIS DE CORTE (AGRUPADOS POR MATÉRIA-PRIMA)
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {operatorGroupedCards.map(group => {
-                const existingApprovedPlan = approvedPlansByGroupKey.get(
-                  `${(group.model || '').trim().toLowerCase()}_${(group.fabric || '').trim().toLowerCase()}_${(group.color || '').trim().toLowerCase()}`
-                );
-
-                return (
+            {rawMaterialGroups.length === 0 ? (
+              <div className="p-12 text-center bg-white border border-slate-200 rounded-3xl space-y-3 shadow-2xs">
+                <CheckCircle2 size={36} className="mx-auto text-slate-300" />
+                <h4 className="font-black text-slate-700 text-base">Nenhum grupo de corte pendente</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Não há demandas de corte pendentes para os filtros selecionados.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {rawMaterialGroups.map(group => (
                   <div
-                    key={`${group.model}-${group.fabric}-${group.color}`}
-                    className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between space-y-4 ${
-                      existingApprovedPlan
-                        ? 'border-emerald-300 shadow-md ring-2 ring-emerald-500/10'
-                        : 'border-slate-200 shadow-sm hover:border-blue-500'
-                    }`}
+                    key={group.group_key}
+                    className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-blue-500 hover:shadow-md transition-all p-5 flex flex-col justify-between space-y-4"
                   >
-                    <div className="space-y-2">
+                    <div className="space-y-3.5">
+                      {/* Header do Card */}
                       <div className="flex justify-between items-start gap-2">
                         <div>
-                          <h4 className="font-black text-lg text-slate-900 leading-tight">{group.model}</h4>
-                          <p className="text-xs font-bold text-blue-800 uppercase tracking-wide mt-0.5">
-                            Tecido: {group.fabric} • Cor: {group.color}
-                          </p>
-                          {group.items[0]?.description && (
-                            <p className="text-[11px] font-medium text-slate-700 bg-blue-50/70 px-2.5 py-1.5 rounded-lg border border-blue-200 mt-1">
-                              📋 <strong>Detalhamento do Pedido:</strong> {group.items[0].description}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 bg-blue-900 text-white font-mono font-black text-[10px] rounded uppercase tracking-wider">
+                              MATÉRIA-PRIMA
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                              group.tipo_tecido === 'TUBULAR'
+                                ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                            }`}>
+                              {group.tipo_tecido}
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-mono">
+                              {group.largura_util}
+                            </span>
+                          </div>
+
+                          <h4 className="font-black text-xl text-slate-900 leading-tight mt-2">
+                            {group.fabric} · <span className="text-blue-700">{group.color}</span>
+                          </h4>
+                          {(group.lote || group.orientacao) && (
+                            <p className="text-[11px] font-bold text-slate-400 font-mono mt-0.5">
+                              {[group.lote ? `Lote: ${group.lote}` : '', group.orientacao ? `Fio: ${group.orientacao}` : ''].filter(Boolean).join(' • ')}
                             </p>
                           )}
                         </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          {getUrgencyBadge(group.maxUrgency)}
-                          {existingApprovedPlan && (
-                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-950 font-mono font-black text-[10px] rounded-lg border border-emerald-300 flex items-center gap-1 shadow-2xs">
-                              <CheckCircle2 size={12} className="text-emerald-600" /> PLANO CRIADO
-                            </span>
-                          )}
+
+                        <div className="shrink-0">
+                          {getUrgencyBadge(group.prazo_mais_proximo)}
                         </div>
                       </div>
 
-                      {/* Notificação visual de plano existente para evitar duplicação */}
-                      {existingApprovedPlan && (
-                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-medium gap-2">
-                          <span className="flex items-center gap-1.5 font-bold truncate">
-                            <CheckCircle2 size={14} className="text-emerald-600 shrink-0" /> Plano de enfesto já aprovado para este lote
+                      {/* Métricas Limpas do Card (Requisito 4: Central de Corte) */}
+                      <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2 text-xs">
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider">Demanda Total:</span>
+                          <span className="text-lg font-black font-mono text-blue-700">
+                            {group.total_necessario} peças pendentes
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setActiveSubTab('approved_plans')}
-                            className="text-[11px] font-black text-emerald-800 underline hover:text-emerald-950 cursor-pointer shrink-0"
-                          >
-                            Ver Plano
-                          </button>
                         </div>
-                      )}
-
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                        <div className="px-3.5 py-1.5 bg-blue-600 text-white font-mono font-black text-sm rounded-xl border border-blue-700 shadow-2xs">
-                          {group.totalPending} peças pendentes
+                        <div className="flex items-center justify-between text-slate-600 font-medium pt-1.5 border-t border-slate-200/60">
+                          <span className="font-bold text-slate-800">{group.models_breakdown.length} {group.models_breakdown.length === 1 ? 'modelo' : 'modelos'}</span>
+                          <span className="text-slate-300">·</span>
+                          <span className="font-bold text-slate-800">{group.pedidos_count} {group.pedidos_count === 1 ? 'pedido' : 'pedidos'}</span>
                         </div>
-                        <span className="text-xs font-bold text-slate-500 font-mono">
-                          {group.ordersCount} {group.ordersCount === 1 ? 'pedido' : 'pedidos'}
-                        </span>
-                      </div>
-
-                      {/* Grade compacta */}
-                      <div className="pt-2">
-                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block mb-1.5">
-                          Grade Necessária:
-                        </span>
-                        <div className="flex flex-wrap gap-1.5 font-mono text-xs">
-                          {[...group.items].sort((a, b) => {
-                            const sorted = sortSizes([a.size, b.size]);
-                            return sorted[0] === a.size ? -1 : 1;
-                          }).map(it => (
-                            <span key={it.size} className={`px-2 py-0.5 rounded-lg border font-bold ${it.size === 'Tamanho não informado' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
-                              {it.size} <strong className="text-blue-700">{it.total_necessario}</strong>
-                            </span>
-                          ))}
+                        <div className="flex items-center justify-between text-slate-500 text-[11px] pt-1.5 border-t border-slate-200/60">
+                          <span>Entrega mais urgente:</span>
+                          <span className="font-bold font-mono text-rose-600">
+                            {formatDate(group.prazo_mais_proximo)}
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
+                    {/* Botão de Ação: [ VER PLANO ] */}
+                    <div className="pt-2 border-t border-slate-100">
                       <button
                         type="button"
-                        onClick={() => handleOpenPlannerModal(group)}
-                        className={`flex-1 py-3 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 ${
-                          existingApprovedPlan
-                            ? 'bg-emerald-600 hover:bg-emerald-700'
-                            : 'bg-blue-600 hover:bg-blue-700'
-                        }`}
+                        onClick={() => setSelectedGroupForPlanModal(group)}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                       >
-                        {existingApprovedPlan ? (
-                          <>
-                            <Edit2 size={15} /> REVISAR / RECALCULAR PLANO (JÁ APROVADO)
-                          </>
-                        ) : (
-                          <>
-                            <Scissors size={15} /> PLANEJAR ENFESTO
-                          </>
-                        )}
+                        <Layers size={15} /> VER PLANO
                       </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
@@ -861,15 +895,12 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         </div>
       )}
 
-      {/* PLANEJADOR DE ENFESTO MODAL */}
-      {selectedGroupForPlanner && (
-        <EnfestoPlannerModal
-          isOpen={!!selectedGroupForPlanner}
-          onClose={() => {
-            setSelectedGroupForPlanner(null);
-            fetchApprovedPlans();
-          }}
-          groupData={selectedGroupForPlanner}
+      {/* CENTRAL DE CORTE - MODAL DO PLANO (OPTITEX CUTPLAN) */}
+      {selectedGroupForPlanModal && (
+        <CuttingPlanModal
+          isOpen={!!selectedGroupForPlanModal}
+          onClose={() => setSelectedGroupForPlanModal(null)}
+          group={selectedGroupForPlanModal}
         />
       )}
 

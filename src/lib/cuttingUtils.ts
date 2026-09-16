@@ -1,4 +1,4 @@
-import { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult } from '../types';
+import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown } from '../types';
 
 /**
  * Safely parses order items array whether it comes as an Array or a JSON string.
@@ -177,7 +177,8 @@ export function getItemDisplaySize(item: any): string {
 }
 
 /**
- * Extracts product_type, fabric, color, size, and Olist ERP description to construct a normalized item_key.
+ * Extracts technical product_type, fabric, color, size, and cutting specifications.
+ * CRITICAL RULE: DOES NOT GUESS fabric or color from description/SKU if technical field is missing or 'não informada'.
  */
 export function extractItemDetails(item: any, defaultProductType: string = 'Vestuário'): {
   product_type: string;
@@ -188,6 +189,11 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
   sku: string;
   item_key: string;
   is_complete: boolean;
+  tipo_tecido: 'TUBULAR' | 'RAMADO';
+  largura_util: string;
+  lote?: string;
+  orientacao?: string;
+  missing_fields: string[];
 } {
   if (!item || typeof item !== 'object') {
     return {
@@ -198,56 +204,35 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
       description: 'Item sem descrição',
       sku: '',
       item_key: 'Modelo não informado | Tecido não informado | Cor não informada | Tamanho não informado',
-      is_complete: false
+      is_complete: false,
+      tipo_tecido: 'RAMADO',
+      largura_util: '1,60 m',
+      missing_fields: ['Tecido', 'Cor']
     };
   }
 
   const rawDesc = (item.description || item.descricao || '').toString().trim();
   const rawSku = (item.sku || item.codigo || '').toString().trim();
 
-  // 1. Extração do TECIDO
-  let fabric = item.fabric || item.tecido;
-  if (!fabric) {
-    if (/dry\s*comfort/i.test(rawDesc) || /dry-comfort/i.test(rawDesc)) fabric = 'Dry Comfort';
-    else if (/dry\s*fit/i.test(rawDesc) || /dry-fit/i.test(rawDesc)) fabric = 'Dry Fit';
-    else if (/poliamida/i.test(rawDesc)) fabric = 'Poliamida';
-    else if (/algod[aã]o/i.test(rawDesc)) fabric = 'Algodão';
-    else if (/piquet|pique/i.test(rawDesc)) fabric = 'Piquet';
-    else if (/pv\b/i.test(rawDesc)) fabric = 'PV';
-    else fabric = 'Tecido não informado';
+  // 1. Extração ESTRITA do TECIDO técnico (sem adivinhar pelo nome quando ausente)
+  const rawFabric = (item.fabric || item.tecido || item.variacao?.tecido || item.grade?.tecido || item.atributos?.tecido || '').toString().trim();
+  let fabric = 'Tecido não informado';
+  if (rawFabric && !/^(tecido\s+)?n[aã]o\s+informad[ao]$/i.test(rawFabric)) {
+    if (/dry\s*comfort/i.test(rawFabric)) fabric = 'Dry Comfort';
+    else if (/dry\s*fit/i.test(rawFabric)) fabric = 'Dry Fit';
+    else if (/poliamida/i.test(rawFabric)) fabric = 'Poliamida';
+    else if (/algod[aã]o/i.test(rawFabric)) fabric = 'Algodão';
+    else if (/piquet|pique/i.test(rawFabric)) fabric = 'Piquet';
+    else if (/pv\b/i.test(rawFabric)) fabric = 'PV';
+    else fabric = rawFabric;
   }
 
-  // 2. Extração da COR
-  let color = (item.color || item.cor || item.variacao?.cor || item.grade?.cor || '').toString().trim();
-  if (color && color.toLowerCase() !== 'cor não informada') {
-    const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(color));
-    if (matchCat) color = matchCat.name;
-  } else {
-    const targetText = `${rawDesc} ${rawSku}`;
-
-    const recorteColorMatch = targetText.match(
-      /(preto|branco|marrom|azul\s*marinho|azul|vermelho|verde|cinza|rosa|amarelo|roxo|laranja|vinho)\s*(?:com|\+|\/|c\/|e)\s*(?:recorte\s*)?(preto|branco|marrom|azul\s*marinho|azul|vermelho|verde|cinza|rosa|amarelo|roxo|laranja|vinho)/i
-    );
-    const explicitRecorteMatch = targetText.match(
-      /recorte\s*[:\-–]?\s*(preto|branco|marrom|azul\s*marinho|azul|vermelho|verde|cinza|rosa|amarelo|roxo|laranja|vinho)/i
-    );
-
-    if (recorteColorMatch) {
-      const mainC = recorteColorMatch[1].trim().toUpperCase();
-      const recC = recorteColorMatch[2].trim().toUpperCase();
-      color = `${mainC} (Corpo) / ${recC} (Recorte)`;
-    } else if (explicitRecorteMatch) {
-      const recC = explicitRecorteMatch[1].trim().toUpperCase();
-      color = `Corpo / ${recC} (Recorte)`;
-    } else {
-      for (const { name, pattern } of COLOR_PATTERNS) {
-        if (pattern.test(targetText)) {
-          color = name;
-          break;
-        }
-      }
-    }
-    if (!color) color = 'Cor não informada';
+  // 2. Extração ESTRITA da COR técnica (sem adivinhar pelo nome quando ausente)
+  const rawColor = (item.color || item.cor || item.variacao?.cor || item.grade?.cor || item.atributos?.cor || '').toString().trim();
+  let color = 'Cor não informada';
+  if (rawColor && !/^(cor\s+)?n[aã]o\s+informad[ao]$/i.test(rawColor)) {
+    const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(rawColor));
+    color = matchCat ? matchCat.name : rawColor;
   }
 
   // 3. Extração do TAMANHO
@@ -286,8 +271,26 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
     }
   }
 
-  const description = rawDesc || `${productType} ${fabric} ${color}`;
-  const item_key = `${productType} | ${fabric} | ${color} | ${size}`;
+  // 5. Características físicas de corte (Tipo físico e Largura útil)
+  let tipo_tecido: 'TUBULAR' | 'RAMADO' = 'RAMADO';
+  const rawTipo = (item.tipo_tecido || item.tipoTecido || item.tipo_corte || '').toString().trim().toUpperCase();
+  if (rawTipo.includes('TUBULAR') || rawTipo.includes('TUBOLAR')) {
+    tipo_tecido = 'TUBULAR';
+  } else if (rawTipo.includes('RAMADO')) {
+    tipo_tecido = 'RAMADO';
+  }
+
+  let largura_util = (item.largura_util || item.largura || '1,60 m').toString().trim();
+  if (!largura_util.includes('m') && !largura_util.includes('cm')) {
+    largura_util = `${largura_util} m`;
+  }
+
+  const lote = (item.lote || item.tonalidade || '').toString().trim() || undefined;
+  const orientacao = (item.orientacao || item.sentido || '').toString().trim() || undefined;
+
+  const missing_fields: string[] = [];
+  if (fabric === 'Tecido não informado') missing_fields.push('Tecido');
+  if (color === 'Cor não informada') missing_fields.push('Cor');
 
   const is_complete =
     productType !== 'Modelo não informado' &&
@@ -295,7 +298,24 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
     color !== 'Cor não informada' &&
     size !== 'Tamanho não informado';
 
-  return { product_type: productType, fabric, color, size, description, sku: rawSku, item_key, is_complete };
+  const description = rawDesc || `${productType} ${fabric} ${color}`;
+  const item_key = `${productType} | ${fabric} | ${color} | ${size}`;
+
+  return {
+    product_type: productType,
+    fabric,
+    color,
+    size,
+    description,
+    sku: rawSku,
+    item_key,
+    is_complete,
+    tipo_tecido,
+    largura_util,
+    lote,
+    orientacao,
+    missing_fields
+  };
 }
 
 
@@ -414,7 +434,7 @@ export function aggregateCuttingDemand(orders: any[]): CorteDemandItem[] {
 
           if (qtyPending <= 0) continue;
 
-          const { product_type, fabric, color, size, description, sku, item_key, is_complete } = extractItemDetails(item, order.product_type);
+          const { product_type, fabric, color, size, description, sku, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields } = extractItemDetails(item, order.product_type);
 
           // Skip generic legacy mock items (e.g. "Dry Fit Única | Único") without detailed SKU/Olist breakdown
           if (item_key.toLowerCase().includes('dry fit única | único') || item_key.toLowerCase().includes('item | único')) {
@@ -442,6 +462,11 @@ export function aggregateCuttingDemand(orders: any[]): CorteDemandItem[] {
               description,
               sku,
               is_complete,
+              tipo_tecido,
+              largura_util,
+              lote,
+              orientacao,
+              missing_fields,
               total_necessario: 0,
               pedidos_count: 0,
               prazo_mais_proximo: order.deadline || new Date().toISOString(),
@@ -639,3 +664,164 @@ export function reallocateOnCancellation(
 
   return reallocatedLogs;
 }
+
+/**
+ * Groups cutting demand strictly by Raw Material and physical cutting conditions:
+ * TECIDO + COR + TIPO DE TECIDO/CORTE + LARGURA ÚTIL (+ lote/orientação quando existirem).
+ *
+ * Model (product_type) is NOT used to separate groups! Models sharing the same material
+ * and cutting compatibility form a single cutting group.
+ *
+ * Items with missing technical fabric or color (or 'não informada') are segregated
+ * into incompleteItems to prevent automatic grouping and prompt user correction.
+ */
+export function groupCuttingDemandByRawMaterial(demandItems: CorteDemandItem[]): {
+  groups: CorteGroupDemand[];
+  incompleteItems: CorteDemandItem[];
+} {
+  const groupsMap = new Map<string, CorteGroupDemand>();
+  const incompleteItems: CorteDemandItem[] = [];
+
+  for (const item of demandItems) {
+    const isMissingFabric = !item.fabric || /^(tecido\s+)?n[aã]o\s+informad[ao]$/i.test(item.fabric.trim());
+    const isMissingColor = !item.color || /^(cor\s+)?n[aã]o\s+informad[ao]$/i.test(item.color.trim());
+
+    if (isMissingFabric || isMissingColor || item.is_complete === false) {
+      incompleteItems.push(item);
+      continue;
+    }
+
+    // Normalized group key: FABRIC + COLOR + TIPO_TECIDO + LARGURA_UTIL
+    const normFabric = (item.fabric || '').trim().toUpperCase();
+    const normColor = (item.color || '').trim().toUpperCase();
+    const normTipo = (item.tipo_tecido || 'RAMADO').trim().toUpperCase();
+    const normLargura = (item.largura_util || '1,60 m').trim().toUpperCase();
+    const normLote = item.lote ? `__${item.lote.trim().toUpperCase()}` : '';
+    const normOrientacao = item.orientacao ? `__${item.orientacao.trim().toUpperCase()}` : '';
+
+    const groupKey = `${normFabric}__${normColor}__${normTipo}__${normLargura}${normLote}${normOrientacao}`;
+
+    if (!groupsMap.has(groupKey)) {
+      groupsMap.set(groupKey, {
+        group_key: groupKey,
+        fabric: item.fabric,
+        color: item.color,
+        tipo_tecido: (normTipo === 'TUBULAR' ? 'TUBULAR' : 'RAMADO'),
+        largura_util: item.largura_util || '1,60 m',
+        lote: item.lote,
+        orientacao: item.orientacao,
+        is_valid_group: true,
+        total_necessario: 0,
+        pedidos_count: 0,
+        prazo_mais_proximo: item.prazo_mais_proximo,
+        models_breakdown: [],
+        all_items: [],
+        pedidos_waiting: []
+      });
+    }
+
+    const grp = groupsMap.get(groupKey)!;
+    grp.all_items.push(item);
+    grp.total_necessario += item.total_necessario;
+    if (item.prazo_mais_proximo && item.prazo_mais_proximo.localeCompare(grp.prazo_mais_proximo) < 0) {
+      grp.prazo_mais_proximo = item.prazo_mais_proximo;
+    }
+  }
+
+  const groupsList: CorteGroupDemand[] = Array.from(groupsMap.values());
+
+  for (const grp of groupsList) {
+    // 1. Group items by model inside the cutting group
+    const modelMap = new Map<string, { total: number; sizes: { [size: string]: number }; items: CorteDemandItem[] }>();
+
+    for (const item of grp.all_items) {
+      const modelName = item.product_type || 'Modelo não informado';
+      if (!modelMap.has(modelName)) {
+        modelMap.set(modelName, {
+          total: 0,
+          sizes: {},
+          items: []
+        });
+      }
+      const mb = modelMap.get(modelName)!;
+      mb.items.push(item);
+      mb.total += item.total_necessario;
+      mb.sizes[item.size] = (mb.sizes[item.size] || 0) + item.total_necessario;
+    }
+
+    grp.models_breakdown = Array.from(modelMap.entries()).map(([model, data]) => ({
+      model,
+      total: data.total,
+      sizes: data.sizes,
+      items: data.items
+    })).sort((a, b) => b.total - a.total);
+
+    // 2. Aggregate waiting orders
+    const orderMap = new Map<number, { order_id: number; order_number?: string; client_name?: string; quantity: number }>();
+    grp.all_items.forEach(it => {
+      it.pedidos_waiting.forEach(w => {
+        const existing = orderMap.get(w.order_id);
+        const q = w.qty_corte_pending || w.qty_corte_needed || w.item_quantity || 1;
+        if (existing) {
+          existing.quantity += q;
+        } else {
+          orderMap.set(w.order_id, {
+            order_id: w.order_id,
+            order_number: w.order_number || `#${w.order_id}`,
+            client_name: w.client_name || 'Cliente',
+            quantity: q
+          });
+        }
+      });
+    });
+
+    grp.pedidos_count = orderMap.size;
+    grp.pedidos_waiting = Array.from(orderMap.values());
+  }
+
+  groupsList.sort((a, b) => a.prazo_mais_proximo.localeCompare(b.prazo_mais_proximo));
+  incompleteItems.sort((a, b) => a.prazo_mais_proximo.localeCompare(b.prazo_mais_proximo));
+
+  return { groups: groupsList, incompleteItems };
+}
+
+/**
+ * Formats a cutting group's models breakdown into the clean Optitex CutPlan export format.
+ * Produces both formatted plain text block and tab-separated values (TSV).
+ */
+export function formatDemandForCutPlan(modelsBreakdown: CorteModelBreakdown[]): {
+  text: string;
+  tsv: string;
+} {
+  if (!modelsBreakdown || modelsBreakdown.length === 0) {
+    return { text: '', tsv: '' };
+  }
+
+  const textBlocks: string[] = [];
+  const tsvLines: string[] = ['Modelo\tTamanho\tQuantidade'];
+
+  for (const mb of modelsBreakdown) {
+    const sizeEntries = Object.entries(mb.sizes || {})
+      .filter(([, qty]) => qty > 0)
+      .sort(([a], [b]) => {
+        const sorted = sortSizes([a, b]);
+        return sorted[0] === a ? -1 : 1;
+      });
+
+    if (sizeEntries.length === 0) continue;
+
+    // Plain text block with aligned sizes and quantities
+    const lines = [mb.model];
+    for (const [size, qty] of sizeEntries) {
+      lines.push(`${size.padEnd(5, ' ')}${qty}`);
+      tsvLines.push(`${mb.model}\t${size}\t${qty}`);
+    }
+    textBlocks.push(lines.join('\n'));
+  }
+
+  return {
+    text: textBlocks.join('\n\n'),
+    tsv: tsvLines.join('\n')
+  };
+}
+

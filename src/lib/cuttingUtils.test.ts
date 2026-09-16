@@ -3,9 +3,11 @@ import {
   allocateCuttingPieces,
   reallocateOnCancellation,
   extractItemDetails,
-  sortSizes
+  sortSizes,
+  groupCuttingDemandByRawMaterial,
+  formatDemandForCutPlan
 } from './cuttingUtils';
-import { CorteAllocationLog } from '../types';
+import type { CorteAllocationLog } from '../types';
 
 function runCuttingTests() {
   console.log("=== Running Unit Tests for cuttingUtils (Painel de Corte Consolidado) ===");
@@ -42,7 +44,7 @@ function runCuttingTests() {
         { id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 4 }
       ],
       items: [
-        { description: 'Camiseta Básica Dry Fit Azul G', size: 'G', quantity: 4, qty_corte: 4, qty_corte_allocated: 0 }
+        { description: 'Camiseta Básica Dry Fit Azul G', fabric: 'Dry Fit', color: 'Azul', size: 'G', quantity: 4, qty_corte: 4, qty_corte_allocated: 0 }
       ]
     },
     {
@@ -58,7 +60,7 @@ function runCuttingTests() {
         { id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 3 }
       ],
       items: [
-        { description: 'Camiseta Básica Dry Fit Azul G', size: 'G', quantity: 3, qty_corte: 3, qty_corte_allocated: 0 }
+        { description: 'Camiseta Básica Dry Fit Azul G', fabric: 'Dry Fit', color: 'Azul', size: 'G', quantity: 3, qty_corte: 3, qty_corte_allocated: 0 }
       ]
     },
     {
@@ -74,7 +76,7 @@ function runCuttingTests() {
         { id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 5 }
       ],
       items: [
-        { description: 'Camiseta Básica Dry Fit Azul G', size: 'G', quantity: 5, qty_corte: 5, qty_corte_allocated: 0 }
+        { description: 'Camiseta Básica Dry Fit Azul G', fabric: 'Dry Fit', color: 'Azul', size: 'G', quantity: 5, qty_corte: 5, qty_corte_allocated: 0 }
       ]
     }
   ];
@@ -159,7 +161,9 @@ function runCuttingTests() {
   // "Camiseta Gola Redonda Dry Comfort Marrom - G2"
   const realItemReq8 = extractItemDetails({
     description: 'Camiseta Gola Redonda Dry Comfort Marrom - G2',
-    sku: 'CM-GOL-MAR-G2'
+    sku: 'CM-GOL-MAR-G2',
+    fabric: 'Dry Comfort',
+    color: 'Marrom'
   });
   assertEqual(realItemReq8.product_type, 'Camiseta Gola Redonda', 'Test 7.1 (Req 8): Model correctly extracted as Camiseta Gola Redonda');
   assertEqual(realItemReq8.fabric, 'Dry Comfort', 'Test 7.2 (Req 8): Fabric correctly extracted as Dry Comfort');
@@ -204,13 +208,13 @@ function runCuttingTests() {
   assertEqual(itemEvento.size, 'M', 'Test 8.11: Size should be M, ignoring year 2026 in title');
 
   // Test 9: Mandatory Color Tests (Req 15)
-  const colorMarrom = extractItemDetails({ description: 'Dry Comfort Marrom - G2' });
+  const colorMarrom = extractItemDetails({ description: 'Dry Comfort Marrom - G2', color: 'Marrom' });
   assertEqual(colorMarrom.color, 'Marrom', 'Test 9.1: Color Marrom recognized');
 
-  const colorPreto = extractItemDetails({ description: 'Dry Comfort Preto - GG' });
+  const colorPreto = extractItemDetails({ description: 'Dry Comfort Preto - GG', color: 'Preto' });
   assertEqual(colorPreto.color, 'Preto', 'Test 9.2: Color Preto recognized');
 
-  const colorAzulMarinho = extractItemDetails({ description: 'Dry Comfort Azul Marinho - M' });
+  const colorAzulMarinho = extractItemDetails({ description: 'Dry Comfort Azul Marinho - M', color: 'Azul Marinho' });
   assertEqual(colorAzulMarinho.color, 'Azul Marinho', 'Test 9.3: Color Azul Marinho recognized before Azul');
 
   // Test 11: Real DB cases where item has pre-stored size: 'Único' but description has explicit size suffix
@@ -222,6 +226,169 @@ function runCuttingTests() {
 
   const itemStaleChild2 = extractItemDetails({ description: 'Camiseta Infantil Gola Redonda PV Preto - 2', size: 'Único' });
   assertEqual(itemStaleChild2.size, '2', 'Test 11.3: Pre-stored size Único overridden by - 2 in Infantil description');
+
+  // =========================================================================
+  // AGRUPAMENTO POR MATÉRIA-PRIMA
+  // Cenário 1: Mesmo tecido + mesma cor + modelos DIFERENTES -> 1 grupo
+  // Camiseta Gola Redonda (20 un) + Babylook (12 un) = 32 peças
+  // =========================================================================
+  const orderGR = {
+    id: 201, order_number: 'PED-201', status: 'Em Produção',
+    total_via_corte: 20, quantity: 20,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 20 }],
+    items: [
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'P', quantity: 8 },
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'M', quantity: 10 },
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'G1', quantity: 1 },
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'G2', quantity: 1 }
+    ]
+  };
+  const orderBL = {
+    id: 202, order_number: 'PED-202', status: 'Em Produção',
+    total_via_corte: 12, quantity: 12,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 12 }],
+    items: [
+      { product_type: 'Babylook', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'PP', quantity: 1 },
+      { product_type: 'Babylook', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'P', quantity: 3 },
+      { product_type: 'Babylook', fabric: 'Dry Comfort', color: 'Batom Rouge', size: 'G', quantity: 8 }
+    ]
+  };
+  const dem1 = aggregateCuttingDemand([orderGR as any, orderBL as any]);
+  const grp1 = groupCuttingDemandByRawMaterial(dem1);
+  assertEqual(grp1.groups.length, 1, "Cen.1.1: Mesmo tecido/cor + modelos diferentes -> 1 grupo");
+  assertEqual(grp1.groups[0].total_necessario, 32, "Cen.1.2: Total 20+12=32 peças");
+  assertEqual(grp1.groups[0].models_breakdown.length, 2, "Cen.1.3: 2 modelos no breakdown");
+  assertEqual(grp1.incompleteItems.length, 0, "Cen.1.4: Nenhum item incompleto");
+
+  // Cenário 2: Cores diferentes NÃO agrupam
+  const orderCorDif = {
+    id: 203, order_number: 'PED-203', status: 'Em Produção',
+    total_via_corte: 5, quantity: 5,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 5 }],
+    items: [{ product_type: 'Camiseta Básica', fabric: 'Dry Comfort', color: 'Azul Royal', size: 'M', quantity: 5 }]
+  };
+  const dem2 = aggregateCuttingDemand([orderGR as any, orderCorDif as any]);
+  const grp2 = groupCuttingDemandByRawMaterial(dem2);
+  assertEqual(grp2.groups.length, 2, "Cen.2.1: Cores diferentes -> 2 grupos distintos");
+
+  // Cenário 3: Tecidos diferentes NÃO agrupam
+  const orderTecDif = {
+    id: 204, order_number: 'PED-204', status: 'Em Produção',
+    total_via_corte: 7, quantity: 7,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 7 }],
+    items: [{ product_type: 'Camiseta Básica', fabric: 'Algodão', color: 'Batom Rouge', size: 'M', quantity: 7 }]
+  };
+  const dem3 = aggregateCuttingDemand([orderGR as any, orderTecDif as any]);
+  const grp3 = groupCuttingDemandByRawMaterial(dem3);
+  assertEqual(grp3.groups.length, 2, "Cen.3.1: Tecidos diferentes -> 2 grupos distintos");
+
+  // Cenário 4: Cor NÃO informada (sem campo técnico) -> incompleteItems, SEM grupo automático
+  const orderSemCor = {
+    id: 205, order_number: 'PED-205', status: 'Em Produção',
+    total_via_corte: 10, quantity: 10,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 10 }],
+    items: [{ description: 'Camiseta Básica Batom Rouge - M', size: 'M', quantity: 10 }]
+  };
+  const dem4 = aggregateCuttingDemand([orderSemCor as any]);
+  const grp4 = groupCuttingDemandByRawMaterial(dem4);
+  assertEqual(grp4.groups.length, 0, "Cen.4.1: Sem cor técnica -> nenhum grupo automático");
+  assertEqual(grp4.incompleteItems.length, 1, "Cen.4.2: Item vai para incompleteItems");
+
+  // =========================================================================
+  // Cenário 5: CENTRAL DE CORTE — Múltiplos modelos no mesmo plano de matéria-prima
+  // DRY COMFORT | BATOM ROUGE | RAMADO | 1,60m
+  // 1. Camiseta Gola Redonda: P: 8, M: 10, G1: 1, G2: 1 (Total: 20)
+  // 2. Babylook: PP: 1, P: 3, G: 8 (Total: 12)
+  // 3. Infantil: 4: 1, 6: 1, 10: 1 (Total: 3)
+  // TOTAL DO PLANO = 35 peças
+  // =========================================================================
+  const orderCentral1 = {
+    id: 301, order_number: 'PED-301', status: 'Em Produção', deadline: '2026-09-22',
+    total_via_corte: 20, quantity: 20,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 20 }],
+    items: [
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'P', quantity: 8, qty_corte: 8 },
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'M', quantity: 10, qty_corte: 10 },
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'G1', quantity: 1, qty_corte: 1 },
+      { product_type: 'Camiseta Gola Redonda', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'G2', quantity: 1, qty_corte: 1 }
+    ]
+  };
+
+  const orderCentral2 = {
+    id: 302, order_number: 'PED-302', status: 'Em Produção', deadline: '2026-09-24',
+    total_via_corte: 12, quantity: 12,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 12 }],
+    items: [
+      { product_type: 'Babylook', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'PP', quantity: 1, qty_corte: 1 },
+      { product_type: 'Babylook', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'P', quantity: 3, qty_corte: 3 },
+      { product_type: 'Babylook', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: 'G', quantity: 8, qty_corte: 8 }
+    ]
+  };
+
+  const orderCentral3 = {
+    id: 303, order_number: 'PED-303', status: 'Em Produção', deadline: '2026-09-25',
+    total_via_corte: 3, quantity: 3,
+    stages_status: [{ id: 2, name: 'Corte', finished: false, quantidade_boa: 0, quantidade_pedido: 3 }],
+    items: [
+      { product_type: 'Infantil', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: '4', quantity: 1, qty_corte: 1 },
+      { product_type: 'Infantil', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: '6', quantity: 1, qty_corte: 1 },
+      { product_type: 'Infantil', fabric: 'Dry Comfort', color: 'Batom Rouge', tipo_tecido: 'RAMADO', largura_util: '1,60 m', size: '10', quantity: 1, qty_corte: 1 }
+    ]
+  };
+
+  const demCentral = aggregateCuttingDemand([orderCentral1 as any, orderCentral2 as any, orderCentral3 as any]);
+  const grpCentral = groupCuttingDemandByRawMaterial(demCentral);
+
+  // 1. Deve gerar UM ÚNICO PLANO
+  assertEqual(grpCentral.groups.length, 1, "Cen.5.1: 3 modelos com mesmo tecido+cor geram UM ÚNICO plano");
+  assertEqual(grpCentral.groups[0].fabric, 'Dry Comfort', "Cen.5.2: Matéria-prima é Dry Comfort");
+  assertEqual(grpCentral.groups[0].color, 'Batom Rouge', "Cen.5.3: Cor é Batom Rouge");
+  assertEqual(grpCentral.groups[0].total_necessario, 35, "Cen.5.4: Total de peças do plano é 35 (20 + 12 + 3)");
+
+  // 2. Não somar modelos diferentes como um único nome: 3 modelos separados internamente
+  assertEqual(grpCentral.groups[0].models_breakdown.length, 3, "Cen.5.5: Contém 3 modelos distintos no breakdown");
+
+  const mbCamiseta = grpCentral.groups[0].models_breakdown.find(m => m.model === 'Camiseta Gola Redonda');
+  assertEqual(mbCamiseta?.total, 20, "Cen.5.6: Camiseta Gola Redonda tem 20 peças");
+  assertEqual(mbCamiseta?.sizes['P'], 8, "Cen.5.7: Camiseta P = 8");
+  assertEqual(mbCamiseta?.sizes['M'], 10, "Cen.5.8: Camiseta M = 10");
+  assertEqual(mbCamiseta?.sizes['G1'], 1, "Cen.5.9: Camiseta G1 = 1");
+  assertEqual(mbCamiseta?.sizes['G2'], 1, "Cen.5.10: Camiseta G2 = 1");
+
+  const mbBabylook = grpCentral.groups[0].models_breakdown.find(m => m.model === 'Babylook');
+  assertEqual(mbBabylook?.total, 12, "Cen.5.11: Babylook tem 12 peças");
+  assertEqual(mbBabylook?.sizes['PP'], 1, "Cen.5.12: Babylook PP = 1");
+  assertEqual(mbBabylook?.sizes['P'], 3, "Cen.5.13: Babylook P = 3");
+  assertEqual(mbBabylook?.sizes['G'], 8, "Cen.5.14: Babylook G = 8");
+
+  const mbInfantil = grpCentral.groups[0].models_breakdown.find(m => m.model === 'Infantil');
+  assertEqual(mbInfantil?.total, 3, "Cen.5.15: Infantil tem 3 peças");
+  assertEqual(mbInfantil?.sizes['4'], 1, "Cen.5.16: Infantil 4 = 1");
+  assertEqual(mbInfantil?.sizes['6'], 1, "Cen.5.17: Infantil 6 = 1");
+  assertEqual(mbInfantil?.sizes['10'], 1, "Cen.5.18: Infantil 10 = 1");
+
+  // 3. Validação da Função COPIAR PARA CUTPLAN
+  const cutPlanExport = formatDemandForCutPlan(grpCentral.groups[0].models_breakdown);
+  const expectedText = 
+`Camiseta Gola Redonda
+P    8
+M    10
+G1   1
+G2   1
+
+Babylook
+PP   1
+P    3
+G    8
+
+Infantil
+4    1
+6    1
+10   1`;
+
+  assertEqual(cutPlanExport.text, expectedText, "Cen.5.19: Texto para Optitex CutPlan no formato limpo especificado");
+  const containsTSVHeaders = cutPlanExport.tsv.startsWith('Modelo\tTamanho\tQuantidade');
+  assertEqual(containsTSVHeaders, true, "Cen.5.20: Formato TSV inclui cabeçalho correto para colagem");
 
   console.log(`\nCutting Tests Summary: ${passed} passed, ${failed} failed.`);
   if (failed > 0) {
