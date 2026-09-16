@@ -626,3 +626,5 @@ export interface TechnicalProductRegistry {
   tipo_tecido?: string;
   largura_util?: string;
 }
+
+export type StockCache = Record<string, number>;

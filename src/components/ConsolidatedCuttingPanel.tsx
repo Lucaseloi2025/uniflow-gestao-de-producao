@@ -27,6 +27,8 @@ import {
 import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
 import { IncompleteFamilyGroup } from '../lib/cuttingUtils';
 import { fetchTechnicalRegistry, saveTechnicalRegistry } from '../lib/technicalRegistryUtils';
+import { fetchLocalStockCache, syncStockForProducts } from '../lib/stockSyncUtils';
+import { StockCache } from '../types';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
 import { PrintableEnfestoSheetModal } from './PrintableEnfestoSheetModal';
@@ -60,13 +62,54 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   const [isRegistryLoaded, setIsRegistryLoaded] = useState(false);
   const [registryRefreshCount, setRegistryRefreshCount] = useState(0);
+  const [stockCache, setStockCache] = useState<StockCache>({});
+  const [isSyncingStock, setIsSyncingStock] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
     fetchTechnicalRegistry().then(() => {
       setIsRegistryLoaded(true);
     });
+    fetchLocalStockCache().then(cache => {
+      setStockCache(cache);
+    });
   }, [registryRefreshCount]);
 
+  const handleSyncStock = async () => {
+    setIsSyncingStock(true);
+    setSyncProgress({ current: 0, total: 0 });
+    
+    const pendingProducts: { id_produto: string; sku: string }[] = [];
+    orders.forEach(order => {
+      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      (items || []).forEach((it: any) => {
+        if (it.id_produto || it.idProduto) {
+          pendingProducts.push({ id_produto: it.id_produto || it.idProduto, sku: it.codigo || '' });
+        }
+      });
+    });
+
+    // @ts-ignore
+    const token = currentUser?.tiny_token || localStorage.getItem('tiny_token') || 'b9a674e2d31b3e9447eec03d527a20c35fa9eecf';
+    if (!token) {
+      alert('Token do Tiny n�o configurado.');
+      setIsSyncingStock(false);
+      return;
+    }
+
+    const success = await syncStockForProducts(token, pendingProducts, (curr, tot) => {
+      setSyncProgress({ current: curr, total: tot });
+    });
+
+    if (success) {
+      const updatedCache = await fetchLocalStockCache();
+      setStockCache(updatedCache);
+    } else {
+      alert('Houve um erro ao sincronizar o estoque de alguns itens.');
+    }
+    
+    setIsSyncingStock(false);
+  };
   const handleConfirmFamily = async (fam: IncompleteFamilyGroup) => {
     if (!fam.suggested_fabric || !fam.suggested_color) {
       alert('A fam�lia n�o possui tecido e cor sugeridos completos para confirma��o autom�tica.');
@@ -220,8 +263,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   // Aggregate corte demand dynamically from active orders
   const allDemandItems = useMemo(() => {
     if (!isRegistryLoaded) return [];
-    return aggregateCuttingDemand(orders);
-  }, [orders, isRegistryLoaded, registryRefreshCount]);
+    return aggregateCuttingDemand(orders, stockCache);
+  }, [orders, isRegistryLoaded, registryRefreshCount, stockCache]);
 
   // Filtered & sorted demand items
   const filteredDemandItems = useMemo(() => {

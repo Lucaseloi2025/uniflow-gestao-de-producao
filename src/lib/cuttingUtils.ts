@@ -1,4 +1,4 @@
-import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry } from '../types';
+import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache } from '../types';
 import { getCachedRegistryItem } from './technicalRegistryUtils';
 
 /**
@@ -409,7 +409,7 @@ export function getOrderCuttingNeeded(order: any): number {
  * grouped by model + color + size (maintaining Olist ERP writing format),
  * sorted by closest deadline first.
  */
-export function aggregateCuttingDemand(orders: any[]): CorteDemandItem[] {
+export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {}): CorteDemandItem[] {
   if (!Array.isArray(orders)) return [];
   const demandMap = new Map<string, CorteDemandItem>();
 
@@ -431,8 +431,8 @@ export function aggregateCuttingDemand(orders: any[]): CorteDemandItem[] {
           const qPedida = Number(item.quantity ?? item.quantidade ?? 1);
           let cQty = item.qty_corte ?? item.total_via_corte;
           if (cQty === undefined || cQty === null) {
-            if (item.stock_available !== undefined && item.stock_available !== null) {
-              cQty = Math.max(0, qPedida - Math.min(qPedida, Number(item.stock_available)));
+            if ((stockCache[item.id_produto] !== undefined ? stockCache[item.id_produto] : item.stock_available) !== undefined && (stockCache[item.id_produto] !== undefined ? stockCache[item.id_produto] : item.stock_available) !== null) {
+              cQty = Math.max(0, qPedida - Math.min(qPedida, Number((stockCache[item.id_produto] !== undefined ? stockCache[item.id_produto] : item.stock_available))));
             } else if (item.qty_separacao !== undefined && item.qty_separacao !== null) {
               cQty = Math.max(0, qPedida - Math.min(qPedida, Number(item.qty_separacao)));
             } else {
