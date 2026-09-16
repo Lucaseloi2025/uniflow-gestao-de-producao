@@ -27,6 +27,7 @@ import {
 import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
+import { PrintableEnfestoSheetModal } from './PrintableEnfestoSheetModal';
 import {
   ApprovedEnfestoPlan,
   getApprovedEnfestoPlans,
