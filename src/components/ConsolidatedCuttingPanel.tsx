@@ -24,7 +24,8 @@ import {
   Trash2,
   Edit2
 } from 'lucide-react';
-import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown, IncompleteFamilyGroup } from '../types';
+import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
+import { IncompleteFamilyGroup } from '../lib/cuttingUtils';
 import { fetchTechnicalRegistry, saveTechnicalRegistry } from '../lib/technicalRegistryUtils';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
