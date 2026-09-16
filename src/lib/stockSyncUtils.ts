@@ -1,14 +1,16 @@
-import { supabase } from './supabase';
+let hasErrors = false;
+    import { supabase } from './supabase';
 import type { StockCache } from '../types';
 
 let localStockCache: StockCache = {};
 let cacheLoaded = false;
 
-export async function fetchLocalStockCache(): Promise<StockCache> {
+export async function fetchLocalStockCache(): Promise<{cache: StockCache, error: string | null}> {
   if (cacheLoaded) return localStockCache;
   try {
     const { data, error } = await supabase.from('tiny_stock_cache').select('id_produto, stock_available');
     if (error) {
+    return { cache: {}, error: error.message };
       console.error('Error fetching stock cache:', error);
       return {};
     }
@@ -32,7 +34,7 @@ export async function syncStockForProducts(
   const chunkSize = 10;
   const uniqueProducts = Array.from(new Map(products.map(p => [p.id_produto, p])).values()).filter(p => p.id_produto);
   
-  if (uniqueProducts.length === 0) return true;
+  if (uniqueProducts.length === 0) return { success: true, error: hasErrors ? 'Alguns produtos retornaram erro no Tiny (token inv�lido ou limite de API).' : null };
 
   try {
     for (let i = 0; i < uniqueProducts.length; i += chunkSize) {
@@ -40,7 +42,7 @@ export async function syncStockForProducts(
       
       const promises = chunk.map(async (prod) => {
         try {
-          const url = `https://api.tiny.com.br/api2/produto.obter.estoque.php?token=${token}&id=${prod.id_produto}&formato=json`;
+          const url = `https://api.tiny.com.br/api2/produto.obter.estoque.php?token=${token}&${prod.sku ? 'sku=' + encodeURIComponent(prod.sku) : 'id=' + prod.id_produto}&formato=json`;
           const res = await fetch(url, { method: "POST" });
           const text = await res.text();
           
@@ -72,7 +74,8 @@ export async function syncStockForProducts(
       const results = await Promise.all(promises);
       const validResults = results.filter(r => r !== null) as any[];
 
-      if (validResults.length > 0) {
+      if (validResults.length < batchProducts.length) hasErrors = true;
+        if (validResults.length > 0) {
         const { error } = await supabase
           .from('tiny_stock_cache')
           .upsert(
@@ -101,6 +104,6 @@ export async function syncStockForProducts(
     return true;
   } catch (err) {
     console.error('Exception syncing stock:', err);
-    return false;
+    return { success: false, error: 'Lista de produtos vazia' };
   }
 }

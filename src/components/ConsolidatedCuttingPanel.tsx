@@ -70,8 +70,9 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     fetchTechnicalRegistry().then(() => {
       setIsRegistryLoaded(true);
     });
-    fetchLocalStockCache().then(cache => {
-      setStockCache(cache);
+    fetchLocalStockCache().then(result => {
+      if (result.error) console.error('Erro ao buscar cache:', result.error);
+      setStockCache(result.cache);
     });
   }, [registryRefreshCount]);
 
@@ -98,13 +99,17 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       return;
     }
 
-    const success = await syncStockForProducts(token, pendingProducts, (curr, tot) => {
+    const syncResult = await syncStockForProducts(token, pendingProducts, (curr, tot) => {
       setSyncProgress({ current: curr, total: tot });
     });
 
-    if (success) {
-      const updatedCache = await fetchLocalStockCache();
-      setStockCache(updatedCache);
+    if (syncResult.success) {
+      if (syncResult.error) alert('Aviso: ' + syncResult.error);
+      const result = await fetchLocalStockCache();
+      if (result.error) {
+        alert('Aten��o: A tabela tiny_stock_cache n�o foi encontrada no banco de dados. Voc� rodou o arquivo SQL?');
+      }
+      setStockCache(result.cache);
     } else {
       alert('Houve um erro ao sincronizar o estoque de alguns itens.');
     }
