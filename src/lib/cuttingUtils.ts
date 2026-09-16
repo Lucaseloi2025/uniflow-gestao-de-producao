@@ -417,7 +417,7 @@ export function getOrderCuttingNeeded(order: any, stockCache: StockCache = {}): 
     }
     // 4. Observation regex fallback
     if (order.observations) {
-      const match = order.observations.match(/??\s*(\d+)\s*p�s?\s*sem\s*estoque/i);
+      const match = order.observations.match(/(\d+)\s*p.*sem\s*estoque/i);
       if (match) {
         return parseInt(match[1], 10) || 0;
       }
