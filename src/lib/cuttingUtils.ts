@@ -1,4 +1,7 @@
-import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache } from '../types';
+import ty
+      if (itemsList.length > 0 && Object.keys(stockCache).length > 0) return sumCorte;
+
+pe { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache } from '../types';
 import { getCachedRegistryItem } from './technicalRegistryUtils';
 
 /**
@@ -354,11 +357,35 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
 /**
  * Calculates total corte pieces needed for an entire order across all fields
  */
-export function getOrderCuttingNeeded(order: any): number {
+export function getOrderCuttingNeeded(order: any, stockCache: StockCache = {}): number {
   if (!order || order.deleted_at || order.status === 'Cancelado' || order.status === 'Entregue') {
     return 0;
   }
   try {
+    // Priority: Dynamic calculation via stockCache
+    if (Object.keys(stockCache).length > 0) {
+      const itemsList = parseOrderItems(order.items);
+      if (itemsList.length > 0) {
+        let sumCorte = itemsList.reduce((acc, it) => {
+          if (!it || typeof it !== 'object') return acc;
+          const qPedida = Number(it.quantity ?? it.quantidade ?? 1);
+          let cQty = it.qty_corte ?? it.total_via_corte;
+          if (cQty === undefined || cQty === null) {
+            const currentStock = stockCache[it.id_produto] !== undefined ? stockCache[it.id_produto] : it.stock_available;
+            if (currentStock !== undefined && currentStock !== null) {
+              cQty = Math.max(0, qPedida - Math.min(qPedida, Number(currentStock)));
+            } else if (it.qty_separacao !== undefined && it.qty_separacao !== null) {
+              cQty = Math.max(0, qPedida - Math.min(qPedida, Number(it.qty_separacao)));
+            } else {
+              cQty = 0;
+            }
+          }
+          return acc + Number(cQty);
+        }, 0);
+        return sumCorte;
+      }
+    }
+
     // 1. Direct order total_via_corte
     if (order.total_via_corte !== undefined && order.total_via_corte !== null && Number(order.total_via_corte) > 0) {
       return Number(order.total_via_corte);
@@ -374,7 +401,7 @@ export function getOrderCuttingNeeded(order: any): number {
     // 3. Sum of items if items array exists
     const itemsList = parseOrderItems(order.items);
     if (itemsList.length > 0) {
-      const sumCorte = itemsList.reduce((acc: number, it: any) => {
+      const sumCorte = itemsList.reduce((acc, it) => {
         if (!it || typeof it !== 'object') return acc;
         const qPedida = Number(it.quantity ?? it.quantidade ?? 1);
         let cQty = it.qty_corte ?? it.total_via_corte;
@@ -391,9 +418,9 @@ export function getOrderCuttingNeeded(order: any): number {
       }, 0);
       if (sumCorte > 0) return sumCorte;
     }
-    // 4. Observation regex fallback: "⚠️ X pçs sem estoque"
+    // 4. Observation regex fallback
     if (order.observations) {
-      const match = order.observations.match(/⚠️\s*(\d+)\s*pçs?\s*sem\s*estoque/i);
+      const match = order.observations.match(/??\s*(\d+)\s*p�s?\s*sem\s*estoque/i);
       if (match) {
         return parseInt(match[1], 10) || 0;
       }
@@ -404,7 +431,7 @@ export function getOrderCuttingNeeded(order: any): number {
   return 0;
 }
 
-/**
+  /**
  * Aggregates all missing cutting pieces across all active open orders,
  * grouped by model + color + size (maintaining Olist ERP writing format),
  * sorted by closest deadline first.
@@ -417,7 +444,7 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
     const activeOrders = orders.filter(o => o && typeof o === 'object' && !o.deleted_at && o.status !== 'Cancelado' && o.status !== 'Entregue');
 
     for (const order of activeOrders) {
-      const orderNeededTotal = getOrderCuttingNeeded(order);
+      const orderNeededTotal = getOrderCuttingNeeded(order, stockCache);
       if (orderNeededTotal <= 0) continue;
 
       const itemsList = parseOrderItems(order.items);
