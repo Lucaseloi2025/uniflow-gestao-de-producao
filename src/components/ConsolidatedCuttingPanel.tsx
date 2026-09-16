@@ -85,8 +85,10 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       const rawItems = order.items as any;
       const items = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
       (items || []).forEach((it: any) => {
-        if (it.id_produto || it.idProduto) {
-          pendingProducts.push({ id_produto: it.id_produto || it.idProduto, sku: it.codigo || '' });
+        const prodId = it.id_produto || it.idProduto || it.id || '';
+        const sku = it.codigo || it.sku || '';
+        if (prodId || sku) {
+          pendingProducts.push({ id_produto: prodId, sku: sku });
         }
       });
     });

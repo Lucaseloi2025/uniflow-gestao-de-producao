@@ -368,7 +368,8 @@ export function getOrderCuttingNeeded(order: any, stockCache: StockCache = {}): 
           const qPedida = Number(it.quantity ?? it.quantidade ?? 1);
           let cQty = it.qty_corte ?? it.total_via_corte;
           if (cQty === undefined || cQty === null) {
-            const currentStock = stockCache[it.id_produto] !== undefined ? stockCache[it.id_produto] : it.stock_available;
+            const key = it.id_produto || it.codigo || it.sku;
+            const currentStock = (key && stockCache[key] !== undefined) ? stockCache[key] : it.stock_available;
             if (currentStock !== undefined && currentStock !== null) {
               cQty = Math.max(0, qPedida - Math.min(qPedida, Number(currentStock)));
             } else if (it.qty_separacao !== undefined && it.qty_separacao !== null) {
@@ -455,8 +456,10 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
           const qPedida = Number(item.quantity ?? item.quantidade ?? 1);
           let cQty = item.qty_corte ?? item.total_via_corte;
           if (cQty === undefined || cQty === null) {
-            if ((stockCache[item.id_produto] !== undefined ? stockCache[item.id_produto] : item.stock_available) !== undefined && (stockCache[item.id_produto] !== undefined ? stockCache[item.id_produto] : item.stock_available) !== null) {
-              cQty = Math.max(0, qPedida - Math.min(qPedida, Number((stockCache[item.id_produto] !== undefined ? stockCache[item.id_produto] : item.stock_available))));
+            const itemKey = item.id_produto || item.codigo || item.sku;
+            const itemStock = (itemKey && stockCache[itemKey] !== undefined) ? stockCache[itemKey] : item.stock_available;
+            if (itemStock !== undefined && itemStock !== null) {
+              cQty = Math.max(0, qPedida - Math.min(qPedida, Number(itemStock)));
             } else if (item.qty_separacao !== undefined && item.qty_separacao !== null) {
               cQty = Math.max(0, qPedida - Math.min(qPedida, Number(item.qty_separacao)));
             } else {

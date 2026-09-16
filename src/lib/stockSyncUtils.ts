@@ -32,7 +32,7 @@ export async function syncStockForProducts(
   onProgress: (current: number, total: number) => void
 ): Promise<boolean> {
   const chunkSize = 10;
-  const uniqueProducts = Array.from(new Map(products.map(p => [p.id_produto, p])).values()).filter(p => p.id_produto);
+  const uniqueProducts = Array.from(new Map(products.map(p => [p.sku || p.id_produto, p])).values()).filter(p => p.sku || p.id_produto);
   
   if (uniqueProducts.length === 0) return { success: true, error: hasErrors ? 'Alguns produtos retornaram erro no Tiny (token inv�lido ou limite de API).' : null };
 
@@ -80,7 +80,7 @@ export async function syncStockForProducts(
           .from('tiny_stock_cache')
           .upsert(
             validResults.map(r => ({
-              id_produto: r.id_produto,
+              id_produto: r.id_produto || r.sku,
               sku: r.sku,
               stock_available: r.stock_available,
               updated_at: new Date().toISOString()
@@ -90,7 +90,8 @@ export async function syncStockForProducts(
         
         if (!error) {
           validResults.forEach(r => {
-            localStockCache[r.id_produto] = r.stock_available;
+            localStockCache[r.id_produto || r.sku] = r.stock_available;
+          if (r.sku) localStockCache[r.sku] = r.stock_available;
           });
         } else {
           console.error('Error saving stock cache batch:', error);
