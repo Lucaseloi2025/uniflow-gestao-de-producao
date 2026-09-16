@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { StockCache } from '../types';
+import type { StockCache } from '../types';
 
 let localStockCache: StockCache = {};
 let cacheLoaded = false;

@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  History,
   Scissors,
   Calendar,
   PackageCheck,
@@ -29,7 +28,7 @@ import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, Cor
 import { IncompleteFamilyGroup } from '../lib/cuttingUtils';
 import { fetchTechnicalRegistry, saveTechnicalRegistry } from '../lib/technicalRegistryUtils';
 import { fetchLocalStockCache, syncStockForProducts } from '../lib/stockSyncUtils';
-import { StockCache } from '../types';
+import type { StockCache } from '../types';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
 import { PrintableEnfestoSheetModal } from './PrintableEnfestoSheetModal';
@@ -82,7 +81,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     
     const pendingProducts: { id_produto: string; sku: string }[] = [];
     orders.forEach(order => {
-      const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      const rawItems = order.items as any;
+      const items = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
       (items || []).forEach((it: any) => {
         if (it.id_produto || it.idProduto) {
           pendingProducts.push({ id_produto: it.id_produto || it.idProduto, sku: it.codigo || '' });
