@@ -258,7 +258,7 @@ function runCuttingTests() {
   assertEqual(grp1.groups.length, 1, "Cen.1.1: Mesmo tecido/cor + modelos diferentes -> 1 grupo");
   assertEqual(grp1.groups[0].total_necessario, 32, "Cen.1.2: Total 20+12=32 peças");
   assertEqual(grp1.groups[0].models_breakdown.length, 2, "Cen.1.3: 2 modelos no breakdown");
-  assertEqual(grp1.incompleteItems.length, 0, "Cen.1.4: Nenhum item incompleto");
+  assertEqual(grp1.incompleteFamilies.length, 0, "Cen.1.4: Nenhum item incompleto");
 
   // Cenário 2: Cores diferentes NÃO agrupam
   const orderCorDif = {
@@ -282,7 +282,7 @@ function runCuttingTests() {
   const grp3 = groupCuttingDemandByRawMaterial(dem3);
   assertEqual(grp3.groups.length, 2, "Cen.3.1: Tecidos diferentes -> 2 grupos distintos");
 
-  // Cenário 4: Cor NÃO informada (sem campo técnico) -> incompleteItems, SEM grupo automático
+  // Cenário 4: Cor NÃO informada (sem campo técnico) -> incompleteFamilies, SEM grupo automático
   const orderSemCor = {
     id: 205, order_number: 'PED-205', status: 'Em Produção',
     total_via_corte: 10, quantity: 10,
@@ -292,7 +292,7 @@ function runCuttingTests() {
   const dem4 = aggregateCuttingDemand([orderSemCor as any]);
   const grp4 = groupCuttingDemandByRawMaterial(dem4);
   assertEqual(grp4.groups.length, 0, "Cen.4.1: Sem cor técnica -> nenhum grupo automático");
-  assertEqual(grp4.incompleteItems.length, 1, "Cen.4.2: Item vai para incompleteItems");
+  assertEqual(grp4.incompleteFamilies.length, 1, "Cen.4.2: Item vai para incompleteFamilies");
 
   // =========================================================================
   // Cenário 5: CENTRAL DE CORTE — Múltiplos modelos no mesmo plano de matéria-prima

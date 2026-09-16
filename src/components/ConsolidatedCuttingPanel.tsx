@@ -24,7 +24,8 @@ import {
   Trash2,
   Edit2
 } from 'lucide-react';
-import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
+import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown, IncompleteFamilyGroup } from '../types';
+import { fetchTechnicalRegistry, saveTechnicalRegistry } from '../lib/technicalRegistryUtils';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
 import { PrintableEnfestoSheetModal } from './PrintableEnfestoSheetModal';
@@ -55,6 +56,33 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [modelFilter, setModelFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'urgency' | 'quantity' | 'orders_count'>('urgency');
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  const [isRegistryLoaded, setIsRegistryLoaded] = useState(false);
+  const [registryRefreshCount, setRegistryRefreshCount] = useState(0);
+
+  useEffect(() => {
+    fetchTechnicalRegistry().then(() => {
+      setIsRegistryLoaded(true);
+    });
+  }, [registryRefreshCount]);
+
+  const handleConfirmFamily = async (fam: IncompleteFamilyGroup) => {
+    if (!fam.suggested_fabric || !fam.suggested_color) {
+      alert('A fam�lia n�o possui tecido e cor sugeridos completos para confirma��o autom�tica.');
+      return;
+    }
+    const success = await saveTechnicalRegistry({
+      sku_base: fam.sku_base,
+      product_type: fam.product_type,
+      fabric: fam.suggested_fabric,
+      color: fam.suggested_color
+    });
+    if (success) {
+      setRegistryRefreshCount(c => c + 1);
+    } else {
+      alert('Erro ao salvar o mapeamento.');
+    }
+  };
 
   // State for Central de Corte - Visualização do Plano (Optitex CutPlan)
   const [selectedGroupForPlanModal, setSelectedGroupForPlanModal] = useState<CorteGroupDemand | null>(null);
@@ -190,8 +218,9 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   // Aggregate corte demand dynamically from active orders
   const allDemandItems = useMemo(() => {
+    if (!isRegistryLoaded) return [];
     return aggregateCuttingDemand(orders);
-  }, [orders]);
+  }, [orders, isRegistryLoaded, registryRefreshCount]);
 
   // Filtered & sorted demand items
   const filteredDemandItems = useMemo(() => {
@@ -382,7 +411,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [viewMode, setViewMode] = useState<'management' | 'operator'>('operator');
 
   // Group demand items strictly by TECIDO + COR + TIPO + LARGURA (Raw Material First)
-  const { groups: rawMaterialGroups, incompleteItems } = useMemo(() => {
+  const { groups: rawMaterialGroups, incompleteFamilies } = useMemo(() => {
     const result = groupCuttingDemandByRawMaterial(filteredDemandItems);
 
     // Apply user selected sorting
@@ -517,62 +546,74 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
           </div>
 
           {/* ALERTA DE DADOS INCOMPLETOS / NÃO CONFIÁVEIS */}
-          {incompleteItems.length > 0 && (
+          {incompleteFamilies && incompleteFamilies.length > 0 && (
             <div className="bg-amber-50/90 border-2 border-amber-300 rounded-2xl p-5 space-y-3 animate-in fade-in duration-150">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-2.5">
                   <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
                   <div>
                     <h4 className="font-black text-amber-950 text-xs sm:text-sm uppercase tracking-wide">
-                      Dados insuficientes para agrupamento automático: confirme tecido e cor.
+                      Dados insuficientes: Fam�lias de Produtos Pendentes
                     </h4>
                     <p className="text-[11px] sm:text-xs text-amber-800 mt-0.5 font-medium">
-                      Estes itens possuem especificações técnicas ausentes no pedido/ERP. Para segurança operacional, não são agrupados automaticamente na mesa de corte.
+                      Confirme os materiais sugeridos para agrupar automaticamente os tamanhos na mesa de corte.
                     </p>
                   </div>
                 </div>
                 <span className="px-3 py-1 bg-amber-200 text-amber-950 font-mono font-black text-xs rounded-xl self-start sm:self-center shrink-0">
-                  {incompleteItems.reduce((acc, it) => acc + it.total_necessario, 0)} peças pendentes
+                  {incompleteFamilies.length} fam�lias pendentes
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-                {incompleteItems.map(item => (
-                  <div key={item.item_key} className="bg-white p-3.5 rounded-xl border border-amber-200 text-xs space-y-2 shadow-2xs">
-                    <div className="flex justify-between items-start gap-2">
-                      <strong className="text-slate-900 font-bold">{item.product_type}</strong>
-                      <span className="text-rose-600 font-mono font-black shrink-0">{item.total_necessario} un</span>
+                {incompleteFamilies.map((fam, idx) => (
+                  <div key={idx} className="bg-white p-4 rounded-xl border border-amber-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex justify-between items-start gap-2">
+                        <strong className="text-slate-900 font-bold uppercase text-xs">{fam.product_type}</strong>
+                        <span className="text-rose-600 font-mono font-black text-xs shrink-0">{fam.total_pieces} un</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono mt-1 mb-3">SKU Base: {fam.sku_base}</p>
+                      
+                      <div className="space-y-2 mb-4 text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700 w-12">Tecido:</span>
+                          {fam.suggested_fabric ? (
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded font-bold border border-blue-200">
+                              {fam.suggested_fabric} <span className="text-[9px] text-blue-500 font-normal ml-1">sugerido</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-rose-50 text-rose-700 rounded font-bold border border-rose-200 uppercase text-[10px]">Falta Tecido</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700 w-12">Cor:</span>
+                          {fam.suggested_color ? (
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded font-bold border border-blue-200">
+                              {fam.suggested_color} <span className="text-[9px] text-blue-500 font-normal ml-1">sugerida</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-rose-50 text-rose-700 rounded font-bold border border-rose-200 uppercase text-[10px]">Falta Cor</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-600 space-y-0.5">
-                      <p><strong>Descrição:</strong> {item.description || '-'}</p>
-                      {item.sku && <p className="font-mono"><strong>SKU:</strong> {item.sku}</p>}
-                    </div>
-                    <div className="flex flex-wrap gap-1 text-[10px] font-mono">
-                      {item.missing_fields && item.missing_fields.map(field => (
-                        <span key={field} className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded font-bold border border-rose-200">
-                          ⚠️ Falta {field}
-                        </span>
-                      ))}
-                      <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded font-bold">
-                        Tam: {item.size}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-100">
-                      {item.pedidos_count} pedido(s) • Prazo: {formatDate(item.prazo_mais_proximo)}
-                    </p>
+                    
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmFamily(fam)}
+                      disabled={!fam.suggested_fabric || !fam.suggested_color}
+                      className="w-full py-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-[11px] uppercase tracking-wider rounded-lg transition-all"
+                    >
+                      {(!fam.suggested_fabric || !fam.suggested_color) ? 'Dados Insuficientes' : 'Confirmar Lote'}
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Cards de Grupos de Matéria-Prima em Grade */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <Scissors className="text-blue-600" size={20} /> GRUPOS POTENCIAIS DE CORTE (AGRUPADOS POR MATÉRIA-PRIMA)
-            </h3>
-
-            {rawMaterialGroups.length === 0 ? (
+          {rawMaterialGroups.length === 0 ? (
               <div className="p-12 text-center bg-white border border-slate-200 rounded-3xl space-y-3 shadow-2xs">
                 <CheckCircle2 size={36} className="mx-auto text-slate-300" />
                 <h4 className="font-black text-slate-700 text-base">Nenhum grupo de corte pendente</h4>

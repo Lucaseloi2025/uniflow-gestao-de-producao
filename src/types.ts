@@ -106,6 +106,14 @@ export interface OrderItem {
   total_via_corte?: number;
   stock_available?: number | null;
   qty_corte_allocated?: number;
+  fabric?: string;
+  tecido?: string;
+  color?: string;
+  cor?: string;
+  tipo_tecido?: 'TUBULAR' | 'RAMADO';
+  largura_util?: string;
+  lote?: string;
+  orientacao?: string;
 }
 
 export interface OrderCorteDemand {
@@ -127,11 +135,43 @@ export interface CorteDemandItem {
   size: string;
   description: string;
   sku?: string;
+  sku_base?: string;
+  suggested_fabric?: string;
+  suggested_color?: string;
   is_complete?: boolean;
+  tipo_tecido?: 'TUBULAR' | 'RAMADO';
+  largura_util?: string;
+  lote?: string;
+  orientacao?: string;
+  missing_fields?: string[];
   total_necessario: number;
   pedidos_count: number;
   prazo_mais_proximo: string;
   pedidos_waiting: OrderCorteDemand[];
+}
+
+export interface CorteModelBreakdown {
+  model: string;
+  total: number;
+  sizes: { [size: string]: number };
+  items: CorteDemandItem[];
+}
+
+export interface CorteGroupDemand {
+  group_key: string;
+  fabric: string;
+  color: string;
+  tipo_tecido: 'TUBULAR' | 'RAMADO';
+  largura_util: string;
+  lote?: string;
+  orientacao?: string;
+  is_valid_group: boolean;
+  total_necessario: number;
+  pedidos_count: number;
+  prazo_mais_proximo: string;
+  models_breakdown: CorteModelBreakdown[];
+  all_items: CorteDemandItem[];
+  pedidos_waiting: { order_id: number; order_number?: string; client_name?: string; quantity: number }[];
 }
 
 
@@ -422,3 +462,168 @@ export interface ProductivityPeriod {
   month: number;
 }
 
+// ============================================================================
+// PCP — Planejamento e Controle da Produção
+// ============================================================================
+
+export type ProducaoNecessidadeStatus =
+  | 'COBERTO_PELO_ESTOQUE'
+  | 'AGUARDANDO_PRODUCAO_EXISTENTE'
+  | 'NECESSITA_NOVO_CORTE'
+  | 'INCLUIDO_EM_PLANO'
+  | 'PLANO_APROVADO'
+  | 'OP_GERADA'
+  | 'EM_CORTE'
+  | 'EM_COSTURA'
+  | 'PRODUCAO_RECEBIDA'
+  | 'CONCLUIDO';
+
+export interface ProducaoNecessidade {
+  id?: number;
+  order_id: number;
+  order_number: string;
+  sku?: string;
+  product_type: string;
+  fabric?: string;
+  color?: string;
+  size: string;
+  deadline?: string;
+  // Quantidades calculadas
+  qty_pedida: number;
+  qty_reservada: number;
+  qty_estoque_fisico: number;
+  qty_estoque_disp: number;
+  qty_em_op: number;
+  qty_op_comprometida: number;
+  qty_op_livre: number;
+  qty_necessaria: number;  // = max(0, pedida - estoque_disp - op_livre)
+  // Status e rastreabilidade
+  status: ProducaoNecessidadeStatus;
+  plano_corte_id?: number;
+  op_id?: number;
+  estoque_consultado_em?: string;
+  op_consultado_em?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type PlanoDeCorteStatus =
+  | 'RASCUNHO'
+  | 'AGUARDANDO_APROVACAO'
+  | 'APROVADO'
+  | 'EM_CORTE'
+  | 'CONCLUIDO'
+  | 'CANCELADO';
+
+export interface PlanoDeCorte {
+  id?: number;
+  plano_numero: string;  // ex: PC-2026-00145
+  status: PlanoDeCorteStatus;
+  fabric?: string;
+  color?: string;
+  tipo_tecido?: 'TUBULAR' | 'RAMADO';
+  largura_util?: string;
+  qty_planejada: number;
+  qty_aprovada?: number;
+  qty_executada?: number;
+  enfesto_data?: any;
+  pedidos_ids?: number[];
+  necessidades_ids?: number[];
+  necessidade_snapshot?: any;
+  aprovado_por?: string;
+  aprovado_em?: string;
+  revalidado_em?: string;
+  idempotency_key?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type OrdemDeProducaoStatus =
+  | 'ABERTA'
+  | 'EM_ANDAMENTO'
+  | 'CONCLUIDA'
+  | 'CANCELADA'
+  | 'PENDENTE_CADASTRO_TINY';
+
+export interface OrdemDeProducao {
+  id?: number;
+  plano_corte_id?: number;
+  tiny_op_id?: string;
+  tiny_op_numero?: string;
+  sku?: string;
+  product_type: string;
+  fabric?: string;
+  color?: string;
+  size?: string;
+  qty_total: number;
+  qty_concluida: number;
+  qty_pendente: number;
+  qty_comprometida: number;
+  status: OrdemDeProducaoStatus;
+  tipo: 'VINCULADA_PEDIDO' | 'REPOSICAO' | 'VINCULADA_PLANO';
+  observacao?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PcpAuditLog {
+  id?: number;
+  acao: string;
+  order_id?: number;
+  necessidade_id?: number;
+  plano_id?: number;
+  op_id?: number;
+  produto?: string;
+  sku?: string;
+  qty_calculada?: number;
+  qty_aprovada?: number;
+  estoque_snapshot?: number;
+  op_snapshot?: number;
+  usuario?: string;
+  detalhes?: any;
+  created_at?: string;
+}
+
+/** Resultado do cálculo de necessidade para um item específico */
+export interface NecessidadeCalculada {
+  order_id: number;
+  order_number: string;
+  deadline?: string;
+  client_name?: string;
+  sku?: string;
+  product_type: string;
+  fabric?: string;
+  color?: string;
+  size: string;
+  qty_pedida: number;
+  qty_estoque_disp: number;
+  qty_op_livre: number;
+  qty_necessaria: number;
+  status: ProducaoNecessidadeStatus;
+  estoque_fonte: 'TINY' | 'LOCAL' | 'NAO_CONSULTADO';
+}
+
+/** Sumário do módulo PCP para o painel de indicadores */
+export interface PcpSummary {
+  total_necessidades: number;
+  total_pecas_necessarias: number;
+  coberto_estoque: number;
+  aguardando_producao: number;
+  necessita_corte: number;
+  em_plano: number;
+  op_gerada: number;
+}
+
+ e x p o r t   i n t e r f a c e   T e c h n i c a l P r o d u c t R e g i s t r y   { 
+     i d ? :   n u m b e r ; 
+     s k u _ b a s e :   s t r i n g ; 
+     p r o d u c t _ t y p e ? :   s t r i n g ; 
+     f a b r i c :   s t r i n g ; 
+     c o l o r :   s t r i n g ; 
+     t i p o _ t e c i d o ? :   s t r i n g ; 
+     l a r g u r a _ u t i l ? :   s t r i n g ; 
+ } 
+  
+ 
