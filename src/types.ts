@@ -616,14 +616,13 @@ export interface PcpSummary {
   op_gerada: number;
 }
 
- e x p o r t   i n t e r f a c e   T e c h n i c a l P r o d u c t R e g i s t r y   { 
-     i d ? :   n u m b e r ; 
-     s k u _ b a s e :   s t r i n g ; 
-     p r o d u c t _ t y p e ? :   s t r i n g ; 
-     f a b r i c :   s t r i n g ; 
-     c o l o r :   s t r i n g ; 
-     t i p o _ t e c i d o ? :   s t r i n g ; 
-     l a r g u r a _ u t i l ? :   s t r i n g ; 
- } 
-  
- 
+
+export interface TechnicalProductRegistry {
+  id?: number;
+  sku_base: string;
+  product_type?: string;
+  fabric: string;
+  color: string;
+  tipo_tecido?: string;
+  largura_util?: string;
+}
