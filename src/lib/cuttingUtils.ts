@@ -1,7 +1,4 @@
-import ty
-      if (itemsList.length > 0 && Object.keys(stockCache).length > 0) return sumCorte;
-
-pe { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache } from '../types';
+import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache } from '../types';
 import { getCachedRegistryItem } from './technicalRegistryUtils';
 
 /**
