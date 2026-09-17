@@ -115,7 +115,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (syncResult.success) {
       if (syncResult.error) {
         alert('Aviso: ' + syncResult.error);
-        if (syncResult.error.toLowerCase().includes('api') || syncResult.error.toLowerCase().includes('token')) {
+        if (syncResult.error.includes('Token do Tiny')) {
           localStorage.removeItem('tiny_token');
         }
       }

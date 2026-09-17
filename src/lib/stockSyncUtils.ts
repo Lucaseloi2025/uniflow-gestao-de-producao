@@ -47,7 +47,7 @@ export async function syncStockForProducts(
     return { success: false, error: 'Nenhum produto v�lido encontrado nos pedidos abertos para consultar estoque.' };
   }
 
-  let hasErrors = false;
+  let totalSuccess = 0;
 
   try {
     for (let i = 0; i < uniqueProducts.length; i += chunkSize) {
@@ -98,9 +98,7 @@ export async function syncStockForProducts(
       const results = await Promise.all(promises);
       const validResults = results.filter(r => r !== null) as { id_produto: string; sku: string; stock_available: number }[];
 
-      if (validResults.length < chunk.length) {
-        hasErrors = true;
-      }
+      totalSuccess += validResults.length;
 
       if (validResults.length > 0) {
         const { error } = await supabase
@@ -124,7 +122,7 @@ export async function syncStockForProducts(
           });
         } else {
           console.error('Error saving stock cache batch:', error);
-          hasErrors = true;
+          
         }
       }
 
@@ -134,7 +132,7 @@ export async function syncStockForProducts(
 
     return {
       success: true,
-      error: hasErrors ? 'Alguns produtos n�o puderam ser consultados no Tiny ou retornaram erro de API.' : null
+      error: (totalSuccess === 0 && uniqueProducts.length > 0) ? 'Token do Tiny inv�lido, bloqueado ou limite de requisi��es excedido. Verifique o token.' : null
     };
   } catch (err: any) {
     console.error('Exception syncing stock:', err);
