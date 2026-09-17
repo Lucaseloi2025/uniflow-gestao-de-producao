@@ -26,25 +26,33 @@ export async function fetchLocalStockCache(): Promise<{ cache: StockCache; error
   }
 }
 
+// Reset cache so next call to fetchLocalStockCache re-reads from DB
+export function invalidateStockCache() {
+  cacheLoaded = false;
+  localStockCache = {};
+}
+
 export async function syncStockForProducts(
-  token: string, 
+  token: string,
   products: { id_produto: string; sku: string }[],
   onProgress: (current: number, total: number) => void
 ): Promise<{ success: boolean; error: string | null }> {
   const chunkSize = 10;
-  
+
+  // Only include products that have a Tiny internal ID
   const uniqueMap = new Map<string, { id_produto: string; sku: string }>();
   (products || []).forEach(p => {
-    const key = p.id_produto;
-    if (key && !uniqueMap.has(key)) {
-      uniqueMap.set(key, p);
+    if (p.id_produto && p.id_produto.trim() !== '') {
+      if (!uniqueMap.has(p.id_produto)) {
+        uniqueMap.set(p.id_produto, p);
+      }
     }
   });
 
   const uniqueProducts = Array.from(uniqueMap.values());
-  
+
   if (uniqueProducts.length === 0) {
-    return { success: false, error: 'Nenhum produto v�lido encontrado nos pedidos abertos para consultar estoque.' };
+    return { success: false, error: 'Nenhum produto com ID do Tiny encontrado nos pedidos. Os pedidos precisam ser importados do Tiny para que o estoque possa ser consultado.' };
   }
 
   let totalSuccess = 0;
@@ -52,45 +60,42 @@ export async function syncStockForProducts(
   try {
     for (let i = 0; i < uniqueProducts.length; i += chunkSize) {
       const chunk = uniqueProducts.slice(i, i + chunkSize);
-      
+
       const promises = chunk.map(async (prod) => {
         try {
-          const param = `id=${prod.id_produto}`;
-          const url = `https://api.tiny.com.br/api2/produto.obter.estoque.php?token=${token}&${param}&formato=json`;
-          
-          const res = await fetch(url, { method: "POST" });
+          const params = new URLSearchParams({
+            token: token,
+            id: prod.id_produto,
+            formato: 'json'
+          });
+
+          const res = await fetch('https://api.tiny.com.br/api2/produto.obter.estoque.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+          });
+
           const text = await res.text();
-          
-          let saldo: number | null = null;
-          let isOk = false;
+          let json: any;
+          try { json = JSON.parse(text); } catch (_) { return null; }
 
-          try {
-            const json = JSON.parse(text);
-            if (json.retorno && json.retorno.status === 'OK' && json.retorno.produto && json.retorno.produto.saldo !== undefined) {
-              saldo = parseFloat(json.retorno.produto.saldo);
-              isOk = true;
-            } else if (json.retorno && json.retorno.status === 'Erro') {
-              console.warn('Tiny API Error for', prod.sku || prod.id_produto, json.retorno.erros);
-            }
-          } catch(e) {
-             const m = text.match(/<saldo>(.*?)<\/saldo>/);
-             if (m) {
-               saldo = parseFloat(m[1]);
-               isOk = true;
-             }
-          }
-
-          if (!isOk || saldo === null || isNaN(saldo)) {
+          const retorno = json?.retorno || {};
+          if (retorno.status !== 'OK') {
+            console.warn('[StockSync] Tiny error for id', prod.id_produto, retorno.erros);
             return null;
           }
 
+          const prod_data = retorno.produto || {};
+          const saldo = prod_data.saldoDisponivel ?? prod_data.saldo_disponivel ?? prod_data.saldo ?? prod_data.saldo_fisico;
+          if (saldo === undefined || saldo === null) return null;
+
           return {
-            id_produto: prod.id_produto || prod.sku,
+            id_produto: prod.id_produto,
             sku: prod.sku,
-            stock_available: saldo
+            stock_available: Math.max(0, parseFloat(saldo) || 0)
           };
         } catch (err) {
-          console.error(`Failed to fetch stock for ${prod.sku || prod.id_produto}`, err);
+          console.error('[StockSync] Error for', prod.id_produto, err);
           return null;
         }
       });
@@ -98,9 +103,9 @@ export async function syncStockForProducts(
       const results = await Promise.all(promises);
       const validResults = results.filter(r => r !== null) as { id_produto: string; sku: string; stock_available: number }[];
 
-      totalSuccess += validResults.length;
-
       if (validResults.length > 0) {
+        totalSuccess += validResults.length;
+
         const { error } = await supabase
           .from('tiny_stock_cache')
           .upsert(
@@ -112,17 +117,14 @@ export async function syncStockForProducts(
             })),
             { onConflict: 'id_produto' }
           );
-        
+
         if (!error) {
           validResults.forEach(r => {
             localStockCache[r.id_produto] = r.stock_available;
-            if (r.sku) {
-              localStockCache[r.sku] = r.stock_available;
-            }
+            if (r.sku) localStockCache[r.sku] = r.stock_available;
           });
         } else {
-          console.error('Error saving stock cache batch:', error);
-          
+          console.error('[StockSync] Error saving to Supabase:', error);
         }
       }
 
@@ -130,12 +132,13 @@ export async function syncStockForProducts(
       await new Promise(r => setTimeout(r, 300));
     }
 
-    return {
-      success: true,
-      error: (totalSuccess === 0 && uniqueProducts.length > 0) ? 'Token do Tiny inv�lido, bloqueado ou limite de requisi��es excedido. Verifique o token.' : null
-    };
+    if (totalSuccess === 0 && uniqueProducts.length > 0) {
+      return { success: false, error: 'Token do Tiny inv�lido, bloqueado ou limite de requisi��es excedido. Verifique o token.' };
+    }
+
+    return { success: true, error: null };
   } catch (err: any) {
-    console.error('Exception syncing stock:', err);
+    console.error('[StockSync] Exception:', err);
     return { success: false, error: err?.message || 'Erro inesperado durante a sincroniza��o.' };
   }
 }

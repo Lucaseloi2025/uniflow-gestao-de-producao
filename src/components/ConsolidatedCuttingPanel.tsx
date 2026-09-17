@@ -27,7 +27,7 @@ import {
 import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
 import { IncompleteFamilyGroup } from '../lib/cuttingUtils';
 import { fetchTechnicalRegistry, saveTechnicalRegistry } from '../lib/technicalRegistryUtils';
-import { fetchLocalStockCache, syncStockForProducts } from '../lib/stockSyncUtils';
+import { fetchLocalStockCache, syncStockForProducts, invalidateStockCache } from '../lib/stockSyncUtils';
 import type { StockCache } from '../types';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
@@ -122,13 +122,19 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         alert('Aviso: ' + syncResult.error);
         // Token preserved on partial errors
       }
+      invalidateStockCache();
       const result = await fetchLocalStockCache();
       if (result.error) {
         alert('Aten��o: A tabela tiny_stock_cache n�o foi encontrada no banco de dados. Voc� rodou o arquivo SQL?');
       }
       setStockCache(result.cache);
     } else {
-      alert(syncResult.error || 'Houve um erro ao sincronizar o estoque dos itens.');
+      const errMsg = syncResult.error || 'Houve um erro ao sincronizar o estoque dos itens.';
+      if (errMsg.includes('Nenhum produto com ID')) {
+        alert('?? Os pedidos abertos n�o possuem o ID interno do Tiny. \n\nSolu��o: Clique em "Sincronizar Pedidos" (bot�o principal) para reimportar os pedidos do Tiny/Olist. Depois tente sincronizar o estoque novamente.');
+      } else {
+        alert(errMsg);
+      }
     }
     
     setIsSyncingStock(false);
