@@ -94,13 +94,18 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     });
 
         // @ts-ignore
-    let token = currentUser?.tiny_token || localStorage.getItem('tiny_token');
+    let token = currentUser?.tiny_token || localStorage.getItem('tiny_token') || '';
     
-    // If we only have the expired dev token or no token, ask for it
-    if (!token || token === 'b9a674e2d31b3e9447eec03d527a20c35fa9eecf') {
-      const newToken = window.prompt('O token do Tiny ERP n�o est� configurado ou est� inv�lido.\n\nPor favor, insira o seu Token da API do Tiny (voc� pode ger�-lo no painel do Tiny em Configura��es > Extens�es > API):');
+    // Remove known-invalid dev token
+    if (token === 'b9a674e2d31b3e9447eec03d527a20c35fa9eecf') {
+      localStorage.removeItem('tiny_token');
+      token = '';
+    }
+    
+    if (!token) {
+      const newToken = window.prompt('Token da API do Tiny n�o encontrado.\n\nCole aqui o seu Token (dispon�vel em: Tiny ERP > Configura��es > Integra��es > API):');
       if (!newToken || newToken.trim() === '') {
-        alert('Sincroniza��o cancelada. O Token do Tiny � necess�rio para buscar o estoque.');
+        alert('Sincroniza��o cancelada.');
         setIsSyncingStock(false);
         return;
       }
@@ -115,9 +120,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (syncResult.success) {
       if (syncResult.error) {
         alert('Aviso: ' + syncResult.error);
-        if (syncResult.error.includes('Token do Tiny')) {
-          localStorage.removeItem('tiny_token');
-        }
+        // Token preserved on partial errors
       }
       const result = await fetchLocalStockCache();
       if (result.error) {
