@@ -113,7 +113,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       }
       setStockCache(result.cache);
     } else {
-      alert('Houve um erro ao sincronizar o estoque de alguns itens.');
+      alert(syncResult.error || 'Houve um erro ao sincronizar o estoque dos itens.');
     }
     
     setIsSyncingStock(false);
