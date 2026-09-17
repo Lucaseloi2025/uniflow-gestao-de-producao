@@ -108,53 +108,58 @@ function getItemDisplaySize(item: any): string {
   return 'Tamanho não informado';
 }
 
-function extractItemDetails(item: any, defaultProductType: string = 'Vestuário'): { product_type: string; fabric: string; color: string; size: string; description: string; sku: string; item_key: string; is_complete: boolean } {
+function extractItemDetails(item: any, defaultProductType: string = 'Vestuário'): {
+  product_type: string;
+  fabric: string;
+  color: string;
+  size: string;
+  description: string;
+  sku: string;
+  item_key: string;
+  is_complete: boolean;
+  tipo_tecido: 'TUBULAR' | 'RAMADO';
+  largura_util: string;
+  lote?: string;
+  orientacao?: string;
+  missing_fields: string[];
+} {
   if (!item || typeof item !== 'object') {
-    return { product_type: 'Modelo não informado', fabric: 'Tecido não informado', color: 'Cor não informada', size: 'Tamanho não informado', description: 'Item sem descrição', sku: '', item_key: 'Modelo não informado | Tecido não informado | Cor não informada | Tamanho não informado', is_complete: false };
+    return {
+      product_type: 'Modelo não informado',
+      fabric: 'Tecido não informado',
+      color: 'Cor não informada',
+      size: 'Tamanho não informado',
+      description: 'Item sem descrição',
+      sku: '',
+      item_key: 'Modelo não informado | Tecido não informado | Cor não informada | Tamanho não informado',
+      is_complete: false,
+      tipo_tecido: 'RAMADO',
+      largura_util: '1,60 m',
+      missing_fields: ['Tecido', 'Cor']
+    };
   }
   const rawDesc = (item.description || item.descricao || '').toString().trim();
   const rawSku = (item.sku || item.codigo || '').toString().trim();
 
-  let fabric = item.fabric || item.tecido;
-  if (!fabric) {
-    if (/dry\s*comfort/i.test(rawDesc) || /dry-comfort/i.test(rawDesc)) fabric = 'Dry Comfort';
-    else if (/dry\s*fit/i.test(rawDesc) || /dry-fit/i.test(rawDesc)) fabric = 'Dry Fit';
-    else if (/poliamida/i.test(rawDesc)) fabric = 'Poliamida';
-    else if (/algod[aã]o/i.test(rawDesc)) fabric = 'Algodão';
-    else if (/piquet|pique/i.test(rawDesc)) fabric = 'Piquet';
-    else if (/pv\b/i.test(rawDesc)) fabric = 'PV';
-    else fabric = 'Tecido não informado';
+  // 1. Extração ESTRITA do TECIDO técnico (sem adivinhar pelo texto se ausente)
+  const rawFabric = (item.fabric || item.tecido || item.variacao?.tecido || item.grade?.tecido || item.atributos?.tecido || '').toString().trim();
+  let fabric = 'Tecido não informado';
+  if (rawFabric && !/^(tecido\s+)?n[aã]o\s+informad[ao]$/i.test(rawFabric)) {
+    if (/dry\s*comfort/i.test(rawFabric)) fabric = 'Dry Comfort';
+    else if (/dry\s*fit/i.test(rawFabric)) fabric = 'Dry Fit';
+    else if (/poliamida/i.test(rawFabric)) fabric = 'Poliamida';
+    else if (/algod[aã]o/i.test(rawFabric)) fabric = 'Algodão';
+    else if (/piquet|pique/i.test(rawFabric)) fabric = 'Piquet';
+    else if (/pv\b/i.test(rawFabric)) fabric = 'PV';
+    else fabric = rawFabric;
   }
 
-  let color = (item.color || item.cor || item.variacao?.cor || item.grade?.cor || '').toString().trim();
-  if (color && color.toLowerCase() !== 'cor não informada') {
-    const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(color));
-    if (matchCat) color = matchCat.name;
-  } else {
-    const targetText = `${rawDesc} ${rawSku}`;
-    const recorteColorMatch = targetText.match(
-      /(preto|branco|marrom|azul\s*marinho|azul|vermelho|verde|cinza|rosa|amarelo|roxo|laranja|vinho)\s*(?:com|\+|\/|c\/|e)\s*(?:recorte\s*)?(preto|branco|marrom|azul\s*marinho|azul|vermelho|verde|cinza|rosa|amarelo|roxo|laranja|vinho)/i
-    );
-    const explicitRecorteMatch = targetText.match(
-      /recorte\s*[:\-–]?\s*(preto|branco|marrom|azul\s*marinho|azul|vermelho|verde|cinza|rosa|amarelo|roxo|laranja|vinho)/i
-    );
-
-    if (recorteColorMatch) {
-      const mainC = recorteColorMatch[1].trim().toUpperCase();
-      const recC = recorteColorMatch[2].trim().toUpperCase();
-      color = `${mainC} (Corpo) / ${recC} (Recorte)`;
-    } else if (explicitRecorteMatch) {
-      const recC = explicitRecorteMatch[1].trim().toUpperCase();
-      color = `Corpo / ${recC} (Recorte)`;
-    } else {
-      for (const { name, pattern } of COLOR_PATTERNS) {
-        if (pattern.test(targetText)) {
-          color = name;
-          break;
-        }
-      }
-    }
-    if (!color) color = 'Cor não informada';
+  // 2. Extração ESTRITA da COR técnica (sem adivinhar pelo texto se ausente)
+  const rawColor = (item.color || item.cor || item.variacao?.cor || item.grade?.cor || item.atributos?.cor || '').toString().trim();
+  let color = 'Cor não informada';
+  if (rawColor && !/^(cor\s+)?n[aã]o\s+informad[ao]$/i.test(rawColor)) {
+    const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(rawColor));
+    color = matchCat ? matchCat.name : rawColor;
   }
 
   let size = getItemDisplaySize(item);
@@ -188,10 +193,31 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestuário'
     } else { productType = 'Modelo não informado'; }
   }
 
+  // 5. Características físicas de corte (Tipo físico e Largura útil)
+  let tipo_tecido: 'TUBULAR' | 'RAMADO' = 'RAMADO';
+  const rawTipo = (item.tipo_tecido || item.tipoTecido || item.tipo_corte || '').toString().trim().toUpperCase();
+  if (rawTipo.includes('TUBULAR') || rawTipo.includes('TUBOLAR')) {
+    tipo_tecido = 'TUBULAR';
+  } else if (rawTipo.includes('RAMADO')) {
+    tipo_tecido = 'RAMADO';
+  }
+
+  let largura_util = (item.largura_util || item.largura || '1,60 m').toString().trim();
+  if (!largura_util.includes('m') && !largura_util.includes('cm')) {
+    largura_util = `${largura_util} m`;
+  }
+
+  const lote = (item.lote || item.tonalidade || '').toString().trim() || undefined;
+  const orientacao = (item.orientacao || item.sentido || '').toString().trim() || undefined;
+
+  const missing_fields: string[] = [];
+  if (fabric === 'Tecido não informado') missing_fields.push('Tecido');
+  if (color === 'Cor não informada') missing_fields.push('Cor');
+
   const description = rawDesc || `${productType} ${fabric} ${color}`;
   const item_key = `${productType} | ${fabric} | ${color} | ${size}`;
   const is_complete = productType !== 'Modelo não informado' && fabric !== 'Tecido não informado' && color !== 'Cor não informada' && size !== 'Tamanho não informado';
-  return { product_type: productType, fabric, color, size, description, sku: rawSku, item_key, is_complete };
+  return { product_type: productType, fabric, color, size, description, sku: rawSku, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields };
 }
 
 
@@ -261,10 +287,10 @@ function aggregateCuttingDemand(orders: any[]): any[] {
           const qtyAllocated = Number(item.qty_corte_allocated || 0);
           const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated);
           if (qtyPending <= 0) continue;
-          const { product_type, color, size, description, item_key } = extractItemDetails(item, order.product_type);
+          const { product_type, fabric, color, size, description, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields } = extractItemDetails(item, order.product_type);
           if (item_key.toLowerCase().includes('dry fit única | único') || item_key.toLowerCase().includes('item | único')) continue;
           const orderDemand = { order_id: order.id, order_number: order.order_number || `PED-${order.id}`, client_name: order.client_name || 'Cliente', deadline: order.deadline || new Date().toISOString(), item_quantity: Number(item.quantity ?? item.quantidade ?? 1), qty_corte_needed: qtyCorteNeeded, qty_corte_allocated: qtyAllocated, qty_corte_pending: qtyPending };
-          if (!demandMap.has(item_key)) { demandMap.set(item_key, { item_key, product_type, color, size, description, sku: item.sku || item.codigo, total_necessario: 0, pedidos_count: 0, prazo_mais_proximo: order.deadline || new Date().toISOString(), pedidos_waiting: [] }); }
+          if (!demandMap.has(item_key)) { demandMap.set(item_key, { item_key, product_type, fabric, color, size, description, sku: item.sku || item.codigo, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields, total_necessario: 0, pedidos_count: 0, prazo_mais_proximo: order.deadline || new Date().toISOString(), pedidos_waiting: [] }); }
           const existing = demandMap.get(item_key)!;
           existing.total_necessario += qtyPending;
           existing.pedidos_waiting.push(orderDemand);
@@ -5110,8 +5136,796 @@ app.get("/api/public/orders/:token", async (req, res) => {
     }
 });
 
+
+// ── PCP — Planejamento e Controle da Produção ─────────────────────────────────
+// FASE 1: Necessidades de Produção + Planos de Corte + Ordens de Produção
+
+/**
+ * Calculates production necessity for a single order item.
+ * Formula: qty_necessaria = max(0, qty_pedida - qty_estoque_disp - qty_op_livre)
+ */
+function _calcNecessidade(
+    qtyPedida: number,
+    qtyEstoqueDisp: number,
+    qtyOpLivre: number
+): { qty_necessaria: number; status: string } {
+    const qty = Math.max(0, qtyPedida - qtyEstoqueDisp - qtyOpLivre);
+    let status: string;
+    if (qty <= 0) {
+        if (qtyEstoqueDisp >= qtyPedida) {
+            status = 'COBERTO_PELO_ESTOQUE';
+        } else {
+            status = 'AGUARDANDO_PRODUCAO_EXISTENTE';
+        }
+    } else {
+        status = 'NECESSITA_NOVO_CORTE';
+    }
+    return { qty_necessaria: qty, status };
+}
+
+/**
+ * GET /api/pcp/necessidades
+ * Returns all current production necessities, calculated from active orders.
+ * Uses stored data from producao_necessidades table + live order data.
+ */
+app.get('/api/pcp/necessidades', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+
+        // Load active orders with items
+        const { data: orders, error: ordersErr } = await supabase
+            .from('orders')
+            .select('id, order_number, client_name, deadline, status, quantity, total_via_corte, items, olist_order_id')
+            .is('deleted_at', null)
+            .not('status', 'in', '("Cancelado","Entregue")')
+            .gt('total_via_corte', 0);
+
+        if (ordersErr) throw ordersErr;
+
+        // Load existing necessidades from DB (for status tracking)
+        const { data: savedNecessidades } = await supabase
+            .from('producao_necessidades')
+            .select('*')
+            .not('status', 'in', '("CONCLUIDO","COBERTO_PELO_ESTOQUE")');
+
+        const savedMap = new Map<string, any>();
+        (savedNecessidades || []).forEach((n: any) => {
+            savedMap.set(`${n.order_id}_${n.sku || n.product_type}_${n.size}`, n);
+        });
+
+        // Load OPs abertas from DB (local tracking)
+        const { data: opsAbertas } = await supabase
+            .from('ordens_de_producao')
+            .select('*')
+            .in('status', ['ABERTA', 'EM_ANDAMENTO']);
+
+        // Build OP map: product_type+color+size -> { qty_total, qty_comprometida }
+        const opMap = new Map<string, { qty_total: number; qty_comprometida: number }>();
+        (opsAbertas || []).forEach((op: any) => {
+            const key = `${op.product_type}|${op.color || ''}|${op.size || ''}`;
+            const existing = opMap.get(key) || { qty_total: 0, qty_comprometida: 0 };
+            existing.qty_total += op.qty_pendente || 0;
+            existing.qty_comprometida += op.qty_comprometida || 0;
+            opMap.set(key, existing);
+        });
+
+        const necessidades: any[] = [];
+        const activeOrders = (orders || []).filter((o: any) =>
+            o && !o.deleted_at && o.status !== 'Cancelado' && o.status !== 'Entregue'
+        );
+
+        for (const order of activeOrders) {
+            const itemsList = parseOrderItems(order.items);
+            if (itemsList.length === 0) continue;
+
+            for (const item of itemsList) {
+                if (!item || typeof item !== 'object') continue;
+
+                const details = extractItemDetails(item, order.product_type || 'Vestuário');
+                const qtyPedida = Number(item.quantity ?? item.quantidade ?? 1);
+                const qtyCorteNeeded = (() => {
+                    let cQty = item.qty_corte ?? item.total_via_corte;
+                    if (cQty === undefined || cQty === null) {
+                        if (item.stock_available !== undefined && item.stock_available !== null)
+                            cQty = Math.max(0, qtyPedida - Math.min(qtyPedida, Number(item.stock_available)));
+                        else cQty = 0;
+                    }
+                    return Number(cQty);
+                })();
+
+                if (qtyCorteNeeded <= 0) continue;
+
+                const qtyAllocated = Number(item.qty_corte_allocated || 0);
+                const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated);
+                if (qtyPending <= 0) continue;
+
+                const opKey = `${details.product_type}|${details.color}|${details.size}`;
+                const opData = opMap.get(opKey) || { qty_total: 0, qty_comprometida: 0 };
+                const qtyOpLivre = Math.max(0, opData.qty_total - opData.qty_comprometida);
+
+                // Estoque disponível: usamos stock_available do item se presente, senão 0
+                const qtyEstoqueDisp = Math.max(0, Number(item.stock_available ?? 0));
+
+                const { qty_necessaria, status } = _calcNecessidade(qtyPending, qtyEstoqueDisp, qtyOpLivre);
+
+                // Check if already in an approved plan
+                const savedKey = `${order.id}_${details.sku || details.product_type}_${details.size}`;
+                const savedRecord = savedMap.get(savedKey);
+                const finalStatus = savedRecord?.status && ['INCLUIDO_EM_PLANO', 'PLANO_APROVADO', 'OP_GERADA', 'EM_CORTE', 'EM_COSTURA'].includes(savedRecord.status)
+                    ? savedRecord.status
+                    : status;
+
+                necessidades.push({
+                    id: savedRecord?.id,
+                    order_id: order.id,
+                    order_number: order.order_number,
+                    client_name: order.client_name,
+                    deadline: order.deadline,
+                    sku: details.sku || item.sku || item.codigo || null,
+                    product_type: details.product_type,
+                    fabric: details.fabric !== 'Tecido não informado' ? details.fabric : null,
+                    color: details.color !== 'Cor não informada' ? details.color : null,
+                    size: details.size,
+                    qty_pedida: qtyPending,
+                    qty_reservada: qtyAllocated,
+                    qty_estoque_fisico: qtyEstoqueDisp,
+                    qty_estoque_disp: qtyEstoqueDisp,
+                    qty_em_op: opData.qty_total,
+                    qty_op_comprometida: opData.qty_comprometida,
+                    qty_op_livre: qtyOpLivre,
+                    qty_necessaria,
+                    status: finalStatus,
+                    plano_corte_id: savedRecord?.plano_corte_id ?? null,
+                    op_id: savedRecord?.op_id ?? null,
+                    estoque_consultado_em: savedRecord?.estoque_consultado_em ?? null,
+                    estoque_fonte: 'LOCAL',
+                });
+            }
+        }
+
+        // Sort: NECESSITA_NOVO_CORTE first, then by deadline
+        necessidades.sort((a, b) => {
+            const statusPriority: Record<string, number> = {
+                'NECESSITA_NOVO_CORTE': 0,
+                'AGUARDANDO_PRODUCAO_EXISTENTE': 1,
+                'COBERTO_PELO_ESTOQUE': 2,
+                'INCLUIDO_EM_PLANO': 3,
+                'PLANO_APROVADO': 4,
+                'OP_GERADA': 5,
+            };
+            const pa = statusPriority[a.status] ?? 9;
+            const pb = statusPriority[b.status] ?? 9;
+            if (pa !== pb) return pa - pb;
+            return (a.deadline || '').localeCompare(b.deadline || '');
+        });
+
+        const summary = {
+            total_necessidades: necessidades.length,
+            total_pecas_necessarias: necessidades.reduce((s: number, n: any) => s + n.qty_necessaria, 0),
+            coberto_estoque: necessidades.filter((n: any) => n.status === 'COBERTO_PELO_ESTOQUE').length,
+            aguardando_producao: necessidades.filter((n: any) => n.status === 'AGUARDANDO_PRODUCAO_EXISTENTE').length,
+            necessita_corte: necessidades.filter((n: any) => n.status === 'NECESSITA_NOVO_CORTE').length,
+            em_plano: necessidades.filter((n: any) => ['INCLUIDO_EM_PLANO', 'PLANO_APROVADO'].includes(n.status)).length,
+            op_gerada: necessidades.filter((n: any) => n.status === 'OP_GERADA').length,
+        };
+
+        return res.json({ necessidades, summary });
+    } catch (err: any) {
+        console.error('[PCP] Erro ao buscar necessidades:', err);
+        return res.status(500).json({ error: 'Erro ao calcular necessidades de produção', details: err.message });
+    }
+});
+
+/**
+ * POST /api/pcp/necessidades/recalcular
+ * Re-queries Tiny stock for all SKUs and recalculates all necessidades.
+ * Saves results to producao_necessidades table.
+ */
+app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+
+        const token = await _getEffectiveOlistToken();
+        const tokenAvailable = !!token;
+
+        const { data: orders, error: ordersErr } = await supabase
+            .from('orders')
+            .select('id, order_number, client_name, deadline, status, quantity, total_via_corte, items, olist_order_id')
+            .is('deleted_at', null)
+            .not('status', 'in', '("Cancelado","Entregue")')
+            .gt('total_via_corte', 0);
+
+        if (ordersErr) throw ordersErr;
+
+        const { data: opsAbertas } = await supabase
+            .from('ordens_de_producao')
+            .select('*')
+            .in('status', ['ABERTA', 'EM_ANDAMENTO']);
+
+        const opMap = new Map<string, { qty_total: number; qty_comprometida: number }>();
+        (opsAbertas || []).forEach((op: any) => {
+            const key = `${op.product_type}|${op.color || ''}|${op.size || ''}`;
+            const existing = opMap.get(key) || { qty_total: 0, qty_comprometida: 0 };
+            existing.qty_total += op.qty_pendente || 0;
+            existing.qty_comprometida += op.qty_comprometida || 0;
+            opMap.set(key, existing);
+        });
+
+        // Cache de consultas Tiny por SKU para evitar rate-limit
+        const tinyStockCache = new Map<string, number>();
+        const consultadoEm = new Date().toISOString();
+
+        const necessidadesToUpsert: any[] = [];
+        const activeOrders = (orders || []).filter((o: any) =>
+            o && !o.deleted_at && o.status !== 'Cancelado' && o.status !== 'Entregue'
+        );
+
+        for (const order of activeOrders) {
+            const itemsList = parseOrderItems(order.items);
+            if (itemsList.length === 0) continue;
+
+            for (const item of itemsList) {
+                if (!item || typeof item !== 'object') continue;
+
+                const details = extractItemDetails(item, order.product_type || 'Vestuário');
+                const qtyPedida = Number(item.quantity ?? item.quantidade ?? 1);
+                let qtyCorteNeeded = Number(item.qty_corte ?? item.total_via_corte ?? 0);
+                if (qtyCorteNeeded <= 0 && item.stock_available !== undefined) {
+                    qtyCorteNeeded = Math.max(0, qtyPedida - Math.min(qtyPedida, Number(item.stock_available)));
+                }
+                if (qtyCorteNeeded <= 0) continue;
+
+                const qtyAllocated = Number(item.qty_corte_allocated || 0);
+                const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated);
+                if (qtyPending <= 0) continue;
+
+                // Query Tiny stock (with cache and rate-limit delay)
+                const sku = details.sku || item.sku || item.codigo || null;
+                const idProduto = item.id_produto || null;
+                let qtyEstoque = Math.max(0, Number(item.stock_available ?? 0));
+                let estoqueFonte = 'LOCAL';
+
+                if (tokenAvailable && (sku || idProduto)) {
+                    const cacheKey = sku || String(idProduto);
+                    if (tinyStockCache.has(cacheKey)) {
+                        qtyEstoque = tinyStockCache.get(cacheKey)!;
+                        estoqueFonte = 'TINY_CACHE';
+                    } else {
+                        await new Promise(r => setTimeout(r, 600)); // Rate-limit
+                        const tinyStock = await _fetchOlistStockForItem(token, idProduto, sku);
+                        if (tinyStock !== null) {
+                            qtyEstoque = tinyStock;
+                            estoqueFonte = 'TINY';
+                            tinyStockCache.set(cacheKey, tinyStock);
+                        }
+                    }
+                }
+
+                const opKey = `${details.product_type}|${details.color}|${details.size}`;
+                const opData = opMap.get(opKey) || { qty_total: 0, qty_comprometida: 0 };
+                const qtyOpLivre = Math.max(0, opData.qty_total - opData.qty_comprometida);
+
+                const { qty_necessaria, status } = _calcNecessidade(qtyPending, qtyEstoque, qtyOpLivre);
+
+                necessidadesToUpsert.push({
+                    order_id: order.id,
+                    order_number: order.order_number,
+                    sku,
+                    product_type: details.product_type,
+                    fabric: details.fabric !== 'Tecido não informado' ? details.fabric : null,
+                    color: details.color !== 'Cor não informada' ? details.color : null,
+                    size: details.size,
+                    qty_pedida: qtyPending,
+                    qty_reservada: qtyAllocated,
+                    qty_estoque_fisico: qtyEstoque,
+                    qty_estoque_disp: qtyEstoque,
+                    qty_em_op: opData.qty_total,
+                    qty_op_comprometida: opData.qty_comprometida,
+                    qty_op_livre: qtyOpLivre,
+                    qty_necessaria,
+                    status,
+                    estoque_consultado_em: estoqueFonte !== 'LOCAL' ? consultadoEm : null,
+                    updated_at: consultadoEm,
+                });
+            }
+        }
+
+        // Upsert all necessidades (conflict on order_id + product_type + size)
+        if (necessidadesToUpsert.length > 0) {
+            // Clear and re-insert for this recalculation
+            const orderIds = [...new Set(necessidadesToUpsert.map((n: any) => n.order_id))];
+            await supabase
+                .from('producao_necessidades')
+                .delete()
+                .in('order_id', orderIds)
+                .in('status', ['NECESSITA_NOVO_CORTE', 'AGUARDANDO_PRODUCAO_EXISTENTE', 'COBERTO_PELO_ESTOQUE']);
+
+            const { error: upsertErr } = await supabase
+                .from('producao_necessidades')
+                .insert(necessidadesToUpsert);
+
+            if (upsertErr) {
+                console.warn('[PCP] Erro ao salvar necessidades no banco:', upsertErr.message);
+            }
+        }
+
+        // Audit log
+        try {
+            await supabase.from('pcp_audit_log').insert({
+                acao: 'NECESSIDADES_RECALCULADAS',
+                qty_calculada: necessidadesToUpsert.length,
+                detalhes: {
+                    total_pedidos: activeOrders.length,
+                    estoque_via_tiny: tinyStockCache.size,
+                    token_disponivel: tokenAvailable,
+                },
+                created_at: consultadoEm,
+            });
+        } catch (_) {}
+
+        return res.json({
+            success: true,
+            total_recalculadas: necessidadesToUpsert.length,
+            estoque_consultado_tiny: tinyStockCache.size,
+            token_disponivel: tokenAvailable,
+            consultado_em: consultadoEm,
+        });
+    } catch (err: any) {
+        console.error('[PCP] Erro ao recalcular necessidades:', err);
+        return res.status(500).json({ error: 'Erro ao recalcular necessidades', details: err.message });
+    }
+});
+
+/**
+ * GET /api/pcp/planos
+ * Lists all cutting plans ordered by creation date.
+ */
+app.get('/api/pcp/planos', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { data, error } = await supabase
+            .from('planos_de_corte')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(200);
+        if (error) throw error;
+        return res.json(data || []);
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/pcp/planos
+ * Creates a new cutting plan draft from selected necessidades.
+ * Body: { necessidades_ids, fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids, created_by }
+ */
+app.post('/api/pcp/planos', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { necessidades_ids = [], fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids = [], created_by } = req.body;
+
+        // Generate unique plan number
+        const { data: seqData } = await supabase.rpc('generate_plano_numero');
+        const plano_numero = seqData || `PC-${new Date().getFullYear()}-${Date.now()}`;
+        const idempotency_key = `${plano_numero}_${Date.now()}`;
+
+        const { data, error } = await supabase
+            .from('planos_de_corte')
+            .insert({
+                plano_numero,
+                status: 'RASCUNHO',
+                fabric,
+                color,
+                tipo_tecido,
+                largura_util,
+                qty_planejada: qty_planejada || 0,
+                enfesto_data,
+                pedidos_ids,
+                necessidades_ids,
+                created_by,
+                idempotency_key,
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Mark necessidades as INCLUIDO_EM_PLANO
+        if (necessidades_ids.length > 0 && data?.id) {
+            await supabase
+                .from('producao_necessidades')
+                .update({ status: 'INCLUIDO_EM_PLANO', plano_corte_id: data.id, updated_at: new Date().toISOString() })
+                .in('id', necessidades_ids);
+        }
+
+        await supabase.from('pcp_audit_log').insert({
+            acao: 'PLANO_CRIADO',
+            plano_id: data.id,
+            qty_calculada: qty_planejada,
+            usuario: created_by,
+            detalhes: { plano_numero, fabric, color },
+        });
+
+        return res.status(201).json(data);
+    } catch (err: any) {
+        console.error('[PCP] Erro ao criar plano:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/pcp/planos/:id/aprovar
+ * Revalidates necessidades and approves a cutting plan.
+ * Requires idempotency_key to prevent double-approval.
+ * Body: { aprovado_por, qty_aprovada, idempotency_key }
+ */
+app.post('/api/pcp/planos/:id/aprovar', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const planoId = parseInt(req.params.id);
+        const { aprovado_por, qty_aprovada, idempotency_key } = req.body;
+
+        if (!idempotency_key) {
+            return res.status(400).json({ error: 'idempotency_key é obrigatório para aprovação' });
+        }
+
+        // Check for existing approval with same key (anti-duplicate)
+        const { data: existing } = await supabase
+            .from('planos_de_corte')
+            .select('id, status, idempotency_key')
+            .eq('id', planoId)
+            .single();
+
+        if (!existing) return res.status(404).json({ error: 'Plano não encontrado' });
+        if (existing.status === 'APROVADO') {
+            return res.status(409).json({ error: 'Plano já foi aprovado anteriormente', plano: existing });
+        }
+        if (!['RASCUNHO', 'AGUARDANDO_APROVACAO'].includes(existing.status)) {
+            return res.status(409).json({ error: `Plano não pode ser aprovado no status atual: ${existing.status}` });
+        }
+
+        const now = new Date().toISOString();
+        const { data: updated, error } = await supabase
+            .from('planos_de_corte')
+            .update({
+                status: 'APROVADO',
+                qty_aprovada,
+                aprovado_por,
+                aprovado_em: now,
+                revalidado_em: now,
+                idempotency_key,
+                updated_at: now,
+            })
+            .eq('id', planoId)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Mark necessidades as PLANO_APROVADO
+        const { data: planoData } = await supabase
+            .from('planos_de_corte')
+            .select('necessidades_ids')
+            .eq('id', planoId)
+            .single();
+
+        if (planoData?.necessidades_ids?.length > 0) {
+            await supabase
+                .from('producao_necessidades')
+                .update({ status: 'PLANO_APROVADO', updated_at: now })
+                .in('id', planoData.necessidades_ids);
+        }
+
+        await supabase.from('pcp_audit_log').insert({
+            acao: 'PLANO_APROVADO',
+            plano_id: planoId,
+            qty_aprovada,
+            usuario: aprovado_por,
+            detalhes: { idempotency_key },
+            created_at: now,
+        });
+
+        return res.json({ success: true, plano: updated });
+    } catch (err: any) {
+        console.error('[PCP] Erro ao aprovar plano:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /api/pcp/ops
+ * Lists all production orders registered in ProComfort.
+ */
+app.get('/api/pcp/ops', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { data, error } = await supabase
+            .from('ordens_de_producao')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(500);
+        if (error) throw error;
+        return res.json(data || []);
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/pcp/ops
+ * Creates a production order in ProComfort (and optionally tries Tiny API).
+ * Body: { plano_corte_id, product_type, fabric, color, size, sku, qty_total, observacao, created_by }
+ */
+app.post('/api/pcp/ops', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { plano_corte_id, product_type, fabric, color, size, sku, qty_total, observacao, created_by } = req.body;
+
+        if (!product_type || !qty_total) {
+            return res.status(400).json({ error: 'product_type e qty_total são obrigatórios' });
+        }
+
+        // Try Tiny API to create OP (Fase 5 — may not be available)
+        let tinyResult: { tiny_op_id?: string; tiny_op_numero?: string } = {};
+        let tinyAttempted = false;
+        try {
+            const token = await _getEffectiveOlistToken();
+            if (token) {
+                tinyAttempted = true;
+                // Note: ordemproducao.incluir.php may not exist in Tiny API v2
+                // This is a best-effort attempt
+                const bodyParams = new URLSearchParams({
+                    token,
+                    formato: 'json',
+                });
+                const tinyRes = await fetch('https://api.tiny.com.br/api2/ordemproducao.incluir.php', {
+                    method: 'POST',
+                    body: bodyParams,
+                    signal: AbortSignal.timeout(5000),
+                });
+                if (tinyRes.ok) {
+                    const tinyJson = await tinyRes.json();
+                    if (tinyJson?.retorno?.status === 'OK' && tinyJson?.retorno?.registros) {
+                        const reg = tinyJson.retorno.registros[0]?.registro;
+                        if (reg?.id) {
+                            tinyResult = { tiny_op_id: String(reg.id), tiny_op_numero: String(reg.numero || reg.id) };
+                        }
+                    }
+                }
+            }
+        } catch (_) {
+            // Tiny OP creation not available — use manual fallback
+        }
+
+        const opStatus = tinyResult.tiny_op_id ? 'ABERTA' : 'PENDENTE_CADASTRO_TINY';
+
+        const { data, error } = await supabase
+            .from('ordens_de_producao')
+            .insert({
+                plano_corte_id: plano_corte_id || null,
+                tiny_op_id: tinyResult.tiny_op_id || null,
+                tiny_op_numero: tinyResult.tiny_op_numero || null,
+                sku: sku || null,
+                product_type,
+                fabric: fabric || null,
+                color: color || null,
+                size: size || null,
+                qty_total,
+                qty_concluida: 0,
+                qty_pendente: qty_total,
+                qty_comprometida: 0,
+                status: opStatus,
+                tipo: plano_corte_id ? 'VINCULADA_PLANO' : 'REPOSICAO',
+                observacao,
+                created_by,
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Update plano status if tied to a plan
+        if (plano_corte_id && tinyResult.tiny_op_id) {
+            await supabase
+                .from('planos_de_corte')
+                .update({ status: 'EM_CORTE', updated_at: new Date().toISOString() })
+                .eq('id', plano_corte_id);
+        }
+
+        await supabase.from('pcp_audit_log').insert({
+            acao: tinyResult.tiny_op_id ? 'OP_GERADA_TINY' : 'OP_REGISTRADA_MANUAL',
+            plano_id: plano_corte_id || null,
+            op_id: data?.id,
+            produto: product_type,
+            sku,
+            qty_calculada: qty_total,
+            usuario: created_by,
+            detalhes: { tiny_attempted: tinyAttempted, tiny_op_id: tinyResult.tiny_op_id || null, status: opStatus },
+        });
+
+        return res.status(201).json({
+            ...data,
+            tiny_criada: !!tinyResult.tiny_op_id,
+            tiny_attempted: tinyAttempted,
+        });
+    } catch (err: any) {
+        console.error('[PCP] Erro ao criar OP:', err);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/pcp/ops/:id/registrar-tiny
+ * Manually associates a Tiny OP number with a ProComfort OP (when auto-creation wasn't available).
+ * Body: { tiny_op_numero, tiny_op_id? }
+ */
+app.post('/api/pcp/ops/:id/registrar-tiny', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const opId = parseInt(req.params.id);
+        const { tiny_op_numero, tiny_op_id, usuario } = req.body;
+
+        if (!tiny_op_numero) {
+            return res.status(400).json({ error: 'tiny_op_numero é obrigatório' });
+        }
+
+        const { data, error } = await supabase
+            .from('ordens_de_producao')
+            .update({
+                tiny_op_numero,
+                tiny_op_id: tiny_op_id || tiny_op_numero,
+                status: 'ABERTA',
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', opId)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        await supabase.from('pcp_audit_log').insert({
+            acao: 'OP_NUMERO_TINY_REGISTRADO',
+            op_id: opId,
+            usuario,
+            detalhes: { tiny_op_numero, tiny_op_id },
+        });
+
+        return res.json({ success: true, op: data });
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET /api/pcp/summary
+ * Returns summary metrics for the PCP dashboard header.
+ */
+app.get('/api/pcp/summary', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+
+        const [{ data: nec }, { data: planos }, { data: ops }] = await Promise.all([
+            supabase.from('producao_necessidades').select('status, qty_necessaria'),
+            supabase.from('planos_de_corte').select('status').not('status', 'in', '("CONCLUIDO","CANCELADO")'),
+            supabase.from('ordens_de_producao').select('status, qty_pendente').not('status', 'in', '("CONCLUIDA","CANCELADA")'),
+        ]);
+
+        const necessidades = nec || [];
+        return res.json({
+            total_necessidades: necessidades.length,
+            total_pecas_necessarias: necessidades.reduce((s: number, n: any) => s + (n.qty_necessaria || 0), 0),
+            coberto_estoque: necessidades.filter((n: any) => n.status === 'COBERTO_PELO_ESTOQUE').length,
+            aguardando_producao: necessidades.filter((n: any) => n.status === 'AGUARDANDO_PRODUCAO_EXISTENTE').length,
+            necessita_corte: necessidades.filter((n: any) => n.status === 'NECESSITA_NOVO_CORTE').length,
+            em_plano: necessidades.filter((n: any) => ['INCLUIDO_EM_PLANO', 'PLANO_APROVADO'].includes(n.status)).length,
+            op_gerada: necessidades.filter((n: any) => n.status === 'OP_GERADA').length,
+            planos_ativos: (planos || []).length,
+            ops_abertas: (ops || []).filter((o: any) => o.status !== 'PENDENTE_CADASTRO_TINY').length,
+            ops_pendentes_tiny: (ops || []).filter((o: any) => o.status === 'PENDENTE_CADASTRO_TINY').length,
+        });
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
 // ── 404 for API routes ────────────────────────────────────────────────────
-app.all("/api/*", (req, res) => {
+
+/**
+ * POST /api/stock/sync
+ * Proxies Tiny ERP stock queries server-side to avoid CORS issues.
+ * Body: { token: string, products: { id_produto: string, sku: string }[] }
+ */
+app.post('/api/stock/sync', async (req: any, res: any) => {
+  try {
+    const { token, products } = req.body || {};
+    if (!token) return res.status(400).json({ success: false, error: 'Token n�o informado.' });
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ success: false, error: 'Nenhum produto informado.' });
+    }
+
+    const supabaseClient = createClient(
+      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+    );
+
+    const results: { id_produto: string; sku: string; stock_available: number }[] = [];
+
+    for (const prod of products) {
+      if (!prod.id_produto) continue;
+      try {
+        const params = new URLSearchParams({ token, id: prod.id_produto, formato: 'json' });
+        const tinyRes = await fetch('https://api.tiny.com.br/api2/produto.obter.estoque.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
+        });
+        const text = await tinyRes.text();
+        let json: any;
+        try { json = JSON.parse(text); } catch (_) { continue; }
+
+        const retorno = json?.retorno || {};
+        if (retorno.status !== 'OK') {
+          if (retorno.codigo_erro == 6) {
+            // Rate limited - stop processing
+            return res.json({ success: true, results, rateLimited: true });
+          }
+          continue;
+        }
+
+        const prod_data = retorno.produto || {};
+        const saldo = prod_data.saldoDisponivel ?? prod_data.saldo_disponivel ?? prod_data.saldo ?? prod_data.saldo_fisico;
+        if (saldo !== undefined && saldo !== null) {
+          results.push({ id_produto: prod.id_produto, sku: prod.sku, stock_available: Math.max(0, parseFloat(saldo) || 0) });
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise(r => setTimeout(r, 200));
+      } catch (_) { continue; }
+    }
+
+    // Save results to Supabase
+    if (results.length > 0) {
+      await supabaseClient.from('tiny_stock_cache').upsert(
+        results.map(r => ({ id_produto: r.id_produto, sku: r.sku, stock_available: r.stock_available, updated_at: new Date().toISOString() })),
+        { onConflict: 'id_produto' }
+      );
+    }
+
+    return res.json({ success: true, results, rateLimited: false });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Erro interno.' });
+  }
+});
+
+app.all("/api/*", (req: any, res: any) => {
     res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
 

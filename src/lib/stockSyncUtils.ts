@@ -26,7 +26,6 @@ export async function fetchLocalStockCache(): Promise<{ cache: StockCache; error
   }
 }
 
-// Reset cache so next call to fetchLocalStockCache re-reads from DB
 export function invalidateStockCache() {
   cacheLoaded = false;
   localStockCache = {};
@@ -37,22 +36,19 @@ export async function syncStockForProducts(
   products: { id_produto: string; sku: string }[],
   onProgress: (current: number, total: number) => void
 ): Promise<{ success: boolean; error: string | null }> {
-  const chunkSize = 10;
+  const chunkSize = 20;
 
-  // Only include products that have a Tiny internal ID
   const uniqueMap = new Map<string, { id_produto: string; sku: string }>();
   (products || []).forEach(p => {
     if (p.id_produto && p.id_produto.trim() !== '') {
-      if (!uniqueMap.has(p.id_produto)) {
-        uniqueMap.set(p.id_produto, p);
-      }
+      if (!uniqueMap.has(p.id_produto)) uniqueMap.set(p.id_produto, p);
     }
   });
 
   const uniqueProducts = Array.from(uniqueMap.values());
 
   if (uniqueProducts.length === 0) {
-    return { success: false, error: 'Nenhum produto com ID do Tiny encontrado nos pedidos. Os pedidos precisam ser importados do Tiny para que o estoque possa ser consultado.' };
+    return { success: false, error: 'Nenhum produto com ID do Tiny encontrado nos pedidos. Reimporte os pedidos do Tiny e tente novamente.' };
   }
 
   let totalSuccess = 0;
@@ -61,79 +57,38 @@ export async function syncStockForProducts(
     for (let i = 0; i < uniqueProducts.length; i += chunkSize) {
       const chunk = uniqueProducts.slice(i, i + chunkSize);
 
-      const promises = chunk.map(async (prod) => {
-        try {
-          const params = new URLSearchParams({
-            token: token,
-            id: prod.id_produto,
-            formato: 'json'
-          });
-
-          const res = await fetch('https://api.tiny.com.br/api2/produto.obter.estoque.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString()
-          });
-
-          const text = await res.text();
-          let json: any;
-          try { json = JSON.parse(text); } catch (_) { return null; }
-
-          const retorno = json?.retorno || {};
-          if (retorno.status !== 'OK') {
-            console.warn('[StockSync] Tiny error for id', prod.id_produto, retorno.erros);
-            return null;
-          }
-
-          const prod_data = retorno.produto || {};
-          const saldo = prod_data.saldoDisponivel ?? prod_data.saldo_disponivel ?? prod_data.saldo ?? prod_data.saldo_fisico;
-          if (saldo === undefined || saldo === null) return null;
-
-          return {
-            id_produto: prod.id_produto,
-            sku: prod.sku,
-            stock_available: Math.max(0, parseFloat(saldo) || 0)
-          };
-        } catch (err) {
-          console.error('[StockSync] Error for', prod.id_produto, err);
-          return null;
-        }
+      // Call the backend proxy to avoid CORS issues with Tiny API
+      const response = await fetch('/api/stock/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, products: chunk })
       });
 
-      const results = await Promise.all(promises);
-      const validResults = results.filter(r => r !== null) as { id_produto: string; sku: string; stock_available: number }[];
+      if (!response.ok) {
+        console.error('[StockSync] Backend proxy error:', response.status);
+        continue;
+      }
 
-      if (validResults.length > 0) {
-        totalSuccess += validResults.length;
+      const data = await response.json();
 
-        const { error } = await supabase
-          .from('tiny_stock_cache')
-          .upsert(
-            validResults.map(r => ({
-              id_produto: r.id_produto,
-              sku: r.sku,
-              stock_available: r.stock_available,
-              updated_at: new Date().toISOString()
-            })),
-            { onConflict: 'id_produto' }
-          );
+      if (data.results && data.results.length > 0) {
+        totalSuccess += data.results.length;
+        // Update local cache
+        data.results.forEach((r: any) => {
+          localStockCache[r.id_produto] = r.stock_available;
+          if (r.sku) localStockCache[r.sku] = r.stock_available;
+        });
+      }
 
-        if (!error) {
-          validResults.forEach(r => {
-            localStockCache[r.id_produto] = r.stock_available;
-            if (r.sku) localStockCache[r.sku] = r.stock_available;
-          });
-        } else {
-          console.error('[StockSync] Error saving to Supabase:', error);
-        }
+      if (data.rateLimited) {
+        return { success: totalSuccess > 0, error: 'Limite de requisi��es da API do Tiny atingido. Aguarde alguns minutos e tente novamente.' };
       }
 
       onProgress(Math.min(i + chunkSize, uniqueProducts.length), uniqueProducts.length);
-      await new Promise(r => setTimeout(r, 300));
     }
 
     if (totalSuccess === 0 && uniqueProducts.length > 0) {
-      return { success: false, error: 'Token do Tiny inv�lido, bloqueado ou limite de requisi��es excedido. Verifique o token.' };
+      return { success: false, error: 'Token do Tiny inv�lido ou API bloqueada. Aguarde alguns minutos e verifique o token.' };
     }
 
     return { success: true, error: null };
