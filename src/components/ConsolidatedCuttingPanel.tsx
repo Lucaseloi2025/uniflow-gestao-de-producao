@@ -65,6 +65,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [stockCache, setStockCache] = useState<StockCache>({});
   const [isSyncingStock, setIsSyncingStock] = useState(false);
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
+  const [syncCountdown, setSyncCountdown] = useState<number | null>(null);
+  const [syncingPlanId, setSyncingPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTechnicalRegistry().then(() => {
@@ -76,51 +78,104 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     });
   }, [registryRefreshCount]);
 
-  const handleSyncStock = async () => {
-    setIsSyncingStock(true);
-    setSyncProgress({ current: 0, total: 0 });
-    
-    const pendingProducts: { id_produto: string; sku: string }[] = [];
-    orders.forEach(order => {
+  const BATCH_SIZE = 30;
+  const BATCH_PAUSE_SECONDS = 100;
+
+  const extractProductsFromOrders = (orderList: typeof orders) => {
+    const map = new Map<string, { id_produto: string; sku: string }>();
+    orderList.forEach(order => {
       const rawItems = order.items as any;
       const items = typeof rawItems === 'string' ? JSON.parse(rawItems) : rawItems;
       (items || []).forEach((it: any) => {
         const prodId = it.id_produto || it.idProduto || it.id || '';
         const sku = it.codigo || it.sku || '';
-        if (prodId || sku) {
-          pendingProducts.push({ id_produto: prodId, sku: sku });
-        }
+        if (prodId && !map.has(prodId)) map.set(prodId, { id_produto: prodId, sku: sku });
       });
     });
+    return Array.from(map.values());
+  };
 
-    // Token is now managed by backend OAuth - no user input needed
+  const runSyncBatch = async (products: { id_produto: string; sku: string }[]) => {
     const token = localStorage.getItem('tiny_token') || '';
-
-    const syncResult = await syncStockForProducts(token, pendingProducts, (curr, tot) => {
-      setSyncProgress({ current: curr, total: tot });
+    return await syncStockForProducts(token, products, (curr, tot) => {
+      setSyncProgress(prev => ({ current: prev.current + curr, total: prev.total }));
     });
+  };
 
-    if (syncResult.success) {
-      if (syncResult.error) {
-        alert('Aviso: ' + syncResult.error);
-        // Token preserved on partial errors
+  const handleSyncStock = async () => {
+    setIsSyncingStock(true);
+    setSyncCountdown(null);
+    
+    const allProducts = extractProductsFromOrders(orders);
+    setSyncProgress({ current: 0, total: allProducts.length });
+
+    let processedCount = 0;
+
+    for (let i = 0; i < allProducts.length; i += BATCH_SIZE) {
+      const batch = allProducts.slice(i, i + BATCH_SIZE);
+      
+      const result = await runSyncBatch(batch);
+      processedCount += batch.length;
+      setSyncProgress({ current: processedCount, total: allProducts.length });
+
+      if (result.rateLimited || (result.error && result.error.includes('Limite'))) {
+        // Rate limited - pause before continuing
+        if (i + BATCH_SIZE < allProducts.length) {
+          for (let countdown = BATCH_PAUSE_SECONDS; countdown > 0; countdown--) {
+            setSyncCountdown(countdown);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          setSyncCountdown(null);
+        }
+      } else if (!result.success && !result.error?.includes('Limite')) {
+        // Hard error - stop
+        alert(result.error || 'Erro ao sincronizar estoque.');
+        break;
       }
-      invalidateStockCache();
-      const result = await fetchLocalStockCache();
-      if (result.error) {
-        alert('Aten��o: A tabela tiny_stock_cache n�o foi encontrada no banco de dados. Voc� rodou o arquivo SQL?');
-      }
-      setStockCache(result.cache);
-    } else {
-      const errMsg = syncResult.error || 'Houve um erro ao sincronizar o estoque dos itens.';
-      if (errMsg.includes('Nenhum produto com ID')) {
-        alert('?? Os pedidos abertos n�o possuem o ID interno do Tiny. \n\nSolu��o: Clique em "Sincronizar Pedidos" (bot�o principal) para reimportar os pedidos do Tiny/Olist. Depois tente sincronizar o estoque novamente.');
-      } else {
-        alert(errMsg);
+
+      // Small delay between successful batches too
+      if (i + BATCH_SIZE < allProducts.length && !result.rateLimited) {
+        await new Promise(r => setTimeout(r, 2000));
       }
     }
-    
+
+    // Refresh cache from DB
+    invalidateStockCache();
+    const cacheResult = await fetchLocalStockCache();
+    setStockCache(cacheResult.cache);
     setIsSyncingStock(false);
+    setSyncCountdown(null);
+  };
+
+  const handleSyncPlanStock = async (plan: ApprovedEnfestoPlan) => {
+    setSyncingPlanId(plan.id);
+    
+    // Collect products from this plan's orders
+    const planOrderIds = new Set((plan.pedidos_inclusos || []).map((p: any) => p.order_id));
+    const planOrders = orders.filter(o => planOrderIds.has(o.id));
+    const planProducts = planOrders.length > 0 
+      ? extractProductsFromOrders(planOrders)
+      : extractProductsFromOrders(orders).slice(0, 30); // fallback: first 30
+
+    if (planProducts.length === 0) {
+      alert('Nenhum produto encontrado para este plano.');
+      setSyncingPlanId(null);
+      return;
+    }
+
+    const token = localStorage.getItem('tiny_token') || '';
+    const result = await syncStockForProducts(token, planProducts, () => {});
+    
+    invalidateStockCache();
+    const cacheResult = await fetchLocalStockCache();
+    setStockCache(cacheResult.cache);
+    setSyncingPlanId(null);
+
+    if (result.success) {
+      alert(`? Estoque sincronizado para ${planProducts.length} produto(s) do plano!`);
+    } else {
+      alert(result.error || 'Erro ao sincronizar estoque do plano.');
+    }
   };
   const handleConfirmFamily = async (fam: IncompleteFamilyGroup) => {
     if (!fam.suggested_fabric || !fam.suggested_color) {
@@ -506,7 +561,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-70"
               >
                 <History size={16} className={isSyncingStock ? "animate-spin" : ""} />
-                {isSyncingStock ? `Sincronizando... ${syncProgress.current}/${syncProgress.total}` : 'Sincronizar Estoque'}
+                {isSyncingStock 
+    ? syncCountdown !== null 
+      ? `? Pausando... ${syncCountdown}s` 
+      : `Sincronizando... ${syncProgress.current}/${syncProgress.total}`
+    : 'Sincronizar Estoque'}
               </button>
             <div className="flex items-center gap-1.5 bg-slate-950/60 p-1.5 rounded-2xl border border-blue-800/50 backdrop-blur-md self-start md:self-auto font-sans">
             <button
@@ -929,6 +988,18 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button
+                          type="button"
+                          onClick={() => handleSyncPlanStock(plan)}
+                          disabled={syncingPlanId === plan.id}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          title="Verificar estoque deste plano no Tiny"
+                        >
+                          {syncingPlanId === plan.id
+                            ? <><History size={15} className="animate-spin" /> Verificando...</>
+                            : <><History size={15} /> ? Verificar Estoque</>}
+                        </button>
+
+                        <button
                         type="button"
                         onClick={() => setPrintingPlan(plan)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
