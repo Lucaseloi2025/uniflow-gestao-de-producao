@@ -35,7 +35,7 @@ export async function syncStockForProducts(
   
   const uniqueMap = new Map<string, { id_produto: string; sku: string }>();
   (products || []).forEach(p => {
-    const key = p.sku || p.id_produto;
+    const key = p.id_produto;
     if (key && !uniqueMap.has(key)) {
       uniqueMap.set(key, p);
     }
@@ -55,7 +55,7 @@ export async function syncStockForProducts(
       
       const promises = chunk.map(async (prod) => {
         try {
-          const param = prod.sku ? `sku=${encodeURIComponent(prod.sku)}` : `id=${prod.id_produto}`;
+          const param = `id=${prod.id_produto}`;
           const url = `https://api.tiny.com.br/api2/produto.obter.estoque.php?token=${token}&${param}&formato=json`;
           
           const res = await fetch(url, { method: "POST" });
