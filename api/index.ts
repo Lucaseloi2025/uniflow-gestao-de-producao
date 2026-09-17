@@ -5926,7 +5926,8 @@ app.post('/api/stock/sync', async (req: any, res: any) => {
       );
     }
 
-    return res.json({ success: true, results, rateLimited: false });
+    console.log(`[StockSync] Synced ${results.length}/${products.length} products successfully`);
+    return res.json({ success: true, results, synced: results.length, total: products.length, rateLimited: false });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Erro interno.' });
   }

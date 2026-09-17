@@ -67,6 +67,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
   const [syncCountdown, setSyncCountdown] = useState<number | null>(null);
   const [syncingPlanId, setSyncingPlanId] = useState<string | null>(null);
+  const [syncNotification, setSyncNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     fetchTechnicalRegistry().then(() => {
@@ -79,7 +80,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   }, [registryRefreshCount]);
 
   const BATCH_SIZE = 30;
-  const BATCH_PAUSE_SECONDS = 100;
+  const BATCH_PAUSE_SECONDS = 120;
 
   const extractProductsFromOrders = (orderList: typeof orders) => {
     const map = new Map<string, { id_produto: string; sku: string }>();
@@ -145,6 +146,20 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     setStockCache(cacheResult.cache);
     setIsSyncingStock(false);
     setSyncCountdown(null);
+    
+    const cacheSize = Object.keys(cacheResult.cache).length;
+    if (cacheSize > 0) {
+      setSyncNotification({ 
+        type: 'success', 
+        message: `? Estoque sincronizado! ${cacheSize} produto(s) atualizados no cache. As quantidades de corte acima foram recalculadas.`
+      });
+    } else {
+      setSyncNotification({ 
+        type: 'error', 
+        message: `?? Sincroniza��o conclu�da, mas nenhum dado foi encontrado no cache. Verifique se a tabela tiny_stock_cache existe no Supabase com as pol�ticas de permiss�o corretas.`
+      });
+    }
+    setTimeout(() => setSyncNotification(null), 15000);
   };
 
   const handleSyncPlanStock = async (plan: ApprovedEnfestoPlan) => {
@@ -172,10 +187,15 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     setSyncingPlanId(null);
 
     if (result.success) {
-      alert(`? Estoque sincronizado para ${planProducts.length} produto(s) do plano!`);
+      const cacheSize = Object.keys((await fetchLocalStockCache()).cache).length;
+      setSyncNotification({ 
+        type: 'success', 
+        message: `? Estoque do plano sincronizado! ${planProducts.length} produto(s) consultados. Cache total: ${cacheSize} entradas.`
+      });
     } else {
-      alert(result.error || 'Erro ao sincronizar estoque do plano.');
+      setSyncNotification({ type: 'error', message: result.error || 'Erro ao sincronizar estoque do plano.' });
     }
+    setTimeout(() => setSyncNotification(null), 12000);
   };
   const handleConfirmFamily = async (fam: IncompleteFamilyGroup) => {
     if (!fam.suggested_fabric || !fam.suggested_color) {
@@ -606,6 +626,18 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       </div>
 
       {/* SUBTAB 1: DEMANDA DE CORTE */}
+      {syncNotification && (
+        <div className={`mx-4 mb-3 p-4 rounded-2xl text-sm font-bold flex items-start gap-3 shadow-md ${
+          syncNotification.type === 'success' 
+            ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' 
+            : 'bg-amber-50 border border-amber-300 text-amber-900'
+        }`}>
+          <span className="text-lg">{syncNotification.type === 'success' ? '?' : '??'}</span>
+          <span>{syncNotification.message}</span>
+          <button onClick={() => setSyncNotification(null)} className="ml-auto text-slate-400 hover:text-slate-700 font-black text-xs">?</button>
+        </div>
+      )}
+
       {activeSubTab === 'demand' && (
         <div className="space-y-6">
           

@@ -31,7 +31,7 @@ export async function syncStockForProducts(
   token: string,
   products: { id_produto: string; sku: string }[],
   onProgress: (current: number, total: number) => void
-): Promise<{ success: boolean; error: string | null }> {
+): Promise<{ success: boolean; error: string | null; synced?: number; rateLimited?: boolean }> {
   const chunkSize = 20;
 
   const uniqueMap = new Map<string, { id_produto: string; sku: string }>();
@@ -48,6 +48,7 @@ export async function syncStockForProducts(
   }
 
   let totalSuccess = 0;
+  let supabaseErrors = 0;
 
   try {
     for (let i = 0; i < uniqueProducts.length; i += chunkSize) {
@@ -83,10 +84,11 @@ export async function syncStockForProducts(
     }
 
     if (totalSuccess === 0 && uniqueProducts.length > 0) {
-      return { success: false, error: 'Nenhum estoque retornado. API do Tiny pode estar bloqueada temporariamente.' };
+      return { success: false, error: 'Nenhum estoque retornado. API do Tiny bloqueada temporariamente.' };
     }
 
-    return { success: true, error: null };
+    const errorMsg = supabaseErrors > 0 ? `Aten��o: ${supabaseErrors} lote(s) falharam ao salvar no banco. Verifique se a tabela tiny_stock_cache existe com as permiss�es corretas.` : null;
+    return { success: true, synced: totalSuccess, error: errorMsg };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Erro inesperado.' };
   }
