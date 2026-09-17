@@ -1803,8 +1803,8 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
 
 // ── Olist ERP Integration Endpoints (OAuth 2.0 & Token Sync) ────────────────
 
-const OLIST_CLIENT_ID = process.env.OLIST_CLIENT_ID || "tiny-api-b69bd9b2e5c8fb27d88f3d7507bb6d82e9313f1f-1788717202";
-const OLIST_CLIENT_SECRET = process.env.OLIST_CLIENT_SECRET || "L0wKCJ97Rw01n9TfhF7MmURozIEveyS9";
+const OLIST_CLIENT_ID = process.env.OLIST_CLIENT_ID || "tiny-api-b69bd9b2e5c8fb27d88f3d7507bb6d82e9313f1f-1789606342";
+const OLIST_CLIENT_SECRET = process.env.OLIST_CLIENT_SECRET || "HI899WOykeSXkU7Z6ek4s9MnWR8EcUib";
 const OLIST_REDIRECT_URI = process.env.OLIST_REDIRECT_URI || "https://uniflow-gestao-de-producao.vercel.app/api/integrations/olist/callback";
 
 let olistOAuthTokenCache: { access_token?: string; refresh_token?: string; expires_at?: number } = {};
@@ -5865,8 +5865,15 @@ app.get('/api/pcp/summary', async (req: any, res: any) => {
  */
 app.post('/api/stock/sync', async (req: any, res: any) => {
   try {
-    const { token, products } = req.body || {};
-    if (!token) return res.status(400).json({ success: false, error: 'Token n�o informado.' });
+    const { token: requestToken, products } = req.body || {};
+    
+    // Use provided token or fall back to OAuth token
+    let token = requestToken;
+    if (!token || token.trim() === '') {
+      token = await _getEffectiveOlistToken();
+    }
+    
+    if (!token) return res.status(400).json({ success: false, error: 'Token n�o configurado. Fa�a autentica��o OAuth com o Tiny.' });
     if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ success: false, error: 'Nenhum produto informado.' });
     }

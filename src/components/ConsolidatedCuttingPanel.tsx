@@ -93,25 +93,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       });
     });
 
-        // @ts-ignore
-    let token = currentUser?.tiny_token || localStorage.getItem('tiny_token') || '';
-    
-    // Remove known-invalid dev token
-    if (token === 'b9a674e2d31b3e9447eec03d527a20c35fa9eecf') {
-      localStorage.removeItem('tiny_token');
-      token = '';
-    }
-    
-    if (!token) {
-      const newToken = window.prompt('Token da API do Tiny n�o encontrado.\n\nCole aqui o seu Token (dispon�vel em: Tiny ERP > Configura��es > Integra��es > API):');
-      if (!newToken || newToken.trim() === '') {
-        alert('Sincroniza��o cancelada.');
-        setIsSyncingStock(false);
-        return;
-      }
-      token = newToken.trim();
-      localStorage.setItem('tiny_token', token);
-    }
+    // Token is now managed by backend OAuth - no user input needed
+    const token = localStorage.getItem('tiny_token') || '';
 
     const syncResult = await syncStockForProducts(token, pendingProducts, (curr, tot) => {
       setSyncProgress({ current: curr, total: tot });
