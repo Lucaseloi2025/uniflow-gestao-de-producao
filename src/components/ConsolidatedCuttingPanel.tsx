@@ -93,12 +93,19 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       });
     });
 
-    // @ts-ignore
-    const token = currentUser?.tiny_token || localStorage.getItem('tiny_token') || 'b9a674e2d31b3e9447eec03d527a20c35fa9eecf';
-    if (!token) {
-      alert('Token do Tiny n�o configurado.');
-      setIsSyncingStock(false);
-      return;
+        // @ts-ignore
+    let token = currentUser?.tiny_token || localStorage.getItem('tiny_token');
+    
+    // If we only have the expired dev token or no token, ask for it
+    if (!token || token === 'b9a674e2d31b3e9447eec03d527a20c35fa9eecf') {
+      const newToken = window.prompt('O token do Tiny ERP n�o est� configurado ou est� inv�lido.\n\nPor favor, insira o seu Token da API do Tiny (voc� pode ger�-lo no painel do Tiny em Configura��es > Extens�es > API):');
+      if (!newToken || newToken.trim() === '') {
+        alert('Sincroniza��o cancelada. O Token do Tiny � necess�rio para buscar o estoque.');
+        setIsSyncingStock(false);
+        return;
+      }
+      token = newToken.trim();
+      localStorage.setItem('tiny_token', token);
     }
 
     const syncResult = await syncStockForProducts(token, pendingProducts, (curr, tot) => {
@@ -106,7 +113,12 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     });
 
     if (syncResult.success) {
-      if (syncResult.error) alert('Aviso: ' + syncResult.error);
+      if (syncResult.error) {
+        alert('Aviso: ' + syncResult.error);
+        if (syncResult.error.toLowerCase().includes('api') || syncResult.error.toLowerCase().includes('token')) {
+          localStorage.removeItem('tiny_token');
+        }
+      }
       const result = await fetchLocalStockCache();
       if (result.error) {
         alert('Aten��o: A tabela tiny_stock_cache n�o foi encontrada no banco de dados. Voc� rodou o arquivo SQL?');
