@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Scissors,
   Calendar,
@@ -33,6 +33,7 @@ import type { StockCache } from '../types';
 import { aggregateCuttingDemand, groupCuttingDemandByRawMaterial, sortSizes } from '../lib/cuttingUtils';
 import { CuttingPlanModal } from './CuttingPlanModal';
 import { PrintableEnfestoSheetModal } from './PrintableEnfestoSheetModal';
+import { PrintableCutPlanSheetModal } from './PrintableCutPlanSheetModal';
 import {
   ApprovedEnfestoPlan,
   getApprovedEnfestoPlans,
@@ -227,6 +228,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const [printingPlan, setPrintingPlan] = useState<ApprovedEnfestoPlan | null>(null);
+  const [printingCutPlan, setPrintingCutPlan] = useState<any | null>(null);
   const [approvedPlans, setApprovedPlans] = useState<ApprovedEnfestoPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
@@ -1151,6 +1153,12 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   </div>
 
                   <div className="flex flex-wrap gap-2 pt-2">
+                    <button
+                      onClick={() => setPrintingCutPlan(plan)}
+                      className="px-4 py-2 bg-slate-800 text-white font-bold text-xs rounded-xl hover:bg-slate-900 transition-colors flex items-center gap-2"
+                    >
+                      <Printer size={14} /> Imprimir OP
+                    </button>
                     {plan.status === 'PENDING_CUT' && (
                       <button
                         onClick={() => handleReleasePlan(plan.id, plan.plan_number)}
@@ -1532,6 +1540,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         isOpen={!!printingPlan}
         onClose={() => setPrintingPlan(null)}
         plan={printingPlan}
+      />
+      <PrintableCutPlanSheetModal
+        isOpen={!!printingCutPlan}
+        onClose={() => setPrintingCutPlan(null)}
+        plan={printingCutPlan}
       />
     </div>
   );
