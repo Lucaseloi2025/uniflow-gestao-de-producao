@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import ReactDOM from 'react-dom';
 import { CutPlan } from '../types';
 import { Printer, X, Scissors, PackageCheck, AlertTriangle } from 'lucide-react';
@@ -48,7 +48,7 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
   }, [plan.items]);
 
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm print:block print:relative print:inset-auto print:bg-white print:backdrop-blur-none p-4 print:p-0">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-6 bg-slate-900/60 backdrop-blur-sm print:absolute print:inset-0 print:z-0 print:bg-white print:p-0 print:block print:overflow-visible">
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           #root { display: none !important; }
@@ -56,7 +56,7 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
           @page { margin: 1.5cm; size: A4 portrait; }
         }
       `}} />
-      <div className="bg-white w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col print:shadow-none print:overflow-visible print:w-full print:max-w-none print:h-auto print:max-h-none print:rounded-none">
+      <div className="bg-white rounded-none md:rounded-2xl shadow-2xl w-full max-w-5xl h-full md:h-[90vh] overflow-y-auto flex flex-col print:shadow-none print:rounded-none print:w-full print:max-w-none print:h-auto print:overflow-visible print:bg-white">
         
         {/* Modal Actions (Hide in print) */}
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 p-4 flex items-center justify-between shrink-0 print:hidden rounded-t-3xl">
@@ -196,6 +196,7 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
 
     </div>
   ), document.body); };
+
 
 
 
