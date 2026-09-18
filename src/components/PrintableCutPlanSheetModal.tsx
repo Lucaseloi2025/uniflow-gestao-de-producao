@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom';
 import { CutPlan } from '../types';
 import { Printer, X, Scissors, PackageCheck, AlertTriangle } from 'lucide-react';
@@ -139,7 +139,7 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
                 const orderItems = itemsByOrder[orderNum];
                 const totalOrder = orderItems.reduce((acc, it) => acc + (it.quantity_planned || 0), 0);
 
-                return ReactDOM.createPortal(
+                return (
                   <div key={orderNum} className="border border-slate-300 rounded-xl overflow-hidden break-inside-avoid">
                     <div className="bg-slate-100 px-4 py-2 flex items-center justify-between border-b border-slate-300">
                       <h3 className="font-black text-slate-900 text-sm font-mono">OP / PEDIDO: <span className="text-blue-800 text-base">{orderNum}</span></h3>
