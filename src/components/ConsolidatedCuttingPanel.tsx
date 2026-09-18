@@ -22,7 +22,8 @@ import {
   Check,
   Printer,
   Trash2,
-  Edit2
+  Edit2,
+  Package
 } from 'lucide-react';
 import { Order, User, CorteDemandItem, CorteAllocationLog, CorteGroupDemand, CorteModelBreakdown } from '../types';
 import { IncompleteFamilyGroup } from '../lib/cuttingUtils';
@@ -844,6 +845,17 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         </div>
       </div>
 
+      {notification && (
+        <div className={`mx-4 mb-3 p-4 rounded-2xl text-sm font-bold flex items-start gap-3 shadow-md ${
+          notification.type === 'success' 
+            ? 'bg-emerald-50 border border-emerald-300 text-emerald-900' 
+            : 'bg-red-50 border border-red-300 text-red-900'
+        }`}>
+          <span className="text-lg">{notification.type === 'success' ? '?' : '?'}</span>
+          <span>{notification.message}</span>
+          <button onClick={() => setNotification(null)} className="ml-auto text-slate-400 hover:text-slate-700 font-black text-xs">?</button>
+        </div>
+      )}
       {/* SUBTAB 1: DEMANDA DE CORTE */}
       {syncNotification && (
         <div className={`mx-4 mb-3 p-4 rounded-2xl text-sm font-bold flex items-start gap-3 shadow-md ${

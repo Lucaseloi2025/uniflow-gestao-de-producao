@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
@@ -6001,8 +6001,7 @@ app.post('/api/cut-plans', async (req: any, res: any) => {
         plan_number, fabric, color, tipo_tecido, largura_util,
         qty_planned, status: 'PENDING_CUT',
         snapshot_json: items,
-        created_by: created_by || 'Sistema',
-        notes: notes || null
+        created_by: created_by || 'Sistema'
       })
       .select()
       .single();
@@ -6129,7 +6128,7 @@ app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
     await supabaseAdmin.from('cut_plans').update({
       status: 'CUT_COMPLETED',
       qty_cut: qtyCutActual,
-      cut_completed_at: new Date().toISOString()
+      completed_at: new Date().toISOString()
     }).eq('id', id);
 
     const items = plan.items || [];
