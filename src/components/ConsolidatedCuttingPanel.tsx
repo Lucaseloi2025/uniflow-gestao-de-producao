@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import {
   Scissors,
   Calendar,
@@ -1117,96 +1117,109 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
               <h4 className="font-black text-slate-700 text-base">Nenhum plano de corte registrado.</h4>
             </div>
           ) : (
-            <div className="space-y-4">
-              {cutPlans.map((plan: any) => (
-                <div key={plan.id} className="bg-white border border-indigo-100 rounded-3xl shadow-sm hover:border-indigo-300 transition-all p-6 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 font-mono text-xs font-black rounded-lg uppercase bg-indigo-600 text-white">
-                          {plan.plan_number}
-                        </span>
-                        <span className={`px-3 py-1 font-mono text-[10px] font-black rounded-lg uppercase border 
-                          ${plan.status === 'PENDING_CUT' ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                            plan.status === 'CUT_RELEASED' ? 'bg-blue-50 text-blue-800 border-blue-200' :
-                            plan.status === 'CUT_COMPLETED' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' :
-                            plan.status === 'IN_SEWING' ? 'bg-purple-50 text-purple-800 border-purple-200' :
-                            plan.status === 'SEWING_COMPLETED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                            plan.status === 'CANCELLED' ? 'bg-red-50 text-red-800 border-red-200' :
-                            'bg-slate-50 text-slate-800 border-slate-200'
-                          }`}>
-                          {plan.status}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide mt-2">
-                        Tecido: {plan.fabric || '-'} • Cor: {plan.color || '-'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 font-mono text-[10px] text-slate-500 text-right">
-                      <div className="flex flex-col gap-1">
-                        <span>Planejado: <strong className="text-slate-800 text-xs">{plan.qty_planned}</strong></span>
-                        <span>Cortado: <strong className="text-blue-700 text-xs">{plan.qty_cut || 0}</strong></span>
-                        <span>Em Costura: <strong className="text-purple-700 text-xs">{plan.qty_sewing || 0}</strong></span>
-                        <span>Retornou Costura: <strong className="text-emerald-700 text-xs">{plan.qty_sewing_done || 0}</strong></span>
-                      </div>
-                    </div>
-                  </div>
+                        <div className="flex gap-4 overflow-x-auto pb-6 pt-2 items-start snap-x snap-mandatory">
+              {[
+                { id: 'PENDING_CUT', label: 'Pendente Corte', badgeClass: 'bg-amber-100 text-amber-900 border-amber-200', textClass: 'text-amber-800', headerClass: 'bg-amber-50 border-amber-200' },
+                { id: 'CUT_RELEASED', label: 'Liberado Corte', badgeClass: 'bg-blue-100 text-blue-900 border-blue-200', textClass: 'text-blue-800', headerClass: 'bg-blue-50 border-blue-200' },
+                { id: 'CUT_COMPLETED', label: 'Corte Concluído', badgeClass: 'bg-indigo-100 text-indigo-900 border-indigo-200', textClass: 'text-indigo-800', headerClass: 'bg-indigo-50 border-indigo-200' },
+                { id: 'IN_SEWING', label: 'Em Costura', badgeClass: 'bg-purple-100 text-purple-900 border-purple-200', textClass: 'text-purple-800', headerClass: 'bg-purple-50 border-purple-200' },
+                { id: 'SEWING_COMPLETED', label: 'Finalizado', badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-200', textClass: 'text-emerald-800', headerClass: 'bg-emerald-50 border-emerald-200' },
+              ].map(col => {
+                const columnPlans = cutPlans.filter((p: any) => p.status === col.id);
 
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <button
-                      onClick={() => setPrintingCutPlan(plan)}
-                      className="px-4 py-2 bg-slate-800 text-white font-bold text-xs rounded-xl hover:bg-slate-900 transition-colors flex items-center gap-2"
-                    >
-                      <Printer size={14} /> Imprimir OP
-                    </button>
-                    {plan.status === 'PENDING_CUT' && (
-                      <button
-                        onClick={() => handleReleasePlan(plan.id, plan.plan_number)}
-                        disabled={cutPlanActionLoading !== null}
-                        className="px-4 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        {cutPlanActionLoading === `release-${plan.id}` ? 'Processando...' : 'Liberar para Corte'}
-                      </button>
-                    )}
-                    {plan.status === 'CUT_RELEASED' && (
-                      <>
-                        <button
-                          onClick={() => handleCompleteCut(plan.id, plan.plan_number, plan.qty_planned)}
-                          disabled={cutPlanActionLoading !== null}
-                          className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                        >
-                          {cutPlanActionLoading === `cut-${plan.id}` ? 'Processando...' : 'Registrar Corte Concluído'}
-                        </button>
-                        <button
-                          onClick={() => handleCancelCutPlan(plan.id, plan.plan_number)}
-                          disabled={cutPlanActionLoading !== null}
-                          className="px-4 py-2 bg-red-50 text-red-700 font-bold text-xs rounded-xl hover:bg-red-100 transition-colors border border-red-200 disabled:opacity-50"
-                        >
-                          {cutPlanActionLoading === `cancel-${plan.id}` ? 'Processando...' : 'Cancelar Plano'}
-                        </button>
-                      </>
-                    )}
-                    {plan.status === 'CUT_COMPLETED' && (
-                      <button
-                        onClick={() => handleSendSewing(plan.id, plan.plan_number)}
-                        disabled={cutPlanActionLoading !== null}
-                        className="px-4 py-2 bg-purple-600 text-white font-bold text-xs rounded-xl hover:bg-purple-700 transition-colors disabled:opacity-50"
-                      >
-                        {cutPlanActionLoading === `sewing-${plan.id}` ? 'Processando...' : 'Enviar para Costura'}
-                      </button>
-                    )}
-                    {plan.status === 'IN_SEWING' && (
-                      <button
-                        onClick={() => handleReturnSewing(plan.id, plan.plan_number, plan.qty_sewing)}
-                        disabled={cutPlanActionLoading !== null}
-                        className="px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                      >
-                        {cutPlanActionLoading === `return-sewing-${plan.id}` ? 'Processando...' : 'Registrar Retorno Costura'}
-                      </button>
-                    )}
+                return (
+                  <div key={col.id} className={`min-w-[340px] max-w-[340px] rounded-3xl p-3 flex flex-col gap-3 snap-center shrink-0 border ${col.headerClass}`}>
+                    <div className="flex justify-between items-center px-2 py-1">
+                      <h4 className={`text-xs font-black uppercase ${col.textClass}`}>{col.label}</h4>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${col.badgeClass}`}>
+                        {columnPlans.length}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-3 h-full max-h-[60vh] overflow-y-auto pr-1 pb-2">
+                      {columnPlans.length === 0 ? (
+                        <div className="p-4 text-center border-2 border-dashed border-slate-300/50 rounded-2xl text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          Vazio
+                        </div>
+                      ) : columnPlans.map((plan: any) => (
+                        <div key={plan.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-indigo-300 transition-all p-4 space-y-3 shrink-0">
+                          <div className="flex flex-col gap-2 border-b border-slate-100 pb-2">
+                            <div className="flex items-center justify-between">
+                              <span className="px-2 py-0.5 font-mono text-[10px] font-black rounded-lg uppercase bg-indigo-600 text-white">
+                                {plan.plan_number}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono">{plan.qty_planned} pçs</span>
+                            </div>
+                            <p className="text-[10px] font-bold text-slate-700 uppercase leading-tight">
+                              Tecido: {plan.fabric || '-'} <br/> Cor: {plan.color || '-'}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col gap-1 font-mono text-[9px] text-slate-500">
+                            <div className="flex justify-between"><span>Cortado:</span> <strong className="text-blue-700">{plan.qty_cut || 0}</strong></div>
+                            <div className="flex justify-between"><span>Em Costura:</span> <strong className="text-purple-700">{plan.qty_sewing || 0}</strong></div>
+                            <div className="flex justify-between"><span>Retornou:</span> <strong className="text-emerald-700">{plan.qty_sewing_done || 0}</strong></div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            <button
+                              onClick={() => setPrintingCutPlan(plan)}
+                              className="px-2.5 py-1.5 bg-slate-800 text-white font-bold text-[9px] rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1.5 w-full justify-center"
+                            >
+                              <Printer size={12} /> Imprimir OP
+                            </button>
+                            {plan.status === 'PENDING_CUT' && (
+                              <button
+                                onClick={() => handleReleasePlan(plan.id, plan.plan_number)}
+                                disabled={cutPlanActionLoading !== null}
+                                className="px-2.5 py-1.5 bg-blue-600 text-white font-bold text-[9px] rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex-1"
+                              >
+                                {cutPlanActionLoading === `release-${plan.id}` ? '...' : 'Liberar p/ Corte'}
+                              </button>
+                            )}
+                            {plan.status === 'CUT_RELEASED' && (
+                              <>
+                                <button
+                                  onClick={() => handleCompleteCut(plan.id, plan.plan_number, plan.qty_planned)}
+                                  disabled={cutPlanActionLoading !== null}
+                                  className="px-2.5 py-1.5 bg-indigo-600 text-white font-bold text-[9px] rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex-1"
+                                >
+                                  {cutPlanActionLoading === `cut-${plan.id}` ? '...' : 'Corte Fim'}
+                                </button>
+                                <button
+                                  onClick={() => handleCancelCutPlan(plan.id, plan.plan_number)}
+                                  disabled={cutPlanActionLoading !== null}
+                                  className="px-2.5 py-1.5 bg-red-50 text-red-700 border border-red-200 font-bold text-[9px] rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50 w-full"
+                                >
+                                  {cutPlanActionLoading === `cancel-${plan.id}` ? '...' : 'Cancelar Plano'}
+                                </button>
+                              </>
+                            )}
+                            {plan.status === 'CUT_COMPLETED' && (
+                              <button
+                                onClick={() => handleSendSewing(plan.id, plan.plan_number)}
+                                disabled={cutPlanActionLoading !== null}
+                                className="px-2.5 py-1.5 bg-purple-600 text-white font-bold text-[9px] rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex-1"
+                              >
+                                {cutPlanActionLoading === `sewing-${plan.id}` ? '...' : 'Enviar p/ Costura'}
+                              </button>
+                            )}
+                            {plan.status === 'IN_SEWING' && (
+                              <button
+                                onClick={() => handleReturnSewing(plan.id, plan.plan_number, plan.qty_sewing)}
+                                disabled={cutPlanActionLoading !== null}
+                                className="px-2.5 py-1.5 bg-emerald-600 text-white font-bold text-[9px] rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 flex-1"
+                              >
+                                {cutPlanActionLoading === `return-sewing-${plan.id}` ? '...' : 'Retorno Costura'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1549,3 +1562,4 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     </div>
   );
 };
+
