@@ -1,4 +1,4 @@
-import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache } from '../types';
+﻿import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache, CommittedQtyMap } from '../types';
 import { getCachedRegistryItem } from './technicalRegistryUtils';
 
 /**
@@ -429,12 +429,15 @@ export function getOrderCuttingNeeded(order: any, stockCache: StockCache = {}): 
   return 0;
 }
 
-  /**
- * Aggregates all missing cutting pieces across all active open orders,
- * grouped by model + color + size (maintaining Olist ERP writing format),
- * sorted by closest deadline first.
+/**
+ * Aggregates all missing cutting pieces across all active open orders.
+ * Uses committedQtys to prevent double-cutting.
  */
-export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {}): CorteDemandItem[] {
+export function aggregateCuttingDemand(
+  orders: any[],
+  stockCache: StockCache = {},
+  committedQtys: CommittedQtyMap = new Map()
+): CorteDemandItem[] {
   if (!Array.isArray(orders)) return [];
   const demandMap = new Map<string, CorteDemandItem>();
 
@@ -456,8 +459,8 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
           const qPedida = Number(item.quantity ?? item.quantidade ?? 1);
           let cQty = item.qty_corte ?? item.total_via_corte;
           if (cQty === undefined || cQty === null) {
-            const itemKey = item.id_produto || item.codigo || item.sku;
-            const itemStock = (itemKey && stockCache[itemKey] !== undefined) ? stockCache[itemKey] : item.stock_available;
+            const itemKeyStock = item.id_produto || item.codigo || item.sku;
+            const itemStock = (itemKeyStock && stockCache[itemKeyStock] !== undefined) ? stockCache[itemKeyStock] : item.stock_available;
             if (itemStock !== undefined && itemStock !== null) {
               cQty = Math.max(0, qPedida - Math.min(qPedida, Number(itemStock)));
             } else if (item.qty_separacao !== undefined && item.qty_separacao !== null) {
@@ -489,25 +492,34 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
           if (!item || qtyCorteNeeded <= 0) continue;
 
           const qtyAllocated = Number(item.qty_corte_allocated || 0);
-          const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated);
-
-          if (qtyPending <= 0) continue;
 
           const { product_type, fabric, color, size, description, sku, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields } = extractItemDetails(item, order.product_type);
 
-          // Skip generic legacy mock items (e.g. "Dry Fit Única | Único") without detailed SKU/Olist breakdown
-          if (item_key.toLowerCase().includes('dry fit única | único') || item_key.toLowerCase().includes('item | único')) {
+          // REGRA FUNDAMENTAL: subtrair quantidades ja comprometidas (CUT_RELEASED ou posterior)
+          // Isso impede que a mesma necessidade apareca duas vezes na Central de Corte.
+          const committedKey = order.id + '::' + item_key;
+          const qtyCommitted = committedQtys.get(committedKey) || 0;
+
+          const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated - qtyCommitted);
+
+          if (qtyPending <= 0) continue;
+
+          // Skip generic legacy mock items
+          if (item_key.toLowerCase().includes('dry fit') && item_key.toLowerCase().includes('nica | nico')) {
+            continue;
+          }
+          if (item_key.toLowerCase().includes('item | nico') || item_key.toLowerCase().includes('item | unico')) {
             continue;
           }
 
           const orderDemand: OrderCorteDemand = {
             order_id: order.id,
-            order_number: order.order_number || `PED-${order.id}`,
+            order_number: order.order_number || ('PED-' + order.id),
             client_name: order.client_name || 'Cliente',
             deadline: order.deadline || new Date().toISOString(),
             item_quantity: Number(item.quantity ?? item.quantidade ?? 1),
             qty_corte_needed: qtyCorteNeeded,
-            qty_corte_allocated: qtyAllocated,
+            qty_corte_allocated: qtyAllocated + qtyCommitted,
             qty_corte_pending: qtyPending
           };
 
@@ -533,7 +545,6 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
             });
           }
 
-
           const existing = demandMap.get(item_key)!;
           existing.total_necessario += qtyPending;
           existing.pedidos_waiting.push(orderDemand);
@@ -543,7 +554,6 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
           }
         }
       } else {
-        // Skip fallback for orders without item list (legacy mock orders without Olist items)
         continue;
       }
 
@@ -569,6 +579,7 @@ export function aggregateCuttingDemand(orders: any[], stockCache: StockCache = {
 
   return result;
 }
+
 
 /**
  * Registers production of cut pieces for a specific aggregated item (item_key)

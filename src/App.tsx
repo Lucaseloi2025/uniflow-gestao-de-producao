@@ -62,6 +62,7 @@ import { Session } from '@supabase/supabase-js';
 import PublicTracking from './PublicTracking';
 import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
 import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
+import { ProductionProgressPanel } from './components/ProductionProgressPanel';
 import { aggregateCuttingDemand, getItemDisplaySize, sortSizes, extractItemDetails } from './lib/cuttingUtils';
 
 import {
@@ -6116,6 +6117,9 @@ export default function App() {
                                 })()}
                               </div>
                             )}
+
+                            {/* Andamento Produtivo (PCP ProComfort) */}
+                            <ProductionProgressPanel orderId={selectedOrder.id} />
 
                             {selectedOrder.observations && (
                               <section>

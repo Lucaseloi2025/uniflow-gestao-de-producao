@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import {
   Scissors,
   Calendar,
@@ -299,6 +299,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   useEffect(() => {
     fetchApprovedPlans();
+    fetchCommittedQtys();
+    fetchCutPlans();
   }, []);
 
   useEffect(() => {
@@ -306,6 +308,10 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       fetchAllocationLogs();
     } else if (activeSubTab === 'approved_plans') {
       fetchApprovedPlans();
+      fetchCutPlans();
+      fetchCommittedQtys();
+    } else if (activeSubTab === 'demand') {
+      fetchCommittedQtys();
     }
   }, [activeSubTab]);
 
@@ -347,11 +353,224 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     setSelectedGroupForPlanner(group);
   };
 
-  // Aggregate corte demand dynamically from active orders
+  // State for cut plans (production floor control)
+  const [cutPlans, setCutPlans] = useState<any[]>([]);
+  const [isLoadingCutPlans, setIsLoadingCutPlans] = useState(false);
+  const [committedQtys, setCommittedQtys] = useState<Map<string, number>>(new Map());
+  const [cutPlanActionLoading, setCutPlanActionLoading] = useState<string | null>(null);
+
+  const fetchCommittedQtys = async () => {
+    try {
+      const res = await fetch('/api/cut-plans/committed-quantities');
+      if (res.ok) {
+        const data = await res.json();
+        const map = new Map<string, number>();
+        Object.entries(data || {}).forEach(([key, val]) => map.set(key, val as number));
+        setCommittedQtys(map);
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar quantidades comprometidas:', e);
+    }
+  };
+
+  const fetchCutPlans = async () => {
+    setIsLoadingCutPlans(true);
+    try {
+      const res = await fetch('/api/cut-plans');
+      if (res.ok) {
+        const data = await res.json();
+        setCutPlans(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar planos de corte:', e);
+    } finally {
+      setIsLoadingCutPlans(false);
+    }
+  };
+
+  // Action: release plan for cutting
+  const handleReleasePlan = async (planId: number, planNumber: string) => {
+    if (!window.confirm(`Liberar plano ${planNumber} para corte? As quantidades serão removidas da Central de Corte.`)) return;
+    setCutPlanActionLoading(`release-${planId}`);
+    try {
+      const res = await fetch(`/api/cut-plans/${planId}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_name: currentUser?.name || 'Operador' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao liberar plano');
+      await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
+      onRefresh();
+      setNotification({ type: 'success', message: `✅ Plano ${planNumber} liberado para corte!` });
+      setTimeout(() => setNotification(null), 6000);
+    } catch (e: any) {
+      setNotification({ type: 'error', message: e.message });
+      setTimeout(() => setNotification(null), 8000);
+    } finally {
+      setCutPlanActionLoading(null);
+    }
+  };
+
+  // Action: complete cut
+  const handleCompleteCut = async (planId: number, planNumber: string, qtyPlanned: number) => {
+    const input = window.prompt(`Plano ${planNumber}: Quantas peças foram cortadas? (Planejado: ${qtyPlanned})`);
+    if (input === null) return;
+    const qty = parseInt(input, 10);
+    if (isNaN(qty) || qty < 0) { alert('Quantidade inválida.'); return; }
+    setCutPlanActionLoading(`cut-${planId}`);
+    try {
+      const res = await fetch(`/api/cut-plans/${planId}/complete-cut`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qty_cut_actual: qty, user_name: currentUser?.name || 'Operador' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao registrar corte');
+      await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
+      onRefresh();
+      const msg = data.qty_returned_to_pending > 0
+        ? `✅ Corte registrado: ${qty} peças. ${data.qty_returned_to_pending} retornaram para pendência.`
+        : `✅ Corte concluído: ${qty} peças.`;
+      setNotification({ type: 'success', message: msg });
+      setTimeout(() => setNotification(null), 8000);
+    } catch (e: any) {
+      setNotification({ type: 'error', message: e.message });
+      setTimeout(() => setNotification(null), 8000);
+    } finally {
+      setCutPlanActionLoading(null);
+    }
+  };
+
+  // Action: send to sewing
+  const handleSendSewing = async (planId: number, planNumber: string) => {
+    if (!window.confirm(`Enviar plano ${planNumber} para costura?`)) return;
+    setCutPlanActionLoading(`sewing-${planId}`);
+    try {
+      const res = await fetch(`/api/cut-plans/${planId}/send-sewing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_name: currentUser?.name || 'Operador' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao enviar para costura');
+      await fetchCutPlans();
+      setNotification({ type: 'success', message: `✅ Plano ${planNumber} enviado para costura!` });
+      setTimeout(() => setNotification(null), 6000);
+    } catch (e: any) {
+      setNotification({ type: 'error', message: e.message });
+      setTimeout(() => setNotification(null), 8000);
+    } finally {
+      setCutPlanActionLoading(null);
+    }
+  };
+
+  // Action: return from sewing
+  const handleReturnSewing = async (planId: number, planNumber: string, qtyInSewing: number) => {
+    const input = window.prompt(`Plano ${planNumber}: Quantas peças retornaram da costura? (Em costura: ${qtyInSewing})`);
+    if (input === null) return;
+    const qty = parseInt(input, 10);
+    if (isNaN(qty) || qty <= 0) { alert('Quantidade inválida.'); return; }
+    setCutPlanActionLoading(`return-sewing-${planId}`);
+    try {
+      const res = await fetch(`/api/cut-plans/${planId}/return-sewing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qty_returned: qty, user_name: currentUser?.name || 'Operador' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao registrar retorno');
+      await fetchCutPlans();
+      const msg = data.qty_still_in_sewing > 0
+        ? `✅ ${qty} peças retornaram. ${data.qty_still_in_sewing} ainda em costura.`
+        : `✅ Costura concluída! ${qty} peças retornaram.`;
+      setNotification({ type: 'success', message: msg });
+      setTimeout(() => setNotification(null), 8000);
+    } catch (e: any) {
+      setNotification({ type: 'error', message: e.message });
+      setTimeout(() => setNotification(null), 8000);
+    } finally {
+      setCutPlanActionLoading(null);
+    }
+  };
+
+  // Action: cancel plan
+  // Action: create a new cut plan (draft/pending)
+  const handleCreateCutPlan = async (group: CorteGroupDemand) => {
+    setCutPlanActionLoading('creating');
+    try {
+      const items = group.all_items.flatMap(it =>
+        it.pedidos_waiting.map(w => ({
+          order_id: w.order_id,
+          order_number: w.order_number,
+          sku: it.sku,
+          product_type: it.product_type,
+          fabric: it.fabric || group.fabric,
+          color: it.color || group.color,
+          size: it.size,
+          item_key: it.item_key,
+          quantity_planned: w.qty_corte_pending || w.qty_corte_needed || w.item_quantity
+        }))
+      );
+
+      const res = await fetch('/api/cut-plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fabric: group.fabric,
+          color: group.color,
+          tipo_tecido: group.tipo_tecido,
+          largura_util: group.largura_util,
+          items,
+          created_by: currentUser?.name || 'Sistema'
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar plano de corte');
+
+      setNotification({ type: 'success', message: `✅ Plano ${data.plan_number} gerado com sucesso no PCP!` });
+      await fetchCutPlans();
+      setSelectedGroupForPlanModal(null);
+      setActiveSubTab('approved_plans'); // Switch to the PCP tab to see it
+    } catch (e: any) {
+      setNotification({ type: 'error', message: e.message });
+      setTimeout(() => setNotification(null), 8000);
+    } finally {
+      setCutPlanActionLoading(null);
+    }
+  };
+
+  const handleCancelCutPlan = async (planId: number, planNumber: string) => {
+    const reason = window.prompt(`Motivo do cancelamento do plano ${planNumber} (opcional):`);
+    if (reason === null) return; // user pressed cancel
+    setCutPlanActionLoading(`cancel-${planId}`);
+    try {
+      const res = await fetch(`/api/cut-plans/${planId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, user_name: currentUser?.name || 'Operador' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao cancelar plano');
+      await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
+      onRefresh();
+      setNotification({ type: 'success', message: `✅ Plano ${planNumber} cancelado. ${data.qty_returned_to_pending} peças retornaram para pendência.` });
+      setTimeout(() => setNotification(null), 8000);
+    } catch (e: any) {
+      setNotification({ type: 'error', message: e.message });
+      setTimeout(() => setNotification(null), 8000);
+    } finally {
+      setCutPlanActionLoading(null);
+    }
+  };
+
+  // Aggregate corte demand dynamically from active orders, filtering committed quantities
   const allDemandItems = useMemo(() => {
     if (!isRegistryLoaded) return [];
-    return aggregateCuttingDemand(orders, stockCache);
-  }, [orders, isRegistryLoaded, registryRefreshCount, stockCache]);
+    return aggregateCuttingDemand(orders, stockCache, committedQtys);
+  }, [orders, isRegistryLoaded, registryRefreshCount, stockCache, committedQtys]);
+
 
   // Filtered & sorted demand items
   const filteredDemandItems = useMemo(() => {
@@ -863,6 +1082,117 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       {activeSubTab === 'approved_plans' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
+          {/* SECÇÃO DOS NOVOS PLANOS DE CORTE DO PCP */}
+          <div className="flex items-center justify-between mt-8 mb-4">
+            <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <Scissors className="text-indigo-600" size={20} /> CONTROLE DO CHÃO DE FÁBRICA ({cutPlans.length})
+            </h3>
+            <button
+              onClick={fetchCutPlans}
+              className="px-3 py-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all cursor-pointer"
+            >
+              ↻ Atualizar PCP
+            </button>
+          </div>
+
+          {isLoadingCutPlans ? (
+            <div className="p-8 text-center text-slate-500 font-mono text-sm">Carregando planos...</div>
+          ) : cutPlans.length === 0 ? (
+            <div className="p-12 text-center bg-white border border-slate-200 rounded-3xl space-y-3 shadow-2xs">
+              <Package size={36} className="mx-auto text-slate-300" />
+              <h4 className="font-black text-slate-700 text-base">Nenhum plano de corte registrado.</h4>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {cutPlans.map((plan: any) => (
+                <div key={plan.id} className="bg-white border border-indigo-100 rounded-3xl shadow-sm hover:border-indigo-300 transition-all p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 font-mono text-xs font-black rounded-lg uppercase bg-indigo-600 text-white">
+                          {plan.plan_number}
+                        </span>
+                        <span className={`px-3 py-1 font-mono text-[10px] font-black rounded-lg uppercase border 
+                          ${plan.status === 'PENDING_CUT' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                            plan.status === 'CUT_RELEASED' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                            plan.status === 'CUT_COMPLETED' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' :
+                            plan.status === 'IN_SEWING' ? 'bg-purple-50 text-purple-800 border-purple-200' :
+                            plan.status === 'SEWING_COMPLETED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                            plan.status === 'CANCELLED' ? 'bg-red-50 text-red-800 border-red-200' :
+                            'bg-slate-50 text-slate-800 border-slate-200'
+                          }`}>
+                          {plan.status}
+                        </span>
+                      </div>
+                      <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide mt-2">
+                        Tecido: {plan.fabric || '-'} • Cor: {plan.color || '-'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono text-[10px] text-slate-500 text-right">
+                      <div className="flex flex-col gap-1">
+                        <span>Planejado: <strong className="text-slate-800 text-xs">{plan.qty_planned}</strong></span>
+                        <span>Cortado: <strong className="text-blue-700 text-xs">{plan.qty_cut || 0}</strong></span>
+                        <span>Em Costura: <strong className="text-purple-700 text-xs">{plan.qty_sewing || 0}</strong></span>
+                        <span>Retornou Costura: <strong className="text-emerald-700 text-xs">{plan.qty_sewing_done || 0}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {plan.status === 'PENDING_CUT' && (
+                      <button
+                        onClick={() => handleReleasePlan(plan.id, plan.plan_number)}
+                        disabled={cutPlanActionLoading !== null}
+                        className="px-4 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {cutPlanActionLoading === `release-${plan.id}` ? 'Processando...' : 'Liberar para Corte'}
+                      </button>
+                    )}
+                    {plan.status === 'CUT_RELEASED' && (
+                      <>
+                        <button
+                          onClick={() => handleCompleteCut(plan.id, plan.plan_number, plan.qty_planned)}
+                          disabled={cutPlanActionLoading !== null}
+                          className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        >
+                          {cutPlanActionLoading === `cut-${plan.id}` ? 'Processando...' : 'Registrar Corte Concluído'}
+                        </button>
+                        <button
+                          onClick={() => handleCancelCutPlan(plan.id, plan.plan_number)}
+                          disabled={cutPlanActionLoading !== null}
+                          className="px-4 py-2 bg-red-50 text-red-700 font-bold text-xs rounded-xl hover:bg-red-100 transition-colors border border-red-200 disabled:opacity-50"
+                        >
+                          {cutPlanActionLoading === `cancel-${plan.id}` ? 'Processando...' : 'Cancelar Plano'}
+                        </button>
+                      </>
+                    )}
+                    {plan.status === 'CUT_COMPLETED' && (
+                      <button
+                        onClick={() => handleSendSewing(plan.id, plan.plan_number)}
+                        disabled={cutPlanActionLoading !== null}
+                        className="px-4 py-2 bg-purple-600 text-white font-bold text-xs rounded-xl hover:bg-purple-700 transition-colors disabled:opacity-50"
+                      >
+                        {cutPlanActionLoading === `sewing-${plan.id}` ? 'Processando...' : 'Enviar para Costura'}
+                      </button>
+                    )}
+                    {plan.status === 'IN_SEWING' && (
+                      <button
+                        onClick={() => handleReturnSewing(plan.id, plan.plan_number, plan.qty_sewing)}
+                        disabled={cutPlanActionLoading !== null}
+                        className="px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                      >
+                        {cutPlanActionLoading === `return-sewing-${plan.id}` ? 'Processando...' : 'Registrar Retorno Costura'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ANTIGOS PLANOS DE ENFESTO */}
+
+
             <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
               <CheckCircle2 className="text-blue-600" size={20} /> PLANOS DE ENFESTO APROVADOS ({approvedPlans.length})
             </h3>
@@ -1110,6 +1440,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
           isOpen={!!selectedGroupForPlanModal}
           onClose={() => setSelectedGroupForPlanModal(null)}
           group={selectedGroupForPlanModal}
+          onCreateCutPlan={handleCreateCutPlan}
+          isCreatingPlan={cutPlanActionLoading === 'creating'}
         />
       )}
 

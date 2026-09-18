@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Copy,
@@ -20,12 +20,16 @@ interface CuttingPlanModalProps {
   isOpen: boolean;
   onClose: () => void;
   group: CorteGroupDemand | null;
+  onCreateCutPlan?: (group: CorteGroupDemand) => void;
+  isCreatingPlan?: boolean;
 }
 
 export const CuttingPlanModal: React.FC<CuttingPlanModalProps> = ({
   isOpen,
   onClose,
-  group
+  group,
+  onCreateCutPlan,
+  isCreatingPlan = false
 }) => {
   const [copiedFormat, setCopiedFormat] = useState<'text' | 'tsv' | null>(null);
   const [activeView, setActiveView] = useState<'plan' | 'details'>('plan');
@@ -356,15 +360,28 @@ export const CuttingPlanModal: React.FC<CuttingPlanModalProps> = ({
         {/* Modal Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
           <span>
-            {group.models_breakdown.length} modelo(s) · {group.total_necessario} peças no total
+            {group.models_breakdown.length} modelo(s) • {group.total_necessario} peças no total
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all cursor-pointer"
-          >
-            Fechar
-          </button>
+          <div className="flex items-center gap-3">
+            {onCreateCutPlan && (
+              <button
+                type="button"
+                onClick={() => onCreateCutPlan(group)}
+                disabled={isCreatingPlan}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white rounded-xl font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shadow-sm"
+              >
+                {isCreatingPlan ? 'Gerando Plano...' : 'Gerar Plano de Corte (PCP)'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isCreatingPlan}
+              className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-700 text-white rounded-xl font-bold transition-all cursor-pointer"
+            >
+              Fechar
+            </button>
+          </div>
         </div>
 
       </div>

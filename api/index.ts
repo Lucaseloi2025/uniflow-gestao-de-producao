@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
@@ -5930,6 +5930,524 @@ app.post('/api/stock/sync', async (req: any, res: any) => {
     return res.json({ success: true, results, synced: results.length, total: products.length, rateLimited: false });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Erro interno.' });
+  }
+});
+
+
+// ============================================================================
+// CUT PLANS â€” Controle Real do Chao de Fabrica
+// ============================================================================
+
+// GET /api/cut-plans â€” lista todos os planos com itens e movimentacoes
+app.get('/api/cut-plans', async (req: any, res: any) => {
+  try {
+    const { data: plans, error } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*)')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(plans || []);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cut-plans/:id â€” plano especifico com itens e movimentacoes
+app.get('/api/cut-plans/:id', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { data: plan, error } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*), movements:production_movements(*)')
+      .eq('id', id)
+      .single();
+    if (error) return res.status(404).json({ error: 'Plano nao encontrado' });
+    return res.json(plan);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cut-plans â€” cria um novo plano de corte (snapshot + itens por pedido)
+app.post('/api/cut-plans', async (req: any, res: any) => {
+  try {
+    const { fabric, color, tipo_tecido, largura_util, items, created_by, notes } = req.body;
+    // items = array de { order_id, order_number, sku, product_type, fabric, color, size, item_key, quantity_planned }
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Items do plano sao obrigatorios' });
+    }
+
+    const qty_planned = items.reduce((sum: number, it: any) => sum + Number(it.quantity_planned || 0), 0);
+
+    // Gerar plan_number: PC-YYYY-NNNNN
+    const year = new Date().getFullYear();
+    const { data: maxRow } = await supabaseAdmin
+      .from('cut_plans')
+      .select('plan_number')
+      .like('plan_number', `PC-${year}-%`)
+      .order('plan_number', { ascending: false })
+      .limit(1)
+      .single();
+    let seq = 1;
+    if (maxRow?.plan_number) {
+      const parts = maxRow.plan_number.split('-');
+      seq = (parseInt(parts[2] || '0', 10) || 0) + 1;
+    }
+    const plan_number = `PC-${year}-${String(seq).padStart(5, '0')}`;
+
+    const { data: plan, error: planErr } = await supabaseAdmin
+      .from('cut_plans')
+      .insert({
+        plan_number, fabric, color, tipo_tecido, largura_util,
+        qty_planned, status: 'PENDING_CUT',
+        snapshot_json: items,
+        created_by: created_by || 'Sistema',
+        notes: notes || null
+      })
+      .select()
+      .single();
+    if (planErr || !plan) return res.status(500).json({ error: planErr?.message || 'Erro ao criar plano' });
+
+    // Criar itens do plano
+    const itemsToInsert = items.map((it: any) => ({
+      plan_id: plan.id,
+      order_id: it.order_id,
+      order_number: it.order_number || null,
+      order_item_id: it.order_item_id || null,
+      sku: it.sku || null,
+      product_type: it.product_type,
+      fabric: it.fabric || fabric,
+      color: it.color || color,
+      size: it.size,
+      item_key: it.item_key,
+      quantity_planned: Number(it.quantity_planned || 0),
+      quantity_cut: 0,
+      quantity_sewing: 0,
+      quantity_sewing_done: 0,
+      status: 'PENDING_CUT'
+    }));
+    await supabaseAdmin.from('cut_plan_items').insert(itemsToInsert);
+
+    // Registrar movimento PLAN_CREATED
+    const movements = items.map((it: any) => ({
+      plan_id: plan.id,
+      order_id: it.order_id,
+      order_number: it.order_number || null,
+      plan_number,
+      movement_type: 'PLAN_CREATED',
+      sku: it.sku || null,
+      product_type: it.product_type,
+      size: it.size,
+      item_key: it.item_key,
+      qty_before: 0,
+      qty_after: Number(it.quantity_planned || 0),
+      quantity: Number(it.quantity_planned || 0),
+      notes: 'Plano criado',
+      user_name: created_by || 'Sistema'
+    }));
+    await supabaseAdmin.from('production_movements').insert(movements);
+
+    return res.status(201).json({ ...plan, plan_number });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cut-plans/:id/release â€” LIBERAR PARA CORTE
+app.post('/api/cut-plans/:id/release', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { user_name } = req.body;
+
+    const { data: plan, error: fetchErr } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*)')
+      .eq('id', id)
+      .single();
+    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
+    if (plan.status !== 'PENDING_CUT') {
+      return res.status(400).json({ error: `Plano ja esta em status ${plan.status}. Apenas planos PENDING_CUT podem ser liberados.` });
+    }
+
+    const now = new Date().toISOString();
+
+    await supabaseAdmin.from('cut_plans').update({
+      status: 'CUT_RELEASED', released_at: now
+    }).eq('id', id);
+
+    await supabaseAdmin.from('cut_plan_items').update({ status: 'CUT_RELEASED' }).eq('plan_id', id);
+
+    const movements = (plan.items || []).map((it: any) => ({
+      plan_id: Number(id),
+      plan_item_id: it.id,
+      order_id: it.order_id,
+      order_number: it.order_number,
+      plan_number: plan.plan_number,
+      movement_type: 'CUT_RELEASED',
+      sku: it.sku,
+      product_type: it.product_type,
+      size: it.size,
+      item_key: it.item_key,
+      qty_before: it.quantity_planned,
+      qty_after: it.quantity_planned,
+      quantity: it.quantity_planned,
+      notes: 'Liberado para corte',
+      user_name: user_name || 'Sistema'
+    }));
+    await supabaseAdmin.from('production_movements').insert(movements);
+
+    return res.json({ success: true, plan_number: plan.plan_number, status: 'CUT_RELEASED' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cut-plans/:id/complete-cut â€” CORTE CONCLUIDO
+app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { qty_cut_actual, user_name, notes } = req.body;
+
+    if (!qty_cut_actual || Number(qty_cut_actual) < 0) {
+      return res.status(400).json({ error: 'qty_cut_actual e obrigatorio e deve ser >= 0' });
+    }
+
+    const { data: plan, error: fetchErr } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*)')
+      .eq('id', id)
+      .single();
+    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
+    if (plan.status !== 'CUT_RELEASED') {
+      return res.status(400).json({ error: `Plano deve estar em CUT_RELEASED para registrar corte concluido. Status atual: ${plan.status}` });
+    }
+
+    const qtyCutActual = Number(qty_cut_actual);
+    const qtyPlanned = Number(plan.qty_planned);
+    const qtyReturn = Math.max(0, qtyPlanned - qtyCutActual);
+
+    await supabaseAdmin.from('cut_plans').update({
+      status: 'CUT_COMPLETED',
+      qty_cut: qtyCutActual,
+      cut_completed_at: new Date().toISOString()
+    }).eq('id', id);
+
+    const items = plan.items || [];
+    const movementsToInsert: any[] = [];
+
+    for (const it of items) {
+      const itPlanned = Number(it.quantity_planned);
+      const ratio = qtyPlanned > 0 ? itPlanned / qtyPlanned : 0;
+      const itCut = Math.round(qtyCutActual * ratio);
+      const itReturn = itPlanned - itCut;
+
+      let newStatus = 'CUT_COMPLETED';
+      if (itCut <= 0) newStatus = 'PENDING_CUT';
+
+      await supabaseAdmin.from('cut_plan_items').update({
+        status: newStatus,
+        quantity_cut: itCut
+      }).eq('id', it.id);
+
+      movementsToInsert.push({
+        plan_id: Number(id),
+        plan_item_id: it.id,
+        order_id: it.order_id,
+        order_number: it.order_number,
+        plan_number: plan.plan_number,
+        movement_type: 'CUT_COMPLETED',
+        sku: it.sku,
+        product_type: it.product_type,
+        size: it.size,
+        item_key: it.item_key,
+        qty_before: itPlanned,
+        qty_after: itCut,
+        quantity: itCut,
+        notes: notes || (itReturn > 0 ? `${itReturn} pecas retornaram para pendencia` : 'Corte exato'),
+        user_name: user_name || 'Sistema'
+      });
+
+      if (itReturn > 0) {
+        movementsToInsert.push({
+          plan_id: Number(id),
+          plan_item_id: it.id,
+          order_id: it.order_id,
+          order_number: it.order_number,
+          plan_number: plan.plan_number,
+          movement_type: 'CUT_PARTIAL_RETURN',
+          sku: it.sku,
+          product_type: it.product_type,
+          size: it.size,
+          item_key: it.item_key,
+          qty_before: itPlanned,
+          qty_after: 0,
+          quantity: itReturn,
+          notes: `${itReturn} pecas retornaram para pendencia de corte`,
+          user_name: user_name || 'Sistema'
+        });
+      }
+    }
+
+    await supabaseAdmin.from('production_movements').insert(movementsToInsert);
+
+    return res.json({
+      success: true,
+      qty_planned: qtyPlanned,
+      qty_cut: qtyCutActual,
+      qty_returned_to_pending: qtyReturn,
+      status: 'CUT_COMPLETED'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cut-plans/:id/send-sewing â€” ENVIAR PARA COSTURA
+app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { qty_sewing, user_name, notes } = req.body;
+
+    const { data: plan, error: fetchErr } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*)')
+      .eq('id', id)
+      .single();
+    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
+    if (plan.status !== 'CUT_COMPLETED') {
+      return res.status(400).json({ error: `Plano deve estar CUT_COMPLETED para enviar para costura. Status atual: ${plan.status}` });
+    }
+
+    const qtySewing = Number(qty_sewing) || Number(plan.qty_cut) || 0;
+
+    await supabaseAdmin.from('cut_plans').update({
+      status: 'IN_SEWING',
+      qty_sewing: qtySewing
+    }).eq('id', id);
+
+    await supabaseAdmin.from('cut_plan_items').update({ status: 'IN_SEWING', quantity_sewing: qtySewing }).eq('plan_id', id).eq('status', 'CUT_COMPLETED');
+
+    const movements = (plan.items || []).filter((it: any) => it.status === 'CUT_COMPLETED').map((it: any) => ({
+      plan_id: Number(id),
+      plan_item_id: it.id,
+      order_id: it.order_id,
+      order_number: it.order_number,
+      plan_number: plan.plan_number,
+      movement_type: 'SEWING_SENT',
+      sku: it.sku,
+      product_type: it.product_type,
+      size: it.size,
+      item_key: it.item_key,
+      qty_before: it.quantity_cut,
+      qty_after: it.quantity_cut,
+      quantity: it.quantity_cut,
+      notes: notes || 'Enviado para costura',
+      user_name: user_name || 'Sistema'
+    }));
+    await supabaseAdmin.from('production_movements').insert(movements);
+
+    return res.json({ success: true, qty_sewing: qtySewing, status: 'IN_SEWING' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cut-plans/:id/return-sewing â€” RETORNOU DA COSTURA (parcial ou total)
+app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { qty_returned, user_name, notes } = req.body;
+
+    const { data: plan, error: fetchErr } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*)')
+      .eq('id', id)
+      .single();
+    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
+    if (plan.status !== 'IN_SEWING') {
+      return res.status(400).json({ error: `Plano deve estar IN_SEWING para registrar retorno. Status atual: ${plan.status}` });
+    }
+
+    const qtyReturned = Number(qty_returned) || 0;
+    const qtyInSewing = Number(plan.qty_sewing) || 0;
+    const qtyStillInSewing = Math.max(0, qtyInSewing - qtyReturned);
+
+    const newStatus = qtyStillInSewing <= 0 ? 'SEWING_COMPLETED' : 'IN_SEWING';
+
+    await supabaseAdmin.from('cut_plans').update({
+      status: newStatus,
+      qty_sewing_done: (Number(plan.qty_sewing_done) || 0) + qtyReturned,
+      qty_sewing: qtyStillInSewing
+    }).eq('id', id);
+
+    const qtyInSewingPlan = Number(plan.qty_sewing) || 1;
+    for (const it of (plan.items || [])) {
+      if (it.status !== 'IN_SEWING') continue;
+      const itRatio = Number(it.quantity_sewing) / qtyInSewingPlan;
+      const itReturned = Math.round(qtyReturned * itRatio);
+      const itStillSewing = Math.max(0, Number(it.quantity_sewing) - itReturned);
+      await supabaseAdmin.from('cut_plan_items').update({
+        status: itStillSewing <= 0 ? 'SEWING_COMPLETED' : 'IN_SEWING',
+        quantity_sewing_done: (Number(it.quantity_sewing_done) || 0) + itReturned,
+        quantity_sewing: itStillSewing
+      }).eq('id', it.id);
+    }
+
+    const movements = [{
+      plan_id: Number(id),
+      order_id: null,
+      plan_number: plan.plan_number,
+      movement_type: 'SEWING_RETURNED',
+      qty_before: qtyInSewing,
+      qty_after: qtyStillInSewing,
+      quantity: qtyReturned,
+      notes: notes || (qtyStillInSewing > 0 ? `${qtyStillInSewing} ainda em costura` : 'Costura concluida'),
+      user_name: user_name || 'Sistema'
+    }];
+    await supabaseAdmin.from('production_movements').insert(movements);
+
+    return res.json({
+      success: true,
+      qty_returned: qtyReturned,
+      qty_still_in_sewing: qtyStillInSewing,
+      status: newStatus
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cut-plans/:id/cancel â€” CANCELAR LIBERACAO / REABRIR PARA CORTE
+app.post('/api/cut-plans/:id/cancel', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { user_name, reason } = req.body;
+
+    const { data: plan, error: fetchErr } = await supabaseAdmin
+      .from('cut_plans')
+      .select('*, items:cut_plan_items(*)')
+      .eq('id', id)
+      .single();
+    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
+
+    const cancellableStatuses = ['PENDING_CUT', 'CUT_RELEASED'];
+    if (!cancellableStatuses.includes(plan.status)) {
+      return res.status(400).json({ error: `Nao e possivel cancelar um plano com status ${plan.status}. Apenas PENDING_CUT e CUT_RELEASED podem ser cancelados.` });
+    }
+
+    await supabaseAdmin.from('cut_plans').update({ status: 'CANCELLED' }).eq('id', id);
+    await supabaseAdmin.from('cut_plan_items').update({ status: 'CANCELLED' }).eq('plan_id', id);
+
+    const movements = (plan.items || []).map((it: any) => ({
+      plan_id: Number(id),
+      plan_item_id: it.id,
+      order_id: it.order_id,
+      order_number: it.order_number,
+      plan_number: plan.plan_number,
+      movement_type: 'PLAN_CANCELLED',
+      sku: it.sku,
+      product_type: it.product_type,
+      size: it.size,
+      item_key: it.item_key,
+      qty_before: it.quantity_planned,
+      qty_after: 0,
+      quantity: it.quantity_planned,
+      notes: reason || 'Liberacao cancelada â€” quantidades retornam para pendencia de corte',
+      user_name: user_name || 'Sistema'
+    }));
+    await supabaseAdmin.from('production_movements').insert(movements);
+
+    return res.json({
+      success: true,
+      status: 'CANCELLED',
+      qty_returned_to_pending: plan.qty_planned,
+      message: `${plan.qty_planned} pecas retornaram para pendencia de corte`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cut-plans/:id/movements â€” historico de movimentacoes
+app.get('/api/cut-plans/:id/movements', async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('production_movements')
+      .select('*')
+      .eq('plan_id', id)
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data || []);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/orders/:id/production-status â€” andamento produtivo por item do pedido
+app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
+  try {
+    const orderId = Number(req.params.id);
+    const { data: items, error } = await supabaseAdmin
+      .from('cut_plan_items')
+      .select('*, plan:cut_plans(plan_number, created_at, released_at, status)')
+      .eq('order_id', orderId)
+      .neq('status', 'CANCELLED')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Agrupar por item_key
+    const byItemKey: Record<string, any[]> = {};
+    for (const it of (items || [])) {
+      if (!byItemKey[it.item_key]) byItemKey[it.item_key] = [];
+      byItemKey[it.item_key].push(it);
+    }
+
+    const summary = Object.entries(byItemKey).map(([item_key, its]) => {
+      const totalPlanned = its.reduce((s, i) => s + (i.quantity_planned || 0), 0);
+      const totalCut = its.reduce((s, i) => s + (i.quantity_cut || 0), 0);
+      const totalSewing = its.reduce((s, i) => s + (i.quantity_sewing || 0), 0);
+      const totalSewingDone = its.reduce((s, i) => s + (i.quantity_sewing_done || 0), 0);
+      const firstItem = its[0];
+      return {
+        item_key,
+        product_type: firstItem.product_type,
+        fabric: firstItem.fabric,
+        color: firstItem.color,
+        size: firstItem.size,
+        sku: firstItem.sku,
+        plans: its.map(i => ({ plan_id: i.plan_id, plan_number: i.plan?.plan_number, status: i.status, quantity_planned: i.quantity_planned, quantity_cut: i.quantity_cut })),
+        total_planned: totalPlanned,
+        total_cut: totalCut,
+        total_sewing: totalSewing,
+        total_sewing_done: totalSewingDone,
+        dominant_status: its[0]?.status || 'PENDING_CUT'
+      };
+    });
+
+    return res.json(summary);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cut-plans/committed-quantities â€” quantidades comprometidas para a Central de Corte
+app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('cut_plan_items')
+      .select('order_id, item_key, quantity_planned')
+      .in('status', ['CUT_RELEASED', 'CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED', 'IN_CUSTOMIZATION', 'COMPLETED']);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const result: Record<string, number> = {};
+    for (const row of (data || [])) {
+      const key = `${row.order_id}::${row.item_key}`;
+      result[key] = (result[key] || 0) + (row.quantity_planned || 0);
+    }
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

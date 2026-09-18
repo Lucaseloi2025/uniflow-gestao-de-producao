@@ -628,3 +628,85 @@ export interface TechnicalProductRegistry {
 }
 
 export type StockCache = Record<string, number>;
+
+// ============================================================================
+// Controle Real do Chão de Fábrica — PCP ProComfort
+// ============================================================================
+
+export type ProductionStatus =
+  | 'PENDING_CUT'
+  | 'CUT_RELEASED'
+  | 'CUT_COMPLETED'
+  | 'IN_SEWING'
+  | 'SEWING_COMPLETED'
+  | 'IN_CUSTOMIZATION'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export interface CutPlan {
+  id: number;
+  plan_number: string;
+  status: ProductionStatus;
+  fabric?: string;
+  color?: string;
+  tipo_tecido?: string;
+  largura_util?: string;
+  qty_planned: number;
+  qty_cut: number;
+  qty_sewing: number;
+  qty_sewing_done: number;
+  snapshot_json?: any;
+  notes?: string;
+  created_by?: string;
+  released_at?: string;
+  cut_completed_at?: string;
+  created_at: string;
+  updated_at: string;
+  items?: CutPlanItem[];
+  movements?: ProductionMovement[];
+}
+
+export interface CutPlanItem {
+  id: number;
+  plan_id: number;
+  order_id: number;
+  order_number: string;
+  order_item_id?: string;
+  sku?: string;
+  product_type: string;
+  fabric?: string;
+  color?: string;
+  size: string;
+  item_key: string;
+  quantity_planned: number;
+  quantity_cut: number;
+  quantity_sewing: number;
+  quantity_sewing_done: number;
+  status: ProductionStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductionMovement {
+  id: number;
+  plan_id?: number;
+  plan_item_id?: number;
+  order_id?: number;
+  order_number?: string;
+  plan_number?: string;
+  movement_type: string;
+  sku?: string;
+  product_type?: string;
+  size?: string;
+  item_key?: string;
+  qty_before: number;
+  qty_after: number;
+  quantity: number;
+  notes?: string;
+  user_name?: string;
+  created_at: string;
+}
+
+/** Chave: `${order_id}::${item_key}` → quantidade já comprometida */
+export type CommittedQtyMap = Map<string, number>;
+
