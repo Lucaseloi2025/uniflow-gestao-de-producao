@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import ReactDOM from 'react-dom';
 import { CutPlan } from '../types';
 import { Printer, X, Scissors, PackageCheck, AlertTriangle } from 'lucide-react';
@@ -49,17 +49,23 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-6 bg-slate-900/60 backdrop-blur-sm print:absolute print:inset-0 print:z-0 print:bg-white print:p-0 print:block print:overflow-visible">
-      <style dangerouslySetInnerHTML={{__html: `
+            <style dangerouslySetInnerHTML={{__html: `
         @media print {
           #root { display: none !important; }
-          body { background-color: white !important; margin: 0; padding: 0; }
-          @page { margin: 1.5cm; size: A4 portrait; }
+          #print-header-hide { display: none !important; }
+          body { background-color: white !important; margin: 0; padding: 0; font-size: 10px !important; }
+          @page { margin: 1cm; size: A4 portrait; }
+          .print-compact-title { font-size: 16px !important; margin: 0 !important; }
+          .print-compact-p { font-size: 10px !important; margin: 0 !important; }
+          .print-compact-section { padding: 4px !important; margin-bottom: 8px !important; }
+          .print-compact-grid { gap: 4px !important; }
+          .print-compact-table th, .print-compact-table td { padding: 2px 4px !important; font-size: 9px !important; }
         }
       `}} />
       <div className="bg-white rounded-none md:rounded-2xl shadow-2xl w-full max-w-5xl h-full md:h-[90vh] overflow-y-auto flex flex-col print:shadow-none print:rounded-none print:w-full print:max-w-none print:h-auto print:overflow-visible print:bg-white">
         
         {/* Modal Actions (Hide in print) */}
-        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 p-4 flex items-center justify-between shrink-0 print:hidden rounded-t-3xl">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-200 p-4 flex items-center justify-between shrink-0 print:hidden rounded-t-3xl" style={{ display: window.matchMedia("print").matches ? "none" : undefined }} id="print-header-hide">
           <div className="flex items-center gap-3">
             <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">Ficha de Ordem de Produção (PCP)</h3>
           </div>
@@ -80,18 +86,18 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
         </div>
 
         {/* PRINTABLE SHEET CONTAINER */}
-        <div className="p-8 sm:p-10 space-y-6 font-sans text-slate-900 bg-white text-left print:p-0 print:m-0 print:shadow-none">
+        <div className="p-8 sm:p-10 space-y-6 print:space-y-2 font-sans text-slate-900 bg-white text-left print:p-0 print:m-0 print:shadow-none">
           
           {/* Header Ficha */}
-          <div className="border-b-2 border-slate-900 pb-4 flex justify-between items-start gap-4">
+          <div className="border-b-2 border-slate-900 pb-4 print:pb-1 flex justify-between items-start gap-4">
             <div>
               <span className="text-[11px] font-black uppercase tracking-widest text-blue-900 block">
                 COMFORTPRO - PCP CORTE E COSTURA
               </span>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-950 uppercase tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-950 uppercase tracking-tight print-compact-title">
                 ORDEM DE PRODUÇÃO: {plan.plan_number}
               </h1>
-              <p className="text-xs font-bold text-slate-600 mt-0.5">
+              <p className="text-xs font-bold text-slate-600 mt-0.5 print-compact-p">
                 Plano: <span className="font-mono text-slate-900 font-black">{plan.plan_number}</span>
               </p>
             </div>
@@ -104,11 +110,11 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
           </div>
 
           {/* Dados do Tecido */}
-          <section className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <section className="bg-slate-50 border border-slate-200 rounded-xl p-4 print-compact-section">
             <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
               <Scissors size={14} /> ESPECIFICAÇÕES DO MATERIAL
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-medium">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-medium print-compact-grid">
               <div>
                 <span className="block text-[10px] text-slate-500 uppercase tracking-wider mb-0.5 font-bold">Tecido Principal</span>
                 <span className="font-black text-slate-900 text-base">{plan.fabric || 'N/A'}</span>
@@ -129,24 +135,24 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
           </section>
 
           {/* Pedidos Atendidos (OPs) */}
-          <section className="space-y-4 pt-4">
+          <section className="space-y-4 pt-2">
             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b-2 border-slate-200 pb-2">
               <PackageCheck size={18} /> ITENS DO PLANO POR PEDIDO DE VENDA (OPs)
             </h2>
             
-            <div className="space-y-6">
+            <div className="space-y-6 print:space-y-2">
               {Object.keys(itemsByOrder).map(orderNum => {
                 const orderItems = itemsByOrder[orderNum];
                 const totalOrder = orderItems.reduce((acc, it) => acc + (it.quantity_planned || 0), 0);
 
                 return (
                   <div key={orderNum} className="border border-slate-300 rounded-xl overflow-hidden break-inside-avoid">
-                    <div className="bg-slate-100 px-4 py-2 flex items-center justify-between border-b border-slate-300">
+                    <div className="bg-slate-100 px-4 py-2 print:py-1 print:px-2 flex items-center justify-between border-b border-slate-300">
                       <h3 className="font-black text-slate-900 text-sm font-mono">OP / PEDIDO: <span className="text-blue-800 text-base">{orderNum}</span></h3>
                       <span className="font-bold text-slate-600 text-xs font-mono">Total no pedido: {totalOrder} pecas</span>
                     </div>
                     
-                    <table className="w-full text-left text-xs">
+                    <table className="w-full text-left text-xs print-compact-table">
                       <thead className="bg-white border-b border-slate-200 font-mono text-[10px] uppercase text-slate-500">
                         <tr>
                           <th className="px-4 py-2 font-black">Modelo (Produto)</th>
@@ -196,3 +202,4 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
 
     </div>
   , document.body); };
+
