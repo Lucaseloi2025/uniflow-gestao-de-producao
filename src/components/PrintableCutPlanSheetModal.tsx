@@ -195,9 +195,4 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
       
 
     </div>
-  ), document.body); };
-
-
-
-
-
+  , document.body); };
