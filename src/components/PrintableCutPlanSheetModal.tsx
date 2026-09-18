@@ -1,4 +1,5 @@
 ﻿import React from 'react';
+import ReactDOM from 'react-dom';
 import { CutPlan } from '../types';
 import { Printer, X, Scissors, PackageCheck, AlertTriangle } from 'lucide-react';
 
@@ -46,9 +47,9 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
     return grouped;
   }, [plan.items]);
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm print:static print:bg-white print:backdrop-blur-none p-4">
-      <div className="bg-white w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col print:shadow-none print:w-full print:max-w-none print:h-auto print:max-h-none print:rounded-none">
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm print:static print:bg-white print:backdrop-blur-none p-4 print-container">
+      <div className="bg-white w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col print:shadow-none print:overflow-visible print:w-full print:max-w-none print:h-auto print:max-h-none print:rounded-none">
         
         {/* Modal Actions (Hide in print) */}
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 p-4 flex items-center justify-between shrink-0 print:hidden rounded-t-3xl">
@@ -131,7 +132,7 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
                 const orderItems = itemsByOrder[orderNum];
                 const totalOrder = orderItems.reduce((acc, it) => acc + (it.quantity_planned || 0), 0);
 
-                return (
+                return ReactDOM.createPortal(
                   <div key={orderNum} className="border border-slate-300 rounded-xl overflow-hidden break-inside-avoid">
                     <div className="bg-slate-100 px-4 py-2 flex items-center justify-between border-b border-slate-300">
                       <h3 className="font-black text-slate-900 text-sm font-mono">OP / PEDIDO: <span className="text-blue-800 text-base">{orderNum}</span></h3>
@@ -185,33 +186,8 @@ export const PrintableCutPlanSheetModal: React.FC<PrintableCutPlanSheetModalProp
         </div>
       </div>
       
-      {/* Styles for print mode */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #root, #root * {
-            visibility: hidden;
-          }
-          .print\\:static, .print\\:static * {
-            visibility: visible;
-          }
-          .print\\:static {
-            position: absolute;
-            left: 0;
-            top: 0;
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            background: white !important;
-          }
-          @page {
-            size: A4 portrait;
-            margin: 1.5cm;
-          }
-        }
-      `}} />
+
     </div>
-  );
-};
+  ), document.body); };
+
+
