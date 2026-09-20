@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Scissors,
   Calendar,
@@ -1092,22 +1092,10 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
           </div>
       )}
 
-      {/* SUBTAB 2: PLANOS APROVADOS DE ENFESTO (NOVA ABA COMFORTPRO) */}
+            {/* SUBTAB 2: PLANOS APROVADOS DE ENFESTO (NOVA ABA COMFORTPRO) */}
       {activeSubTab === 'approved_plans' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-          {/* SECÇÃO DOS NOVOS PLANOS DE CORTE DO PCP */}
-          <div className="flex items-center justify-between mt-8 mb-4">
-            <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <Scissors className="text-indigo-600" size={20} /> CONTROLE DO CHÃO DE FÁBRICA ({cutPlans.length})
-            </h3>
-            <button
-              onClick={fetchCutPlans}
-              className="px-3 py-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all cursor-pointer"
-            >
-              ↻ Atualizar PCP
-            </button>
-          </div>
+          {/* SEÇÃO DOS NOVOS PLANOS DE CORTE DO PCP */}
 
           {isLoadingCutPlans ? (
             <div className="p-8 text-center text-slate-500 font-mono text-sm">Carregando planos...</div>
@@ -1224,18 +1212,6 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
           )}
 
           {/* ANTIGOS PLANOS DE ENFESTO */}
-
-
-            <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <CheckCircle2 className="text-blue-600" size={20} /> PLANOS DE ENFESTO APROVADOS ({approvedPlans.length})
-            </h3>
-            <button
-              onClick={fetchApprovedPlans}
-              className="px-3 py-1.5 bg-blue-50 text-blue-900 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition-all cursor-pointer"
-            >
-              🔄 Atualizar Planos
-            </button>
-          </div>
 
           {isLoadingPlans ? (
             <div className="p-8 text-center text-slate-500 font-mono text-sm">Carregando planos aprovados...</div>
@@ -1562,4 +1538,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     </div>
   );
 };
+
+
+
 
