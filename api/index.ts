@@ -6224,7 +6224,13 @@ app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
       qty_sewing: qtySewing
     }).eq('id', id);
 
-    await supabaseAdmin.from('cut_plan_items').update({ status: 'IN_SEWING', quantity_sewing: qtySewing }).eq('plan_id', id).eq('status', 'CUT_COMPLETED');
+    const qtyCutPlan = Number(plan.qty_cut) || 1;
+    for (const it of (plan.items || [])) {
+      if (it.status !== 'CUT_COMPLETED') continue;
+      const itRatio = Number(it.quantity_cut) / qtyCutPlan;
+      const itSewing = Math.round(qtySewing * itRatio);
+      await supabaseAdmin.from('cut_plan_items').update({ status: 'IN_SEWING', quantity_sewing: itSewing }).eq('id', it.id);
+    }
 
     const movements = (plan.items || []).filter((it: any) => it.status === 'CUT_COMPLETED').map((it: any) => ({
       plan_id: Number(id),
@@ -6436,7 +6442,7 @@ app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
     const { data, error } = await supabaseAdmin
       .from('cut_plan_items')
       .select('order_id, item_key, quantity_planned')
-      .in('status', ['CUT_RELEASED', 'CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED', 'IN_CUSTOMIZATION', 'COMPLETED']);
+      .in('status', ['PENDING_CUT', 'CUT_RELEASED', 'CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED', 'IN_CUSTOMIZATION', 'COMPLETED']);
     if (error) return res.status(500).json({ error: error.message });
 
     const result: Record<string, number> = {};
