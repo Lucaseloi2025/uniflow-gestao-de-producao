@@ -364,7 +364,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   const fetchCommittedQtys = async () => {
     try {
-      const res = await fetch('/api/cut-plans/committed-quantities');
+      const res = await fetch('/api/cut-plans/committed-quantities?t=' + Date.now());
       if (res.ok) {
         const data = await res.json();
         const map = new Map<string, number>();
@@ -533,7 +533,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao criar plano de corte');
 
       setNotification({ type: 'success', message: `✅ Plano ${data.plan_number} gerado com sucesso no PCP!` });
-      await fetchCutPlans();
+      await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       setSelectedGroupForPlanModal(null);
       setActiveSubTab('approved_plans'); // Switch to the PCP tab to see it
     } catch (e: any) {
