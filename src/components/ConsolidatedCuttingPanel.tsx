@@ -457,8 +457,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao enviar para costura');
-      await fetchCutPlans();
-      setNotification({ type: 'success', message: `✅ Plano ${planNumber} enviado para costura!` });
+      await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
+      setNotification({ type: 'success', message: `🚀 Plano ${planNumber} enviado para costura!` });
       setTimeout(() => setNotification(null), 6000);
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message });
@@ -483,10 +483,10 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao registrar retorno');
-      await fetchCutPlans();
+      await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       const msg = data.qty_still_in_sewing > 0
-        ? `✅ ${qty} peças retornaram. ${data.qty_still_in_sewing} ainda em costura.`
-        : `✅ Costura concluída! ${qty} peças retornaram.`;
+        ? `🚀 ${qty} peças retornaram. ${data.qty_still_in_sewing} ainda em costura.`
+        : `🚀 Costura concluída! ${qty} peças retornaram.`;
       setNotification({ type: 'success', message: msg });
       setTimeout(() => setNotification(null), 8000);
     } catch (e: any) {
