@@ -81,10 +81,17 @@ import { Costs } from './pages/Costs';
 import { Collaborators } from './pages/Collaborators';
 import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
 import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
+import { Card } from './components/ui/Card';
+import { SidebarItem } from './components/ui/SidebarItem';
+import { InfoModal } from './components/modals/InfoModal';
+import { RunningTaskBanner } from './components/RunningTaskBanner';
 import { DashboardTab } from './pages/DashboardTab';
 import { TaskMonitor } from './pages/TaskMonitor';
 import { SettingsTab } from './pages/SettingsTab';
 import { Card } from './components/ui/Card';
+import { SidebarItem } from './components/ui/SidebarItem';
+import { InfoModal } from './components/modals/InfoModal';
+import { RunningTaskBanner } from './components/RunningTaskBanner';
 import { aggregateCuttingDemand, getItemDisplaySize, sortSizes, extractItemDetails } from './lib/cuttingUtils';
 
 import {
@@ -108,158 +115,7 @@ import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderT
 
 
 // Components
-const SidebarItem = ({ icon: Icon, label, active, onClick, badge }: { icon: any, label: string, active: boolean, onClick: () => void, badge?: number | string }) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      "flex items-center justify-between w-full px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer",
-      active
-        ? "bg-zinc-900 text-white shadow-lg font-bold"
-        : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 font-medium"
-    )}
-  >
-    <div className="flex items-center gap-3">
-      <Icon size={20} />
-      <span className="text-sm">{label}</span>
-    </div>
-    {badge !== undefined && badge !== null && (
-      <span className="px-2 py-0.5 rounded-full text-xs font-black bg-amber-500 text-amber-950 font-mono">
-        {badge}
-      </span>
-    )}
-  </button>
-);
 
-const Card = ({ children, className, ...props }: any) => (
-  <div className={cn("bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden", className)} {...props}>
-    {children}
-  </div>
-);
-
-// Error Boundary Component (Shim for missing @types/react)
-interface ErrorBoundaryProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-}
-
-class ErrorBoundary extends (React.Component as any)<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = {
-    hasError: false
-  };
-
-  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: any) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
-  }
-
-  public render() {
-    if (this.state.hasError) {
-      return this.props.fallback || (
-        <div className="p-12 text-center bg-zinc-50 rounded-3xl border-2 border-dashed border-zinc-200">
-          <AlertCircle className="mx-auto text-zinc-300 mb-4" size={48} />
-          <h3 className="text-lg font-bold text-zinc-900 mb-2">Ops! Algo deu errado nesta seção.</h3>
-          <p className="text-sm text-zinc-500 max-w-xs mx-auto mb-6">Ocorreu um erro inesperado ao processar os dados desta aba.</p>
-          <button 
-            onClick={() => this.setState({ hasError: false })}
-            className="px-6 py-2 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-all shadow-md active:scale-95"
-          >
-            Tentar Novamente
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-
-const InfoModal = ({ isOpen, onClose, title, description }: { isOpen: boolean, onClose: () => void, title: string, description: string }) => (
-  <AnimatePresence>
-    {isOpen && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        />
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-zinc-200"
-        >
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 text-zinc-900 border-b-2 border-zinc-900 pb-1">
-                <AlertCircle size={20} />
-                <h3 className="font-bold text-lg tracking-tight">{title}</h3>
-              </div>
-              <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-400">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="bg-zinc-50 rounded-xl p-4 border border-zinc-100">
-              <p className="text-zinc-600 text-sm leading-relaxed font-medium">
-                {description}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-full mt-6 bg-zinc-900 text-white font-bold py-3 rounded-xl hover:bg-zinc-800 transition-all shadow-md active:scale-[0.98]"
-            >
-              Entendido
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    )}
-  </AnimatePresence>
-);
-
-const safeDate = (dateStr: any) => {
-  try {
-    if (!dateStr) return null;
-    let str = String(dateStr).trim();
-    if (str.includes(' ') && !str.includes('T')) {
-      str = str.replace(' ', 'T');
-    }
-    if (!/[Zz]|[+-]\d{2}:?\d{2}$/.test(str) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str)) {
-      str += 'Z';
-    }
-    const d = parseISO(str);
-    return isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
-};
-
-const safeFormat = (dateStr: any, formatStr: string) => {
-  const d = safeDate(dateStr);
-  if (!d) return '-';
-  try {
-    return format(d, formatStr);
-  } catch {
-    return '-';
-  }
-};
-
-type RunningTaskBannerProps = {
-  execution: StageExecution;
-  onNavigate: () => void | Promise<void>;
-  key?: any;
-};
-
-const RunningTaskBanner = ({ execution, onNavigate }: RunningTaskBannerProps) => {
-  const [times, setTimes] = useState({ totalAccumulatedSeconds: 0, currentSessionSeconds: 0, isPaused: false });
 
   useEffect(() => {
     if (!execution.start_time) return;
@@ -2985,6 +2841,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
 
 
