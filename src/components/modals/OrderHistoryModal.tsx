@@ -104,35 +104,6 @@ export const OrderHistoryModal = ({
               </div>
             )}
         </AnimatePresence>
-      </main >
-
-      <InfoModal
-        isOpen={!!infoModal}
-        onClose={() => setInfoModal(null)}
-        title={infoModal?.title || ''}
-        description={infoModal?.description || ''}
-      />
-
-      <AnimatePresence>
-        {isPrintModalOpen && (
-          <PrintableReport
-            isOpen={isPrintModalOpen}
-            onClose={() => setIsPrintModalOpen(false)}
-            reportStartDate={reportStartDate}
-            reportEndDate={reportEndDate}
-            reportPeriod={reportPeriod}
-            reportUser={reportUser}
-            reportStage={reportStage}
-            reportPrintType={reportPrintType}
-            users={users}
-            stages={stages}
-            reportData={reportData}
-            operationalReportData={operationalReportData}
-            goalsProductivityData={goalsProductivityData}
-            isAdmin={currentUser?.role === 'Admin'}
-          />
-        )}
-      </AnimatePresence>
-
   );
 };
+
