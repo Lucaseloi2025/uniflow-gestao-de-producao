@@ -6,7 +6,7 @@ import { calculateExecutionTimes } from '../../lib/timerUtils';
 import { 
   ArrowLeft, Archive, Trash2, Edit2, LinkIcon, RefreshCw, Upload, FileText, Search, ImageIcon,
   CheckCircle, Plus, AlertTriangle, ChevronRight, Play, Pause, Check, Clock, Scissors, Package,
-  Layers, CheckSquare, X, CheckCircle2, User as UserIcon
+  Layers, CheckSquare, X, CheckCircle2, User as UserIcon, AlertCircle, ClipboardList, Timer
 } from 'lucide-react';
 import { Badge } from '../Badge';
 import { ProductionProgressPanel } from '../ProductionProgressPanel';
@@ -684,5 +684,6 @@ export const OrderDetailsDrawer = ({
     </AnimatePresence>
   );
 };
+
 
 
