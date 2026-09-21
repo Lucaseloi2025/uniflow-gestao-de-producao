@@ -1,5 +1,5 @@
-﻿import React from 'react';
-import { motion } from 'motion/react';
+import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn, safeFormat } from '../../lib/utils';
 import { getItemDisplaySize } from '../../lib/cuttingUtils';
 import { X, RefreshCw, Trash2, Package, Scissors, AlertTriangle, CheckCircle2, Check } from 'lucide-react';
@@ -46,7 +46,7 @@ export const OlistDraftReviewModal = ({
                   <span className="text-sm font-bold text-zinc-800">{safeFormat(selectedDraftOrder.deadline, 'dd/MM/yyyy')}</span>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Status Importação</span>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Status ImportaÃ§Ã£o</span>
                   <span className="inline-flex px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold uppercase">Rascunho</span>
                 </div>
               </div>
@@ -65,7 +65,7 @@ export const OlistDraftReviewModal = ({
                       <table className="w-full text-left text-xs">
                         <thead>
                           <tr className="bg-zinc-50 text-zinc-600 font-bold uppercase text-[9px] border-b border-zinc-200">
-                            <th className="px-3 py-2">Item / Descrição</th>
+                            <th className="px-3 py-2">Item / DescriÃ§Ã£o</th>
                             <th className="px-2 py-2 text-center">Tamanho</th>
                             <th className="px-2 py-2 text-right">Qtd Total</th>
                             <th className="px-2 py-2 text-center">Falta (Corte)</th>
@@ -78,7 +78,7 @@ export const OlistDraftReviewModal = ({
                             const displaySize = getItemDisplaySize(item);
                             return (
                               <tr key={idx} className="hover:bg-zinc-50/50 text-xs">
-                                <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
+                                <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descriÃ§Ã£o'}</td>
                                 <td className="px-3 py-2.5 text-center">
                                   <span className="inline-block px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
                                     {displaySize}
@@ -104,7 +104,7 @@ export const OlistDraftReviewModal = ({
                     </div>
                   </div>
 
-                  {/* Resumo de Peças para Corte (Abaixo do Lista do Pedido) */}
+                  {/* Resumo de PeÃ§as para Corte (Abaixo do Lista do Pedido) */}
                   {(() => {
                     const cuttingItems = selectedDraftOrder.items.filter(it => {
                       const qtyPedida = it.quantity ?? it.quantidade ?? 1;
@@ -121,10 +121,10 @@ export const OlistDraftReviewModal = ({
                         <div className="flex items-center justify-between">
                           <h4 className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-2">
                             <Scissors size={15} className="text-amber-600 animate-pulse" />
-                            Resumo de Peças para Corte (Falta em Estoque Olist)
+                            Resumo de PeÃ§as para Corte (Falta em Estoque Olist)
                           </h4>
                           <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
-                            {totalCuttingQty} {totalCuttingQty === 1 ? 'peça a cortar' : 'peças a cortar'}
+                            {totalCuttingQty} {totalCuttingQty === 1 ? 'peÃ§a a cortar' : 'peÃ§as a cortar'}
                           </span>
                         </div>
 
@@ -145,7 +145,7 @@ export const OlistDraftReviewModal = ({
                                 const displaySize = getItemDisplaySize(item);
                                 return (
                                   <tr key={idx} className="hover:bg-amber-50/50 text-xs">
-                                    <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
+                                    <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descriÃ§Ã£o'}</td>
                                     <td className="px-3 py-2.5 text-center">
                                       <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
                                         {displaySize}
@@ -166,7 +166,7 @@ export const OlistDraftReviewModal = ({
 
                         <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2 rounded-lg flex items-center gap-1.5 border border-amber-200/60">
                           <AlertTriangle size={13} className="text-amber-600 shrink-0" />
-                          <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
+                          <span>Estes itens nÃ£o possuem saldo suficiente no estoque do Olist ERP e precisarÃ£o passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
                         </div>
                       </div>
                     );
@@ -176,7 +176,7 @@ export const OlistDraftReviewModal = ({
 
               {/* Form Controls */}
               <div className="space-y-4 pt-2 border-t border-zinc-100">
-                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Definições para Produção</h3>
+                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">DefiniÃ§Ãµes para ProduÃ§Ã£o</h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Tipo de Estampa */}
@@ -191,7 +191,7 @@ export const OlistDraftReviewModal = ({
                     >
                       <option value="DTF">DTF (Direct to Film)</option>
                       <option value="Silk">Silk-screen (Serigrafia)</option>
-                      <option value="Sublimação">Sublimação Total</option>
+                      <option value="SublimaÃ§Ã£o">SublimaÃ§Ã£o Total</option>
                       <option value="Bordado">Bordado Computadorizado</option>
                     </select>
                   </div>
@@ -205,16 +205,16 @@ export const OlistDraftReviewModal = ({
                       type="text"
                       value={confirmDraftForm.product_type}
                       onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, product_type: e.target.value }))}
-                      placeholder="Ex: Dry Fit, Algodão 30.1, Poliéster..."
+                      placeholder="Ex: Dry Fit, AlgodÃ£o 30.1, PoliÃ©ster..."
                       className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
 
                   {/* Num Cores (if Silk/Sublimacao) */}
-                  {(confirmDraftForm.print_type === 'Silk' || confirmDraftForm.print_type === 'Sublimação') && (
+                  {(confirmDraftForm.print_type === 'Silk' || confirmDraftForm.print_type === 'SublimaÃ§Ã£o') && (
                     <div>
                       <label className="block text-xs font-bold text-zinc-700 mb-1">
-                        Número de Cores da Estampa
+                        NÃºmero de Cores da Estampa
                       </label>
                       <input
                         type="number"
@@ -228,16 +228,16 @@ export const OlistDraftReviewModal = ({
                   )}
                 </div>
 
-                {/* Observações */}
+                {/* ObservaÃ§Ãµes */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Observações de Produção
+                    ObservaÃ§Ãµes de ProduÃ§Ã£o
                   </label>
                   <textarea
                     rows={2}
                     value={confirmDraftForm.observations}
                     onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, observations: e.target.value }))}
-                    placeholder="Instruções para o corte, estampa ou costura..."
+                    placeholder="InstruÃ§Ãµes para o corte, estampa ou costura..."
                     className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -245,7 +245,7 @@ export const OlistDraftReviewModal = ({
                 {/* Required Stages Checkboxes */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-2">
-                    Etapas do Fluxo de Produção
+                    Etapas do Fluxo de ProduÃ§Ã£o
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {stages.filter(st => st.active).map(st => {
@@ -304,7 +304,7 @@ export const OlistDraftReviewModal = ({
                   className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
                 >
                   {isConfirmingDraft ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
-                  <span>Liberar para Produção</span>
+                  <span>Liberar para ProduÃ§Ã£o</span>
                 </button>
               </div>
             </div>
