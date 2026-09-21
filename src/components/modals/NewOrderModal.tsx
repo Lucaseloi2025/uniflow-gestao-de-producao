@@ -23,8 +23,7 @@ export const NewOrderModal = ({
   applyTemplate
 }: any) => {
   return (
-        {/* New Order Modal (Simplified for MVP) */}
-        <AnimatePresence>
+                <AnimatePresence>
           {
             showNewOrderModal && (
               <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
@@ -380,4 +379,6 @@ export const NewOrderModal = ({
 
   );
 };
+
+
 

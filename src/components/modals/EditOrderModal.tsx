@@ -20,8 +20,7 @@ export const EditOrderModal = ({
   fetchData
 }: any) => {
   return (
-        {/* ── Edit Order Modal ──────────────────────────────────────────────── */}
-        <AnimatePresence>
+                <AnimatePresence>
           {
             showEditOrderModal && selectedOrder && (
               <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
@@ -297,3 +296,4 @@ export const EditOrderModal = ({
 
   );
 };
+

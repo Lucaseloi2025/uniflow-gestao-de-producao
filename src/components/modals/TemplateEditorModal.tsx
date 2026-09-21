@@ -17,8 +17,7 @@ export const TemplateEditorModal = ({
   currentUser
 }: any) => {
   return (
-        {/* Template Editor Modal */}
-        <AnimatePresence>
+                <AnimatePresence>
           {
             isTemplateEditorOpen && (
               <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
@@ -196,4 +195,5 @@ export const TemplateEditorModal = ({
 
   );
 };
+
 
