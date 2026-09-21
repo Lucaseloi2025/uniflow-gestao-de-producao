@@ -28,6 +28,7 @@ export const ExecutionActionModal = ({
   selectedOrder
 }: any) => {
   return (
+    <AnimatePresence>
             {executionActionModal && selectedOrder && (() => {
         const { type, executionId, stageId } = executionActionModal;
         const isPause = type === 'pause';
@@ -287,7 +288,7 @@ export const ExecutionActionModal = ({
           </div>
         );
       })()}
-
-
+    </AnimatePresence>
   );
 };
+

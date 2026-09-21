@@ -15,6 +15,7 @@ export const PartialProgressModal = ({
   handleSaveProgress
 }: any) => {
   return (
+    <AnimatePresence>
             {isProgressModalOpen && selectedOrder && progressStageId && (() => {
         const stage = stages.find(s => s.id === progressStageId);
         const orderStage = (selectedOrder.stages_status || []).find(s => s.id === progressStageId);
@@ -89,7 +90,7 @@ export const PartialProgressModal = ({
           </div>
         );
       })()}
-
-
+    </AnimatePresence>
   );
 };
+

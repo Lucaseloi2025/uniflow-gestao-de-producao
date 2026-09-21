@@ -13,6 +13,7 @@ export const OlistDraftListModal = ({
   handleOpenDraftReview
 }: any) => {
   return (
+    <AnimatePresence>
             {isDraftsListModalOpen && (
         <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
@@ -119,7 +120,7 @@ export const OlistDraftListModal = ({
           </div>
         </div>
       )}
-
-
+    </AnimatePresence>
   );
 };
+

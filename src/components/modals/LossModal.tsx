@@ -22,6 +22,7 @@ export const LossModal = ({
   handleSaveLoss
 }: any) => {
   return (
+    <AnimatePresence>
             {isLossModalOpen && selectedOrder && lossStageId && (() => {
         const stage = stages.find(s => s.id === lossStageId);
         return (
@@ -152,7 +153,7 @@ export const LossModal = ({
           </div>
         );
       })()}
-
-
+    </AnimatePresence>
   );
 };
+

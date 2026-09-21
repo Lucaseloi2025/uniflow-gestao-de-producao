@@ -16,6 +16,7 @@ export const OlistDraftReviewModal = ({
   stages
 }: any) => {
   return (
+    <AnimatePresence>
             {selectedDraftOrder && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
@@ -310,7 +311,7 @@ export const OlistDraftReviewModal = ({
           </div>
         </div>
       )}
-
-
+    </AnimatePresence>
   );
 };
+
