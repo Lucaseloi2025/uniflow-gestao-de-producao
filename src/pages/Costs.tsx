@@ -1,8 +1,8 @@
-﻿import React from 'react';
+import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { TrendingDown, TrendingUp, Calculator, FileText, CheckCircle2, Activity, Calendar, DollarSign, Download, Layers, Package, Target, Users, Clock, PieChart as PieChartIcon } from 'lucide-react';
 import { formatSeconds, cn } from '../lib/utils';
 import { motion } from 'motion/react';
@@ -371,6 +371,7 @@ export const Costs = ({
           </ErrorBoundary>
   );
 };
+
 
 
 

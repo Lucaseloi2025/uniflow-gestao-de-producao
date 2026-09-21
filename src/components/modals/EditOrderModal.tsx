@@ -1,7 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, isImage } from '../../lib/utils';
-import { X, RefreshCw, AlertCircle, FileText, Plus } from 'lucide-react';
+import { X, RefreshCw, AlertCircle, FileText, Plus, CheckCircle } from 'lucide-react';
 
 export const EditOrderModal = ({
   showEditOrderModal,
@@ -296,4 +296,5 @@ export const EditOrderModal = ({
 
   );
 };
+
 

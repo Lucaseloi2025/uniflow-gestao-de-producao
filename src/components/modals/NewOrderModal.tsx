@@ -1,7 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
-import { X, RefreshCw, Clock, CheckCircle } from 'lucide-react';
+import { X, RefreshCw, Clock, CheckCircle, Upload, Settings } from 'lucide-react';
 import type { Stage, OrderTemplate } from '../../types';
 
 export const NewOrderModal = ({
@@ -379,6 +379,7 @@ export const NewOrderModal = ({
 
   );
 };
+
 
 
 
