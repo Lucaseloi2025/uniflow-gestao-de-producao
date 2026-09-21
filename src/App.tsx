@@ -1,7 +1,5 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Kanban } from './pages/Kanban';
-import { Orders } from './pages/Orders';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -6531,6 +6529,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
