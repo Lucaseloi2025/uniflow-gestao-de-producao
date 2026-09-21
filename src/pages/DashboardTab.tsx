@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card } from '../components/Card';
+import { Card } from '../components/ui/Card';
 import { Package, Trash2, CheckCircle2, Clock, AlertTriangle, Activity, Shirt, Scissors, Edit2, Target } from 'lucide-react';
 import { ProductionProgressPanel } from '../components/ProductionProgressPanel';
 import { cn, safeFormat, getOrderCuttingQty } from '../lib/utils';
@@ -49,11 +49,11 @@ export const DashboardTab = ({
                       <h3 className="text-base font-bold text-indigo-950 flex items-center gap-2">
                         Pedidos Importados do Olist ERP ({draftOrders.length})
                         <span className="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 uppercase tracking-wider">
-                          Pendente de Estampa / Revisão
+                          Pendente de Estampa / RevisÃ£o
                         </span>
                       </h3>
                       <p className="text-xs text-indigo-700 mt-0.5">
-                        Estes pedidos foram importados automaticamente do Olist com a grade de tamanhos. A vendedora precisa selecionar a estampa antes de liberar para produção.
+                        Estes pedidos foram importados automaticamente do Olist com a grade de tamanhos. A vendedora precisa selecionar a estampa antes de liberar para produÃ§Ã£o.
                       </p>
                     </div>
                   </div>
@@ -74,7 +74,7 @@ export const DashboardTab = ({
                         <th className="px-4 py-2.5">Cliente</th>
                         <th className="px-4 py-2.5 text-center">Itens / Grade</th>
                         <th className="px-4 py-2.5 text-center">Prazo</th>
-                        <th className="px-4 py-2.5 text-right">Ação</th>
+                        <th className="px-4 py-2.5 text-right">AÃ§Ã£o</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-indigo-50">
@@ -85,14 +85,14 @@ export const DashboardTab = ({
                           <td className="px-4 py-3 text-center">
                             <div className="flex flex-col items-center justify-center gap-1">
                               <span className="inline-flex items-center gap-1 font-mono font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-[11px]">
-                                {draft.quantity} peças {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
+                                {draft.quantity} peÃ§as {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
                               </span>
                               {(() => {
                                 const cutQty = getOrderCuttingQty(draft);
                                 if (cutQty > 0) {
                                   return (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[10px] font-black animate-pulse shadow-sm">
-                                      <Scissors size={11} className="text-amber-700" /> FALTA ESTOQUE: {cutQty} PÇS (CORTE)
+                                      <Scissors size={11} className="text-amber-700" /> FALTA ESTOQUE: {cutQty} PÃ‡S (CORTE)
                                     </span>
                                   );
                                 }
@@ -131,7 +131,7 @@ export const DashboardTab = ({
 
             {/* Top KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Ativos', description: 'Total de pedidos que estão atualmente no sistema e ainda não foram finalizados ou cancelados.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Ativos', description: 'Total de pedidos que estÃ£o atualmente no sistema e ainda nÃ£o foram finalizados ou cancelados.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Package size={24} />
@@ -143,19 +143,19 @@ export const DashboardTab = ({
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Peças em Produção', description: 'Soma total de todas as quantidades de itens dos pedidos que estão com status ativo.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'PeÃ§as em ProduÃ§Ã£o', description: 'Soma total de todas as quantidades de itens dos pedidos que estÃ£o com status ativo.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
                     <Layers size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Peças em Produção</p>
+                    <p className="text-xs text-zinc-500 font-medium">PeÃ§as em ProduÃ§Ã£o</p>
                     <h3 className="text-2xl font-bold">{stats.metrics?.activePieces || 0} <span className="text-sm font-normal text-zinc-400">un</span></h3>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Atrasados', description: 'Contagem de pedidos ativos cuja data de entrega (prazo) é anterior à data de hoje.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Atrasados', description: 'Contagem de pedidos ativos cuja data de entrega (prazo) Ã© anterior Ã  data de hoje.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className={cn("p-3 rounded-xl", (stats.metrics?.overdueOrders || 0) > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}>
                     <AlertCircle size={24} />
@@ -167,25 +167,25 @@ export const DashboardTab = ({
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Produção Hoje', description: 'Quantidade de peças que passaram por alguma etapa de finalização no dia atual.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'ProduÃ§Ã£o Hoje', description: 'Quantidade de peÃ§as que passaram por alguma etapa de finalizaÃ§Ã£o no dia atual.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
                     <CheckCircle2 size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Produção Hoje</p>
-                    <h3 className="text-2xl font-bold">{stats.metrics?.todayFinalizedPieces || 0} <span className="text-sm font-normal text-zinc-400">peças</span></h3>
+                    <p className="text-xs text-zinc-500 font-medium">ProduÃ§Ã£o Hoje</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.todayFinalizedPieces || 0} <span className="text-sm font-normal text-zinc-400">peÃ§as</span></h3>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio', description: 'Média de tempo (em dias) que um pedido leva para ser concluído, desde a criação até a última etapa.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo MÃ©dio', description: 'MÃ©dia de tempo (em dias) que um pedido leva para ser concluÃ­do, desde a criaÃ§Ã£o atÃ© a Ãºltima etapa.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
                     <Clock size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio</p>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo MÃ©dio</p>
                     <h3 className="text-2xl font-bold">{((stats.metrics?.avgLeadTimeSeconds || 0) / 86400).toFixed(1)} <span className="text-sm font-normal text-zinc-400">dias</span></h3>
                   </div>
                 </div>
@@ -199,7 +199,7 @@ export const DashboardTab = ({
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold flex items-center gap-2">
                       <List size={18} className="text-zinc-400" />
-                      Pedidos em Produção
+                      Pedidos em ProduÃ§Ã£o
                     </h3>
                   </div>
                   <div className="overflow-x-auto">
@@ -254,8 +254,8 @@ export const DashboardTab = ({
                               <td className="px-4 py-3 text-center">
                                 <span className={cn(
                                   "inline-flex px-2 py-1 rounded-full text-[10px] font-bold",
-                                  order.status === 'Em Produção' ? 'bg-sky-100 text-sky-700' :
-                                    order.status === 'Finalização' ? 'bg-amber-100 text-amber-700' :
+                                  order.status === 'Em ProduÃ§Ã£o' ? 'bg-sky-100 text-sky-700' :
+                                    order.status === 'FinalizaÃ§Ã£o' ? 'bg-amber-100 text-amber-700' :
                                       'bg-zinc-100 text-zinc-700'
                                 )}>
                                   {order.status}
@@ -270,7 +270,7 @@ export const DashboardTab = ({
                           .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                           .length === 0 && (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produção.</td>
+                            <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produÃ§Ã£o.</td>
                           </tr>
                         )}
                       </tbody>
@@ -292,8 +292,8 @@ export const DashboardTab = ({
                         <tr className="bg-zinc-50 border-b border-zinc-100">
                           <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Colaborador</th>
                           <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Pedidos Finais</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Peças Feitas</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Tempo Médio/Peça</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">PeÃ§as Feitas</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Tempo MÃ©dio/PeÃ§a</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-50">
@@ -307,7 +307,7 @@ export const DashboardTab = ({
                         ))}
                         {(!stats.productivity || stats.productivity.length === 0) && (
                           <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">Sem dados de produtividade no período.</td>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">Sem dados de produtividade no perÃ­odo.</td>
                           </tr>
                         )}
                       </tbody>
@@ -337,7 +337,7 @@ export const DashboardTab = ({
                     ))}
                     {(!stats.atRiskOrders || stats.atRiskOrders.length === 0) && (
                       <div className="text-center py-4 text-emerald-600 bg-emerald-50 rounded-lg border border-emerald-100 text-sm">
-                        Nenhum pedido em risco! 🎉
+                        Nenhum pedido em risco! ðŸŽ‰
                       </div>
                     )}
                   </div>
@@ -347,7 +347,7 @@ export const DashboardTab = ({
                 <Card className="p-6 border-amber-100">
                   <h3 className="font-bold mb-4 flex items-center gap-2 text-amber-700">
                     <Filter size={18} />
-                    Gargalos da Produção
+                    Gargalos da ProduÃ§Ã£o
                   </h3>
                   <p className="text-xs text-zinc-500 mb-4">Setores com mais pedidos aguardando ou em andamento no momento.</p>
                   <div className="space-y-3">
