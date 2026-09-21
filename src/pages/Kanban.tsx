@@ -1,12 +1,12 @@
-﻿import React from 'react';
-import { motion } from 'motion/react';
-import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
-import { Clock, FileText, Scissors } from 'lucide-react';
-import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat } from '../lib/utils';
-import { Order } from '../types';
-import { Badge } from '../components/Badge';
+﻿import React from →react→;
+import { motion } from →motion/react→;
+import { differenceInDays, endOfDay, isPast, parseISO } from →date-fns→;
+import { Clock, FileText, Scissors } from →lucide-react→;
+import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat } from →../lib/utils→;
+import { Order } from →../types→;
+import { Badge } from →../components/Badge→;
 
-export interface KanbanProps {
+export interface KanbanProPÇS {
   orders: Order[];
   searchTerm: string;
   printTypeFilter: string;
@@ -22,7 +22,7 @@ export const Kanban = ({
   productTypeFilter,
   setSelectedOrder,
   fetchExecutions
-}: KanbanProps) => {
+}: KanbanProPÇS) => {
   return (
     <div className="flex lg:grid lg:grid-cols-4 gap-6 h-[calc(100vh-250px)] overflow-x-auto pb-4 lg:overflow-x-visible">
       {['Entrada', 'Em Produção', 'Finalização', 'Entregue'].map((status) => (
@@ -42,14 +42,14 @@ export const Kanban = ({
                 return (
                   o.order_number.toLowerCase().includes(search) ||
                   o.client_name.toLowerCase().includes(search) ||
-                  o.ProduçãowerCase().includes(search) ||
-                  (o.print_type || '').toLowerCase().includes(search)
+                  (o.product_type || '').toLowerCase().includes(search) ||
+                  (o.print_type || →→).toLowerCase().includes(search)
                 );
               })
               .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
-              .filter(o => !ProduçãoductTypeFilter)
+              .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
               .map(order => {
-              const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
+              const isOverdue = order.status !== →Entregue→ && isPast(endOfDay(parseISO(order.deadline)));
               return (
                 <motion.div
                   layoutId={`order-${order.id}`}
@@ -80,12 +80,12 @@ export const Kanban = ({
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
                           <FileText size={40} />
-                          <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{order.art_url.split('.').pop()}</span>
+                          <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{order.art_url.split(→.→).pop()}</span>
                         </div>
                       )}
                       {order.art_urls && order.art_urls.length > 1 && (
                         <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-white text-[10px] font-bold shadow-sm">
-                          +{order.art_urls.length - 1} foto{order.art_urls.length - 1 !== 1 ? 's' : ''}
+                          +{order.art_urls.length - 1} foto{order.art_urls.length - 1 !== 1 ? →s→ : →→}
                         </div>
                       )}
                     </div>
@@ -93,8 +93,8 @@ export const Kanban = ({
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-3">
                       <span className="text-[10px] font-mono text-zinc-400">{order.order_number}</span>
-                      <Badge variant={isOverdue ? 'danger' : (differenceInDays(parseISO(order.deadline), new Date()) < 2 ? 'warning' : 'default')}>
-                        {safeFormat(order.deadline, 'dd/MM')}
+                      <Badge variant={isOverdue ? →danger→ : (differenceInDays(parseISO(order.deadline), new Date()) < 2 ? →warning→ : →default→)}>
+                              <span>FALTA ESTOQUE: {cutQty} PÇS (CORTE)</span>
                       </Badge>
                     </div>
                     <p className="text-xs text-zinc-500 mb-2">{order.quantity}x {order.product_type}</p>
@@ -116,7 +116,7 @@ export const Kanban = ({
                     {order.stages_status && order.stages_status.length > 0 && (
                       <div className="mb-3 space-y-2">
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                          {order.stages_status.map((stage, i) => {
+                                  <span className="text-zinc-300">→</span>
                             const isCurrent = !stage.finished && (i === 0 || order.stages_status[i - 1].finished);
                             const isFinished = stage.finished;
                             return (
@@ -167,5 +167,6 @@ export const Kanban = ({
     </div>
   );
 };
+
 
 
