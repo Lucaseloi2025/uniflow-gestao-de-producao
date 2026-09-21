@@ -69,6 +69,12 @@ import { NewOrderModal } from './components/modals/NewOrderModal';
 import { TemplateEditorModal } from './components/modals/TemplateEditorModal';
 import { PhotoLightbox } from './components/modals/PhotoLightbox';
 import { EditOrderModal } from './components/modals/EditOrderModal';
+import { OrderHistoryModal } from './components/modals/OrderHistoryModal';
+import { ExecutionActionModal } from './components/modals/ExecutionActionModal';
+import { PartialProgressModal } from './components/modals/PartialProgressModal';
+import { LossModal } from './components/modals/LossModal';
+import { OlistDraftReviewModal } from './components/modals/OlistDraftReviewModal';
+import { OlistDraftListModal } from './components/modals/OlistDraftListModal';
 import { Reports } from './pages/Reports';
 import { Costs } from './pages/Costs';
 import { Collaborators } from './pages/Collaborators';
@@ -5679,6 +5685,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 
 
