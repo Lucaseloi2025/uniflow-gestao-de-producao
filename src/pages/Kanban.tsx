@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Clock, FileText, Scissors } from 'lucide-react';
@@ -42,12 +42,12 @@ export const Kanban = ({
                 return (
                   o.order_number.toLowerCase().includes(search) ||
                   o.client_name.toLowerCase().includes(search) ||
-                  o.product_type.toLowerCase().includes(search) ||
+                  o.ProduçãowerCase().includes(search) ||
                   (o.print_type || '').toLowerCase().includes(search)
                 );
               })
               .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
-              .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
+              .filter(o => !ProduçãoductTypeFilter)
               .map(order => {
               const isOverdue = order.status !== 'Entregue' && isPast(endOfDay(parseISO(order.deadline)));
               return (
@@ -105,7 +105,7 @@ export const Kanban = ({
                           <div className="mb-3">
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-[10px] font-black animate-pulse shadow-sm w-full">
                               <Scissors size={12} className="text-amber-700 shrink-0" />
-                              <span>FALTA ESTOQUE: {cutQty} PÇS (CORTE)</span>
+                              <span>FALTA ESTOQUE: {cutQty} PÃ‡S (CORTE)</span>
                             </span>
                           </div>
                         );
@@ -130,7 +130,7 @@ export const Kanban = ({
                                   {stage.name}
                                 </span>
                                 {i < order.stages_status.length - 1 && (
-                                  <span className="text-zinc-300">→</span>
+                                  <span className="text-zinc-300">â†’</span>
                                 )}
                               </React.Fragment>
                             );
@@ -167,3 +167,5 @@ export const Kanban = ({
     </div>
   );
 };
+
+

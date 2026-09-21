@@ -31,7 +31,7 @@ export function getOrderCuttingQty(order: any): number {
     if (sumCorte > 0) return sumCorte;
   }
   if (order.observations) {
-    const match = order.observations.match(/??\s*(\d+)\s*pçs?\s*sem\s*estoque/i);
+    const match = order.observations.match(/(\d+)\s*p[cc]s?\s*sem\s*estoque/i);
     if (match) {
       return parseInt(match[1], 10) || 0;
     }
@@ -48,5 +48,6 @@ export function safeFormat(dateStr: string | null | undefined, formatStr: string
     return '-';
   }
 }
+
 
 
