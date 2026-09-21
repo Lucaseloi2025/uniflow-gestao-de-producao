@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Eye, EyeOff, Search, Clock, FileText, CheckCircle, Circle, Check } from 'lucide-react';
@@ -398,7 +398,5 @@ export const Orders = ({
             </table>
             </Card>
           </div>
-        )}
-
   );
 };
