@@ -2,29 +2,13 @@
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { TrendingDown, Calculator, FileText, CheckCircle2 } from 'lucide-react';
-import { formatSeconds } from '../lib/utils';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { TrendingDown, TrendingUp, Calculator, FileText, CheckCircle2, Activity, Calendar, DollarSign, Download, Layers, Package, Target, Users, Clock, PieChart as PieChartIcon } from 'lucide-react';
+import { formatSeconds, cn } from '../lib/utils';
+import { motion } from 'motion/react';
 
 export const Costs = ({
-  currentUser,
-  metaCustoPeca,
-  setMetaCustoPeca,
-  users,
-  setInfoModal,
-  setReportStartDate,
-  setReportEndDate,
-  setReportUser,
-  setReportStage,
-  reportStartDate,
-  reportEndDate,
-  reportUser,
-  reportStage,
-  fetchReports,
-  operationalReportData,
-  memoizedCostsByCollaborator,
-  memoizedOrdersCompleted,
-  stages
+  currentUser, fetchReports, memoizedCostsByCollaborator, memoizedOrdersCompleted, metaCustoPeca, operationalReportData, reportData, reportEndDate, reportStage, reportStartDate, reportUser, setInfoModal, setMetaCustoPeca, setReportEndDate, setReportStage, setReportStartDate, setReportUser, stages, users
 }: any) => {
   return (
           <ErrorBoundary>
@@ -387,3 +371,8 @@ export const Costs = ({
           </ErrorBoundary>
   );
 };
+
+
+
+
+

@@ -66,6 +66,7 @@ import PublicTracking from './PublicTracking';
 import { Orders } from './pages/Orders';
 import { Badge } from './components/Badge';
 import { Kanban } from './pages/Kanban';
+import { UserModal } from './components/modals/UserModal';
 import { Reports } from './pages/Reports';
 import { Costs } from './pages/Costs';
 import { Collaborators } from './pages/Collaborators';
@@ -3173,6 +3174,11 @@ export default function App() {
             printTypeFilter={printTypeFilter}
             productTypeFilter={productTypeFilter}
             setSelectedOrder={setSelectedOrder}
+            setInfoModal={setInfoModal}
+            expandedReportStage={expandedReportStage}
+            setExpandedReportStage={setExpandedReportStage}
+            delaysReportData={delaysReportData}
+            deliveryReportData={deliveryReportData}
             fetchExecutions={fetchExecutions}
           />
         )}
@@ -3193,6 +3199,11 @@ export default function App() {
             printTypeFilter={printTypeFilter}
             setPrintTypeFilter={setPrintTypeFilter}
             setSelectedOrder={setSelectedOrder}
+            setInfoModal={setInfoModal}
+            expandedReportStage={expandedReportStage}
+            setExpandedReportStage={setExpandedReportStage}
+            delaysReportData={delaysReportData}
+            deliveryReportData={deliveryReportData}
             setEditingDtfOrderId={setEditingDtfOrderId}
             setConfirmingDtfOrderId={setConfirmingDtfOrderId}
             setEditingDtfValue={setEditingDtfValue}
@@ -3232,48 +3243,59 @@ export default function App() {
 
         {activeTab === 'reports' && (
           <Reports
-            reportPeriod={reportPeriod}
-            setReportPeriod={setReportPeriod}
-            reportStartDate={reportStartDate}
-            setReportStartDate={setReportStartDate}
-            reportEndDate={reportEndDate}
-            setReportEndDate={setReportEndDate}
-            reportUser={reportUser}
-            setReportUser={setReportUser}
-            fetchReports={fetchReports}
-            operationalReportData={operationalReportData}
-            users={users}
-            profileReport={profileReport}
-            lossReportData={lossReportData}
-            goalsProductivityData={goalsProductivityData}
-            goalsViewType={goalsViewType}
-            setGoalsViewType={setGoalsViewType}
-            collaboratorGoals={collaboratorGoals}
-            stages={stages}
-          />
+  activeReportSubTab={activeReportSubTab}
+  collaboratorGoals={collaboratorGoals}
+  delaysReportData={delaysReportData}
+  deliveryReportData={deliveryReportData}
+  expandedReportStage={expandedReportStage}
+  fetchExecutions={fetchExecutions}
+  fetchReports={fetchReports}
+  goalsProductivityData={goalsProductivityData}
+  goalsViewType={goalsViewType}
+  lossReportData={lossReportData}
+  operationalReportData={operationalReportData}
+  profileReport={profileReport}
+  reportData={reportData}
+  reportEndDate={reportEndDate}
+  reportPeriod={reportPeriod}
+  reportStartDate={reportStartDate}
+  reportUser={reportUser}
+  setActiveReportSubTab={setActiveReportSubTab}
+  setExpandedReportStage={setExpandedReportStage}
+  setGoalsViewType={setGoalsViewType}
+  setInfoModal={setInfoModal}
+  setReportEndDate={setReportEndDate}
+  setReportPeriod={setReportPeriod}
+  setReportStartDate={setReportStartDate}
+  setReportUser={setReportUser}
+  setSelectedOrder={setSelectedOrder}
+  stages={stages}
+  users={users}
+/>
         )}
 
         {activeTab === 'costs' && currentUser?.role === 'Admin' && (
           <Costs
-            currentUser={currentUser}
-            metaCustoPeca={metaCustoPeca}
-            setMetaCustoPeca={setMetaCustoPeca}
-            users={users}
-            setInfoModal={setInfoModal}
-            setReportStartDate={setReportStartDate}
-            setReportEndDate={setReportEndDate}
-            setReportUser={setReportUser}
-            setReportStage={setReportStage}
-            reportStartDate={reportStartDate}
-            reportEndDate={reportEndDate}
-            reportUser={reportUser}
-            reportStage={reportStage}
-            fetchReports={fetchReports}
-            operationalReportData={operationalReportData}
-            memoizedCostsByCollaborator={memoizedCostsByCollaborator}
-            memoizedOrdersCompleted={memoizedOrdersCompleted}
-            stages={stages}
-          />
+  currentUser={currentUser}
+  fetchReports={fetchReports}
+  memoizedCostsByCollaborator={memoizedCostsByCollaborator}
+  memoizedOrdersCompleted={memoizedOrdersCompleted}
+  metaCustoPeca={metaCustoPeca}
+  operationalReportData={operationalReportData}
+  reportData={reportData}
+  reportEndDate={reportEndDate}
+  reportStage={reportStage}
+  reportStartDate={reportStartDate}
+  reportUser={reportUser}
+  setInfoModal={setInfoModal}
+  setMetaCustoPeca={setMetaCustoPeca}
+  setReportEndDate={setReportEndDate}
+  setReportStage={setReportStage}
+  setReportStartDate={setReportStartDate}
+  setReportUser={setReportUser}
+  stages={stages}
+  users={users}
+/>
         )}
 
         {activeTab === 'monitor' && currentUser?.role === 'Admin' && (
@@ -4939,157 +4961,14 @@ export default function App() {
         </AnimatePresence >
 
         {/* User Modal (Collaborators) */}
-        <AnimatePresence>
-          {
-            showUserModal && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.9, opacity: 0 }}
-                  className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 lg:p-8 my-auto"
-                >
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold">
-                      {selectedUserForEdit ? 'Editar Colaborador' : 'Convidar Colaborador'}
-                    </h3>
-                    <button onClick={() => setShowUserModal(false)}><X size={20} /></button>
-                  </div>
-                  <form className="space-y-4" onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (isSubmitting) return;
-                    setIsSubmitting(true);
-                    const form = e.currentTarget;
-                    const formData = new FormData(form);
-                    const data = Object.fromEntries(formData.entries());
-
-                    const url = selectedUserForEdit ? `/api/users/${selectedUserForEdit.id}` : '/api/users';
-                    const method = selectedUserForEdit ? 'PATCH' : 'POST';
-
-                    try {
-                      const res = await fetch(url, {
-                        method,
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'x-user-role': currentUser?.role || ''
-                        },
-                        body: JSON.stringify({
-                          ...data,
-                          hourly_cost: Number(data.hourly_cost),
-                          active: data.active === 'on' || !selectedUserForEdit
-                        })
-                      });
-
-                      if (!res.ok) {
-                        const errData = await res.json().catch(() => null);
-                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
-                        return;
-                      }
-
-                      setShowUserModal(false);
-                      fetchUsers();
-                    } catch (error) {
-                      alert("Erro ao conectar com o servidor.");
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                  }}>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome Completo</label>
-                      <input
-                        name="name"
-                        type="text"
-                        defaultValue={selectedUserForEdit?.name}
-                        placeholder="Ex: João Silva"
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">E-mail</label>
-                      <input
-                        name="email"
-                        type="email"
-                        defaultValue={selectedUserForEdit?.email}
-                        placeholder="joao@uniflow.com"
-                        className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                        required
-                      />
-                    </div>
-                    {!selectedUserForEdit && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
-                        <input
-                          name="password"
-                          type="password"
-                          placeholder="Mínimo 6 caracteres"
-                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
-                          required
-                        />
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
-                        <select
-                          name="role"
-                          defaultValue={selectedUserForEdit?.role || 'Produção'}
-                          className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
-                        >
-                          <option value="Admin">Admin</option>
-                          <option value="Produção">Produção</option>
-                          <option value="Comercial">Comercial</option>
-                        </select>
-                      </div>
-                      {currentUser?.role === 'Admin' && (
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
-                          <input
-                            name="hourly_cost"
-                            type="number"
-                            step="0.01"
-                            defaultValue={selectedUserForEdit?.hourly_cost || 0}
-                            placeholder="0,00"
-                            className="w-full p-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500"
-                            required
-                          />
-                        </div>
-                      )}
-                    </div>
-                    {selectedUserForEdit && (
-                      <div className="flex items-center gap-2">
-                        <input
-                          name="active"
-                          type="checkbox"
-                          defaultChecked={selectedUserForEdit.active}
-                          id="user-active"
-                        />
-                        <label htmlFor="user-active" className="text-sm text-zinc-600">Colaborador Ativo</label>
-                      </div>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className={cn(
-                        "w-full py-3 bg-zinc-900 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2",
-                        isSubmitting ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
-                      )}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <RefreshCw size={18} className="animate-spin" />
-                          Processando...
-                        </>
-                      ) : (
-                        selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
-                      )}
-                    </button>
-                  </form>
-                </motion.div>
-              </div>
-            )
-          }
-        </AnimatePresence >
+        <UserModal
+          showUserModal={showUserModal}
+          setShowUserModal={setShowUserModal}
+          selectedUserForEdit={selectedUserForEdit}
+          fetchUsers={fetchUsers}
+          isSubmitting={isSubmitting}
+          setIsSubmitting={setIsSubmitting}
+        />
 
         {/* Template Editor Modal */}
         <AnimatePresence>
@@ -5763,6 +5642,7 @@ export default function App() {
             stages={stages}
             reportData={reportData}
             operationalReportData={operationalReportData}
+            reportData={reportData}
             goalsProductivityData={goalsProductivityData}
             isAdmin={currentUser?.role === 'Admin'}
           />
@@ -6651,5 +6531,13 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 

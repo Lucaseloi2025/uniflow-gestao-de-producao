@@ -1,29 +1,13 @@
 ﻿import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell } from 'recharts';
-import { Layers, Activity, Users, FileText, CheckCircle2, Clock, PieChart as PieChartIcon } from 'lucide-react';
-import { formatSeconds, safeFormat } from '../lib/utils';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, CartesianGrid, ReferenceLine } from 'recharts';
+import { Layers, Activity, Users, FileText, CheckCircle2, Clock, PieChart as PieChartIcon, AlertCircle, Archive, BarChart3, CheckCircle, CheckSquare, ClipboardList, Timer, TrendingUp, Package, Target } from 'lucide-react';
+import { formatSeconds, safeFormat, cn } from '../lib/utils';
+import { motion } from 'motion/react';
 
 export const Reports = ({
-  reportPeriod,
-  setReportPeriod,
-  reportStartDate,
-  setReportStartDate,
-  reportEndDate,
-  setReportEndDate,
-  reportUser,
-  setReportUser,
-  fetchReports,
-  operationalReportData,
-  users,
-  profileReport,
-  lossReportData,
-  goalsProductivityData,
-  goalsViewType,
-  setGoalsViewType,
-  collaboratorGoals,
-  stages
+  activeReportSubTab, collaboratorGoals, delaysReportData, deliveryReportData, expandedReportStage, fetchExecutions, fetchReports, goalsProductivityData, goalsViewType, lossReportData, operationalReportData, profileReport, reportData, reportEndDate, reportPeriod, reportStartDate, reportUser, setActiveReportSubTab, setExpandedReportStage, setGoalsViewType, setInfoModal, setReportEndDate, setReportPeriod, setReportStartDate, setReportUser, setSelectedOrder, stages, users
 }: any) => {
   return (
           <div className="space-y-8">
@@ -1023,3 +1007,12 @@ export const Reports = ({
           </div>
   );
 };
+
+
+
+
+
+
+
+
+
