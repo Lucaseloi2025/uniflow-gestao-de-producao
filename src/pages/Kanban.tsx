@@ -130,7 +130,7 @@ export const Kanban = ({
                                   {stage.name}
                                 </span>
                                 {i < order.stages_status.length - 1 && (
-                                  <span className="text-zinc-300">-></span>
+                                  <span className="text-zinc-300">{'->'}</span>
                                 )}
                               </React.Fragment>
                             );
