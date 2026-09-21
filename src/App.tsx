@@ -5642,7 +5642,6 @@ export default function App() {
             stages={stages}
             reportData={reportData}
             operationalReportData={operationalReportData}
-            reportData={reportData}
             goalsProductivityData={goalsProductivityData}
             isAdmin={currentUser?.role === 'Admin'}
           />
@@ -6531,6 +6530,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
