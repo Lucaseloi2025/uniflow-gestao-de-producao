@@ -1,5 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Kanban } from './pages/Kanban';
+import { Orders } from './pages/Orders';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -108,7 +110,7 @@ function getOrderCuttingQty(order: any): number {
     if (sumCorte > 0) return sumCorte;
   }
   if (order.observations) {
-    const match = order.observations.match(/âš ï¸\s*(\d+)\s*pÃ§s?\s*sem\s*estoque/i);
+    const match = order.observations.match(/⚠️\s*(\d+)\s*pçs?\s*sem\s*estoque/i);
     if (match) {
       return parseInt(match[1], 10) || 0;
     }
@@ -173,7 +175,7 @@ class ErrorBoundary extends (React.Component as any)<ErrorBoundaryProps, ErrorBo
       return this.props.fallback || (
         <div className="p-12 text-center bg-zinc-50 rounded-3xl border-2 border-dashed border-zinc-200">
           <AlertCircle className="mx-auto text-zinc-300 mb-4" size={48} />
-          <h3 className="text-lg font-bold text-zinc-900 mb-2">Ops! Algo deu errado nesta seÃ§Ã£o.</h3>
+          <h3 className="text-lg font-bold text-zinc-900 mb-2">Ops! Algo deu errado nesta seção.</h3>
           <p className="text-sm text-zinc-500 max-w-xs mx-auto mb-6">Ocorreu um erro inesperado ao processar os dados desta aba.</p>
           <button 
             onClick={() => this.setState({ hasError: false })}
@@ -300,13 +302,13 @@ const RunningTaskBanner = ({ execution, onNavigate }: RunningTaskBannerProps) =>
           <div>
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tarefa em Andamento</p>
             <p className="text-sm font-bold">
-              {execution.stage_name} <span className="text-zinc-500 mx-2">â€¢</span> <span className="font-mono">{execution.order_number}</span>
+              {execution.stage_name} <span className="text-zinc-500 mx-2">•</span> <span className="font-mono">{execution.order_number}</span>
             </p>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end">
-            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">SessÃ£o Atual</span>
+            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Sessão Atual</span>
             <span className="text-sm font-mono font-bold text-emerald-300">{formatSeconds(times.currentSessionSeconds)}</span>
           </div>
           <div className="h-6 w-px bg-zinc-700 mx-1" />
@@ -373,7 +375,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
     if (calcType === 'por_peca') {
       baseTime *= qty;
     } else if (calcType === 'por_lote') {
-      // Opcional: implementar lÃ³gica de lote se necessÃ¡rio
+      // Opcional: implementar lógica de lote se necessário
       baseTime *= Math.ceil(qty / 10); // Exemplo: lote de 10
     }
 
@@ -392,14 +394,14 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
     if (!avg || avg === 0) return 'Normal';
     const ratio = current / avg;
     if (ratio <= 0.8) return 'Eficiente';
-    if (ratio <= 1.0) return 'AtenÃ§Ã£o';
+    if (ratio <= 1.0) return 'Atenção';
     return 'Atrasado';
   };
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Tarefas Ativas', 'NÃºmero de tarefas (etapas de uma OP) que estÃ£o com o \'Play\' acionado no exato momento.')}>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Tarefas Ativas', 'Número de tarefas (etapas de uma OP) que estão com o \'Play\' acionado no exato momento.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
               <Activity size={24} />
@@ -410,7 +412,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
           </div>
         </Card>
-        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Eficientes', 'Tarefas em andamento cujo tempo atual Ã© inferior a 80% do tempo mÃ©dio histÃ³rico esperado para a etapa.')}>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Eficientes', 'Tarefas em andamento cujo tempo atual é inferior a 80% do tempo médio histórico esperado para a etapa.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-emerald-100 rounded-xl text-emerald-600">
               <CheckCircle2 size={24} />
@@ -421,18 +423,18 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
             </div>
           </div>
         </Card>
-        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('AtenÃ§Ã£o', 'Tarefas em andamento onde o tempo atual atingiu entre 80% e 100% do tempo base (ideal ou real) esperado para a etapa.')}>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Atenção', 'Tarefas em andamento onde o tempo atual atingiu entre 80% e 100% do tempo base (ideal ou real) esperado para a etapa.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-amber-100 rounded-xl text-amber-600">
               <AlertCircle size={24} />
             </div>
             <div>
-              <p className="text-xs text-zinc-500 font-medium">AtenÃ§Ã£o</p>
+              <p className="text-xs text-zinc-500 font-medium">Atenção</p>
               <h3 className="text-2xl font-bold">{(monitorData || []).filter(e => { const { baseTime } = getBaseTimeInfo(e); return baseTime > 0 && (e.total_time_seconds / baseTime) > 0.8 && (e.total_time_seconds / baseTime) <= 1.0; }).length}</h3>
             </div>
           </div>
         </Card>
-        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Fora do Prazo', 'Tarefas cujo tempo atual de execuÃ§Ã£o jÃ¡ excedeu o tempo base esperado.')}>
+        <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => onShowInfo?.('Fora do Prazo', 'Tarefas cujo tempo atual de execução já excedeu o tempo base esperado.')}>
           <div className="flex items-center gap-4">
             <div className="p-3 bg-rose-100 rounded-xl text-rose-600">
               <AlertTriangle size={24} />
@@ -481,7 +483,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Pedido</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Cliente / Produto</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">ResponsÃ¡vel</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Responsável</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Tempo Decorrido</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Tempo Base</th>
                 <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-center">Status</th>
@@ -523,18 +525,18 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
                         </span>
                         <div className="flex items-center gap-1">
                           {exec.calculation_type === 'por_pedido' && (
-                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="CÃ¡lculo por Pedido">
-                              ðŸ“„ por pedido
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Pedido">
+                              📄 por pedido
                             </span>
                           )}
                           {exec.calculation_type === 'por_peca' && (
-                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="CÃ¡lculo por PeÃ§a">
-                              ðŸ‘• por peÃ§a
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Peça">
+                              👕 por peça
                             </span>
                           )}
                           {exec.calculation_type === 'por_lote' && (
-                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="CÃ¡lculo por Lote">
-                              ðŸ“¦ por lote
+                            <span className="text-[9px] text-zinc-400 font-medium flex items-center gap-0.5" title="Cálculo por Lote">
+                              📦 por lote
                             </span>
                           )}
                         </div>
@@ -677,7 +679,7 @@ export default function App() {
   const [isSyncingOlist, setIsSyncingOlist] = useState(false);
   const [isConfirmingDraft, setIsConfirmingDraft] = useState(false);
   const [confirmDraftForm, setConfirmDraftForm] = useState({
-    print_type: 'DTF' as 'DTF' | 'Silk' | 'SublimaÃ§Ã£o' | 'Bordado',
+    print_type: 'DTF' as 'DTF' | 'Silk' | 'Sublimação' | 'Bordado',
     product_type: '',
     num_colors: 1,
     observations: '',
@@ -689,7 +691,7 @@ export default function App() {
   const [progressStageId, setProgressStageId] = useState<number | null>(null);
   const [progressIncrementInput, setProgressIncrementInput] = useState<number>(0);
 
-  // Modal State: AÃ§Ã£o de Pausar / Finalizar Etapa com Quantidade e Perdas
+  // Modal State: Ação de Pausar / Finalizar Etapa com Quantidade e Perdas
   const [executionActionModal, setExecutionActionModal] = useState<{
     type: 'pause' | 'finish';
     executionId: number;
@@ -830,8 +832,8 @@ export default function App() {
         if (found) {
           setCurrentUser(found);
         } else {
-          console.warn(`[Auth] UsuÃ¡rio nÃ£o encontrado na tabela 'users': ${userEmail}`);
-          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'ProduÃ§Ã£o', hourly_cost: 0, active: true });
+          console.warn(`[Auth] Usuário não encontrado na tabela 'users': ${userEmail}`);
+          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Produção', hourly_cost: 0, active: true });
         }
       });
     } else {
@@ -925,7 +927,7 @@ export default function App() {
 
     // Fallback para consulta direta ao Supabase caso a API REST do backend falhe ou retorne nulo
     if (!Array.isArray(ordersData)) {
-      console.warn('[FetchData] /api/orders indisponÃ­vel via API. Executando fallback direto ao Supabase...');
+      console.warn('[FetchData] /api/orders indisponível via API. Executando fallback direto ao Supabase...');
       try {
         let { data: fallbackOrders } = await supabase.rpc('get_orders_with_stages', {
           p_search: searchTerm || null,
@@ -1023,7 +1025,7 @@ export default function App() {
               });
             }
           } catch (err) {
-            console.warn('[FetchData] Falha ao buscar observaÃ§Ãµes no fallback:', err);
+            console.warn('[FetchData] Falha ao buscar observações no fallback:', err);
             ordersData.forEach((order: any) => {
               const activeStage = order.stages_status.find((s: any) => !s.finished);
               order.active_stage_name = activeStage?.name || null;
@@ -1095,20 +1097,20 @@ export default function App() {
       await fetchData();
       await fetchDraftOrders();
 
-      let msg = `SincronizaÃ§Ã£o concluÃ­da com sucesso!\n`;
-      msg += `Pedidos encontrados no Tiny (HistÃ³rico): ${data.total_found || 0}\n`;
-      msg += `Pedidos elegÃ­veis (De hoje em diante): ${data.eligible_count || 0}\n`;
+      let msg = `Sincronização concluída com sucesso!\n`;
+      msg += `Pedidos encontrados no Tiny (Histórico): ${data.total_found || 0}\n`;
+      msg += `Pedidos elegíveis (De hoje em diante): ${data.eligible_count || 0}\n`;
       msg += `Novos rascunhos importados: ${data.imported_count || 0}\n`;
-      msg += `Pedidos ignorados (jÃ¡ importados): ${data.skipped_count || 0}`;
+      msg += `Pedidos ignorados (já importados): ${data.skipped_count || 0}`;
       if (data.errors_count > 0) {
-        msg += `\nâš ï¸ Erros: ${data.errors_count}`;
+        msg += `\n⚠️ Erros: ${data.errors_count}`;
         if (data.errors && data.errors.length > 0) {
           msg += `\nPrimeiro erro: ${data.errors[0]?.error || JSON.stringify(data.errors[0])}`;
         }
       }
       alert(msg);
     } catch (err: any) {
-      alert(`Erro na sincronizaÃ§Ã£o Olist: ${err.message}`);
+      alert(`Erro na sincronização Olist: ${err.message}`);
     } finally {
       setIsSyncingOlist(false);
     }
@@ -1117,7 +1119,7 @@ export default function App() {
   const handleOpenDraftReview = (order: Order) => {
     setSelectedDraftOrder(order);
     setConfirmDraftForm({
-      print_type: (order.print_type && ['DTF', 'Silk', 'SublimaÃ§Ã£o', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
+      print_type: (order.print_type && ['DTF', 'Silk', 'Sublimação', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
       product_type: order.product_type || 'Dry Fit',
       num_colors: order.num_colors || 1,
       observations: order.observations || '',
@@ -1138,12 +1140,12 @@ export default function App() {
         body: JSON.stringify(confirmDraftForm)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao liberar pedido para produÃ§Ã£o');
+      if (!res.ok) throw new Error(data.error || 'Erro ao liberar pedido para produção');
 
       setSelectedDraftOrder(null);
       await fetchData();
       await fetchDraftOrders();
-      alert(`Pedido #${selectedDraftOrder.order_number} liberado para produÃ§Ã£o com sucesso!`);
+      alert(`Pedido #${selectedDraftOrder.order_number} liberado para produção com sucesso!`);
     } catch (err: any) {
       alert(`Erro ao liberar pedido: ${err.message}`);
     } finally {
@@ -1272,9 +1274,9 @@ export default function App() {
     }
   };
 
-  // Agendador de pausa automÃ¡tica: verifica o horÃ¡rio a cada minuto
+  // Agendador de pausa automática: verifica o horário a cada minuto
   useEffect(() => {
-    if (!currentUser) return; // Qualquer usuÃ¡rio logado pode disparar a verificaÃ§Ã£o
+    if (!currentUser) return; // Qualquer usuário logado pode disparar a verificação
     
     const check = () => {
       const now = new Date();
@@ -1284,8 +1286,8 @@ export default function App() {
       const checkTime = (target: string) => {
         if (!target) return false;
         const [hh, mm] = target.split(':').map(Number);
-        // No frontend, mantemos a verificaÃ§Ã£o do exato minuto para disparar apenas uma vez
-        // O backend possui uma janela de Â±3 min como margem de seguranÃ§a
+        // No frontend, mantemos a verificação do exato minuto para disparar apenas uma vez
+        // O backend possui uma janela de ±3 min como margem de segurança
         return now.getHours() === hh && now.getMinutes() === mm;
       };
 
@@ -1293,11 +1295,11 @@ export default function App() {
       const isEndOfDay = checkTime(dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday);
 
       if (isLunch || isEndOfDay) {
-        // Chamamos o novo endpoint robusto que valida o horÃ¡rio no server-side
+        // Chamamos o novo endpoint robusto que valida o horário no server-side
         safeFetch('/api/executions/auto-pause', { method: 'POST' })
           .then((r) => {
             if (r?.paused > 0) {
-              const reason = r.reason === 'almoÃ§o' ? 'almoÃ§o' : 'fim de expediente';
+              const reason = r.reason === 'almoço' ? 'almoço' : 'fim de expediente';
               console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) - ${reason}.`);
               fetchData(); // Atualiza a UI para refletir as pausas
             }
@@ -1385,7 +1387,7 @@ export default function App() {
         body: JSON.stringify({ dtf_location: location })
       });
       if (!res.ok) {
-        console.warn('Servidor respondeu com cÃ³digo de aviso/erro ao atualizar gaveteiro.');
+        console.warn('Servidor respondeu com código de aviso/erro ao atualizar gaveteiro.');
       }
     } catch (e) {
       console.error(e);
@@ -1409,7 +1411,7 @@ export default function App() {
   };
 
   const handleDeleteOrder = async (orderId: number) => {
-    if (!window.confirm('âš ï¸ EXCLUIR PEDIDO\n\nO pedido serÃ¡ ocultado do sistema mas o histÃ³rico de execuÃ§Ãµes serÃ¡ mantido para auditoria.\n\nDeseja continuar?')) return;
+    if (!window.confirm('⚠️ EXCLUIR PEDIDO\n\nO pedido será ocultado do sistema mas o histórico de execuções será mantido para auditoria.\n\nDeseja continuar?')) return;
 
     setIsDeletingOrder(true);
     try {
@@ -1429,7 +1431,7 @@ export default function App() {
         alert(err.error || 'Erro ao excluir pedido');
       }
     } catch (err) {
-      alert('Erro na conexÃ£o com o servidor');
+      alert('Erro na conexão com o servidor');
     } finally {
       setIsDeletingOrder(false);
     }
@@ -1449,7 +1451,7 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || 'ProduÃ§Ã£o',
+          'x-user-role': currentUser?.role || 'Produção',
           'x-user-name': currentUser?.name || 'Operador',
         }
       });
@@ -1471,7 +1473,7 @@ export default function App() {
   };
 
   const handleCancelOrder = async (orderId: number) => {
-    if (!window.confirm('âš ï¸ CANCELAR PEDIDO\n\nO pedido serÃ¡ marcado como cancelado e removido dos cÃ¡lculos de capacidade. O histÃ³rico serÃ¡ mantido.\n\nDeseja continuar?')) return;
+    if (!window.confirm('⚠️ CANCELAR PEDIDO\n\nO pedido será marcado como cancelado e removido dos cálculos de capacidade. O histórico será mantido.\n\nDeseja continuar?')) return;
 
     setIsCancellingOrder(true);
     try {
@@ -1492,7 +1494,7 @@ export default function App() {
         alert(err.error || 'Erro ao cancelar pedido');
       }
     } catch (err) {
-      alert('Erro na conexÃ£o com o servidor');
+      alert('Erro na conexão com o servidor');
     } finally {
       setIsCancellingOrder(false);
     }
@@ -1533,7 +1535,7 @@ export default function App() {
       return;
     }
     if (!editOrderForm.num_colors || Number(editOrderForm.num_colors) < 1) {
-      alert('NÃºmero de cores deve ser pelo menos 1.');
+      alert('Número de cores deve ser pelo menos 1.');
       return;
     }
 
@@ -1541,7 +1543,7 @@ export default function App() {
     try {
       const extraHeaders: any = {};
       if (selectedOrder.status === 'Entregue') {
-        const confirmed = window.confirm('âš ï¸ PEDIDO JÃ ENTREGUE\n\nEste pedido jÃ¡ foi marcado como entregue. Editar pode afetar indicadores histÃ³ricos.\n\nDeseja continuar?');
+        const confirmed = window.confirm('⚠️ PEDIDO JÁ ENTREGUE\n\nEste pedido já foi marcado como entregue. Editar pode afetar indicadores históricos.\n\nDeseja continuar?');
         if (!confirmed) { setIsEditingOrder(false); return; }
         extraHeaders['x-confirm-finalized'] = 'true';
       }
@@ -1567,7 +1569,7 @@ export default function App() {
         alert(err.error || err.message || 'Erro ao editar pedido');
       }
     } catch (err) {
-      alert('Erro na conexÃ£o com o servidor');
+      alert('Erro na conexão com o servidor');
     } finally {
       setIsEditingOrder(false);
     }
@@ -1586,7 +1588,7 @@ export default function App() {
     const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
     for (let i = 0; i < files.length; i++) {
       if (files[i].size > MAX_FILE_SIZE) {
-        alert(`O arquivo "${files[i].name}" Ã© muito grande. O limite mÃ¡ximo Ã© de 4MB por arquivo.`);
+        alert(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
         return;
       }
     }
@@ -1629,7 +1631,7 @@ export default function App() {
   const handleStartStage = async (stageId: number) => {
     if (!selectedOrder) return;
     
-    // ConfirmaÃ§Ã£o ao iniciar tarefa
+    // Confirmação ao iniciar tarefa
     const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
     const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
     if (!confirmStart) return;
@@ -1723,7 +1725,7 @@ export default function App() {
     const { executionId, stageId } = executionActionModal;
     const type = actionType || executionActionModal.type;
 
-    // ValidaÃ§Ã£o do motivo se informou perdas
+    // Validação do motivo se informou perdas
     if (actionLossQuantityInput > 0) {
       if (!actionLossReasonInput) {
         alert("Por favor, selecione o motivo da perda.");
@@ -1737,7 +1739,7 @@ export default function App() {
 
     setIsActionLoading(true);
     try {
-      // 1. Se informou quantidade de peÃ§as boas > 0, registra o progresso primeiro
+      // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
       if (actionQuantityInput > 0) {
         const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
           method: 'POST',
@@ -1758,7 +1760,7 @@ export default function App() {
         }
       }
 
-      // 2. Se informou peÃ§as perdidas > 0, registra a perda
+      // 2. Se informou peças perdidas > 0, registra a perda
       if (actionLossQuantityInput > 0) {
         const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
           method: 'POST',
@@ -1782,7 +1784,7 @@ export default function App() {
         }
       }
 
-      // 3. Executa a Pausa ou a FinalizaÃ§Ã£o
+      // 3. Executa a Pausa ou a Finalização
       if (type === 'pause') {
         await fetch(`/api/executions/${executionId}/pause`, {
           method: 'POST',
@@ -1815,7 +1817,7 @@ export default function App() {
           const err = await finishRes.json();
           if (err.canForce && !forceFinish) {
             const confirmForce = window.confirm(
-              `${err.error}\n\nDeseja forÃ§ar a finalizaÃ§Ã£o desta etapa com saldo parcial?`
+              `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
             );
             if (confirmForce) {
               await handleConfirmExecutionAction('finish', true);
@@ -1904,7 +1906,7 @@ export default function App() {
     });
     if (res.ok) {
       setIsLossModalOpen(false);
-      alert("Perda registrada com sucesso! A pendÃªncia de reposiÃ§Ã£o foi enviada para a etapa de reentrada.");
+      alert("Perda registrada com sucesso! A pendência de reposição foi enviada para a etapa de reentrada.");
       fetchData();
       fetchExecutions(selectedOrder.id);
       fetchActiveExecution();
@@ -2102,7 +2104,7 @@ export default function App() {
       observations: template.observations
     }));
 
-    // Fallback: Se o template nÃ£o tiver etapas, carrega todas as ativas
+    // Fallback: Se o template não tiver etapas, carrega todas as ativas
     if (template.required_stages && template.required_stages.length > 0) {
       setNewOrderRequiredStages(template.required_stages.filter(id => {
         const stage = stages.find(s => s.id === id);
@@ -2116,7 +2118,7 @@ export default function App() {
 
   const COLORS = React.useMemo(() => ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'], []);
 
-  // MemoriazaÃ§Ã£o robusta dos dados de custo para evitar crash durante renderizaÃ§Ã£o
+  // Memoriazação robusta dos dados de custo para evitar crash durante renderização
   const memoizedCostsByCollaborator = React.useMemo(() => {
     if (!reportData?.costsByCollaborator || !Array.isArray(reportData.costsByCollaborator)) return [];
     return [...reportData.costsByCollaborator].sort((a: any, b: any) => {
@@ -2179,7 +2181,7 @@ export default function App() {
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
-                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                placeholder="••••••••"
                 required
               />
             </div>
@@ -2193,7 +2195,7 @@ export default function App() {
   }
 
   if (!currentUser) {
-    return <div className="flex h-screen items-center justify-center bg-[#F8F9FA]"><p className="text-zinc-500 font-medium animate-pulse">Carregando permissÃµes de perfil...</p></div>;
+    return <div className="flex h-screen items-center justify-center bg-[#F8F9FA]"><p className="text-zinc-500 font-medium animate-pulse">Carregando permissões de perfil...</p></div>;
   }
 
   return (
@@ -2203,9 +2205,9 @@ export default function App() {
         <div className="print-container hidden text-black bg-white w-full p-8 font-sans">
           <div className="mb-6 border-b border-zinc-300 pb-4 flex justify-between items-end">
             <div>
-              <h1 className="text-2xl font-bold uppercase tracking-tight">SequÃªncia de ProduÃ§Ã£o</h1>
+              <h1 className="text-2xl font-bold uppercase tracking-tight">Sequência de Produção</h1>
               <p className="text-sm mt-1 text-zinc-500">
-                Emitido em: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'Ã s' HH:mm", { locale: ptBR })}
+                Emitido em: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
               </p>
             </div>
             <div className="text-right text-sm">
@@ -2223,7 +2225,7 @@ export default function App() {
                 <th className="p-2 border-r border-zinc-200">Estampa</th>
                 <th className="p-2 border-r border-zinc-200">Etapa atual</th>
                 <th className="p-2 border-r border-zinc-200 text-center">Prazo</th>
-                <th className="p-2 text-left" style={{minWidth: '200px'}}>ObservaÃ§Ã£o</th>
+                <th className="p-2 text-left" style={{minWidth: '200px'}}>Observação</th>
               </tr>
             </thead>
             <tbody>
@@ -2258,7 +2260,7 @@ export default function App() {
                     <td className="p-2 border-b border-zinc-200 border-r text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
                     <td className="p-2 border-b border-zinc-200 text-xs text-zinc-700" style={{minWidth: '200px'}}>
                       {o.active_stage_observation 
-                        ? <span className="italic">ðŸ“ {o.active_stage_observation.length > 120 
+                        ? <span className="italic">📝 {o.active_stage_observation.length > 120 
                             ? `${o.active_stage_observation.slice(0, 120)}...` 
                             : o.active_stage_observation}</span>
                         : ''}
@@ -2336,7 +2338,7 @@ export default function App() {
           )}
           <SidebarItem
             icon={FileText}
-            label="RelatÃ³rios"
+            label="Relatórios"
             active={activeTab === 'reports'}
             onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
           />
@@ -2359,7 +2361,7 @@ export default function App() {
           {currentUser?.role === 'Admin' && (
             <SidebarItem
               icon={Settings}
-              label="ConfiguraÃ§Ãµes"
+              label="Configurações"
               active={activeTab === 'settings'}
               onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
             />
@@ -2392,7 +2394,7 @@ export default function App() {
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
               <span className="text-sm font-bold text-emerald-900">Operador Ativo: {currentUser?.name || '---'}</span>
-              <span className="hidden sm:inline text-emerald-300">â€¢</span>
+              <span className="hidden sm:inline text-emerald-300">•</span>
               <span className="text-xs font-medium text-emerald-700">Setor: {currentUser?.role || '---'}</span>
             </div>
           </div>
@@ -2431,13 +2433,13 @@ export default function App() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl lg:text-2xl font-bold tracking-tight">
-                {activeTab === 'dashboard' && 'VisÃ£o Geral'}
-                {activeTab === 'kanban' && 'Fluxo de ProduÃ§Ã£o'}
+                {activeTab === 'dashboard' && 'Visão Geral'}
+                {activeTab === 'kanban' && 'Fluxo de Produção'}
                 {activeTab === 'orders' && 'Todos os Pedidos'}
                 {activeTab === 'collaborators' && 'Colaboradores'}
-                {activeTab === 'reports' && 'RelatÃ³rios'}
-                {activeTab === 'costs' && 'AnÃ¡lise de Custos'}
-                {activeTab === 'settings' && 'ConfiguraÃ§Ãµes do Sistema'}
+                {activeTab === 'reports' && 'Relatórios'}
+                {activeTab === 'costs' && 'Análise de Custos'}
+                {activeTab === 'settings' && 'Configurações do Sistema'}
                 {activeTab === 'monitor' && 'Monitor de Tarefas (Tempo Real)'}
               </h2>
               <p className="text-zinc-500 text-xs lg:text-sm">
@@ -2495,7 +2497,7 @@ export default function App() {
                       className="px-2 py-1 bg-zinc-100 rounded text-[10px] font-bold focus:outline-none"
                     >
                       <option value="Pending">Pendente</option>
-                      <option value="Finished">ConcluÃ­do</option>
+                      <option value="Finished">Concluído</option>
                     </select>
                   )}
                 </div>
@@ -2507,7 +2509,7 @@ export default function App() {
                   >
                     <option value="">Produtos</option>
                     <option value="Dry Fit">Dry Fit</option>
-                    <option value="AlgodÃ£o">AlgodÃ£o</option>
+                    <option value="Algodão">Algodão</option>
                     <option value="Poliamida">Poliamida</option>
                   </select>
                   <div className="w-px h-4 bg-zinc-200 mx-1" />
@@ -2519,13 +2521,13 @@ export default function App() {
                     <option value="">Estampas</option>
                     <option value="Silk">Silk</option>
                     <option value="DTF">DTF</option>
-                    <option value="SublimaÃ§Ã£o">SublimaÃ§Ã£o</option>
+                    <option value="Sublimação">Sublimação</option>
                   </select>
                 </div>
                 <button
                   onClick={() => window.print()}
                   className="px-3 py-1.5 ml-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
-                  title="Imprimir SequÃªncia"
+                  title="Imprimir Sequência"
                 >
                   <Printer size={16} />
                   <span className="hidden sm:inline">Imprimir</span>
@@ -2569,7 +2571,7 @@ export default function App() {
                     })}
                     className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", dateRange?.start === startOfMonth(new Date()).toISOString() ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
                   >
-                    MÃªs
+                    Mês
                   </button>
                 </div>
 
@@ -2581,7 +2583,7 @@ export default function App() {
                   >
                     <option value="">Produtos</option>
                     <option value="Dry Fit">Dry Fit</option>
-                    <option value="AlgodÃ£o">AlgodÃ£o</option>
+                    <option value="Algodão">Algodão</option>
                     <option value="Poliamida">Poliamida</option>
                   </select>
                   <div className="w-px h-4 bg-zinc-200 mx-1" />
@@ -2593,7 +2595,7 @@ export default function App() {
                     <option value="">Estampas</option>
                     <option value="Silk">Silk</option>
                     <option value="DTF">DTF</option>
-                    <option value="SublimaÃ§Ã£o">SublimaÃ§Ã£o</option>
+                    <option value="Sublimação">Sublimação</option>
                   </select>
                 </div>
               </div>
@@ -2609,7 +2611,7 @@ export default function App() {
                     }}
                     className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
                   >
-                    DiÃ¡rio
+                    Diário
                   </button>
                   <button
                     onClick={() => {
@@ -2619,7 +2621,7 @@ export default function App() {
                     }}
                     className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
                   >
-                    DiÃ¡rio
+                    Diário
                   </button>
                   <button
                     onClick={() => {
@@ -2699,7 +2701,7 @@ export default function App() {
                       <option value="">Todos</option>
                       <option value="Silk">Silk</option>
                       <option value="DTF">DTF</option>
-                      <option value="SublimaÃ§Ã£o">SublimaÃ§Ã£o</option>
+                      <option value="Sublimação">Sublimação</option>
                     </select>
                   </div>
                 </div>
@@ -2707,10 +2709,10 @@ export default function App() {
                 <button
                   onClick={() => setIsPrintModalOpen(true)}
                   className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-[10px] font-bold hover:bg-zinc-800 transition-all shadow-sm active:scale-95 ml-auto sm:ml-0"
-                  title="Imprimir RelatÃ³rio"
+                  title="Imprimir Relatório"
                 >
                   <Printer size={12} />
-                  <span>Imprimir RelatÃ³rio</span>
+                  <span>Imprimir Relatório</span>
                 </button>
               </div>
             )}
@@ -2733,7 +2735,7 @@ export default function App() {
                     const scannedValue = (formData.get('escanearOp') as string).trim();
                     if (!scannedValue) return;
 
-                    // Procura especificamente no campo client_name (como solicitado pelo usuÃ¡rio)
+                    // Procura especificamente no campo client_name (como solicitado pelo usuário)
                     const searchLower = scannedValue.toLowerCase();
                     let foundOrder = orders.find(o => 
                       o.client_name && o.client_name.toLowerCase().includes(searchLower)
@@ -2748,7 +2750,7 @@ export default function App() {
                     if (foundOrder) {
                       handleOrderFound(foundOrder);
                     } else {
-                      // Se nÃ£o encontrar localmente, busca na API focando no nome do cliente
+                      // Se não encontrar localmente, busca na API focando no nome do cliente
                       safeFetch(`/api/orders?search=${encodeURIComponent(scannedValue)}`).then(data => {
                         if (data && data.length > 0) {
                           // Prioriza match no client_name
@@ -2758,12 +2760,12 @@ export default function App() {
                           if (clientMatch) {
                             handleOrderFound(clientMatch);
                           } else {
-                            // Se encontrar algo por outros campos mas o usuÃ¡rio quer apenas cliente
+                            // Se encontrar algo por outros campos mas o usuário quer apenas cliente
                             // podemos abrir o primeiro se for um scan literal do campo circled
                             handleOrderFound(data[0]);
                           }
                         } else {
-                          alert('OP (Cliente) nÃ£o encontrada no sistema.');
+                          alert('OP (Cliente) não encontrada no sistema.');
                         }
                       });
                     }
@@ -2787,7 +2789,7 @@ export default function App() {
                   onClick={handleSyncOlist}
                   disabled={isSyncingOlist}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm whitespace-nowrap text-xs font-bold active:scale-95 disabled:opacity-50 cursor-pointer"
-                  title="Buscar novos pedidos aprovados dos Ãºltimos 7 dias do Olist ERP"
+                  title="Buscar novos pedidos aprovados dos últimos 7 dias do Olist ERP"
                 >
                   <RefreshCw size={15} className={cn(isSyncingOlist && "animate-spin")} />
                   <span>{isSyncingOlist ? "Sincronizando..." : "Sincronizar Olist"}</span>
@@ -2836,11 +2838,11 @@ export default function App() {
                       <h3 className="text-base font-bold text-indigo-950 flex items-center gap-2">
                         Pedidos Importados do Olist ERP ({draftOrders.length})
                         <span className="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 uppercase tracking-wider">
-                          Pendente de Estampa / RevisÃ£o
+                          Pendente de Estampa / Revisão
                         </span>
                       </h3>
                       <p className="text-xs text-indigo-700 mt-0.5">
-                        Estes pedidos foram importados automaticamente do Olist com a grade de tamanhos. A vendedora precisa selecionar a estampa antes de liberar para produÃ§Ã£o.
+                        Estes pedidos foram importados automaticamente do Olist com a grade de tamanhos. A vendedora precisa selecionar a estampa antes de liberar para produção.
                       </p>
                     </div>
                   </div>
@@ -2861,7 +2863,7 @@ export default function App() {
                         <th className="px-4 py-2.5">Cliente</th>
                         <th className="px-4 py-2.5 text-center">Itens / Grade</th>
                         <th className="px-4 py-2.5 text-center">Prazo</th>
-                        <th className="px-4 py-2.5 text-right">AÃ§Ã£o</th>
+                        <th className="px-4 py-2.5 text-right">Ação</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-indigo-50">
@@ -2872,14 +2874,14 @@ export default function App() {
                           <td className="px-4 py-3 text-center">
                             <div className="flex flex-col items-center justify-center gap-1">
                               <span className="inline-flex items-center gap-1 font-mono font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full text-[11px]">
-                                {draft.quantity} peÃ§as {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
+                                {draft.quantity} peças {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
                               </span>
                               {(() => {
                                 const cutQty = getOrderCuttingQty(draft);
                                 if (cutQty > 0) {
                                   return (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[10px] font-black animate-pulse shadow-sm">
-                                      <Scissors size={11} className="text-amber-700" /> FALTA ESTOQUE: {cutQty} PÃ‡S (CORTE)
+                                      <Scissors size={11} className="text-amber-700" /> FALTA ESTOQUE: {cutQty} PÇS (CORTE)
                                     </span>
                                   );
                                 }
@@ -2918,7 +2920,7 @@ export default function App() {
 
             {/* Top KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Ativos', description: 'Total de pedidos que estÃ£o atualmente no sistema e ainda nÃ£o foram finalizados ou cancelados.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Ativos', description: 'Total de pedidos que estão atualmente no sistema e ainda não foram finalizados ou cancelados.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Package size={24} />
@@ -2930,19 +2932,19 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'PeÃ§as em ProduÃ§Ã£o', description: 'Soma total de todas as quantidades de itens dos pedidos que estÃ£o com status ativo.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Peças em Produção', description: 'Soma total de todas as quantidades de itens dos pedidos que estão com status ativo.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
                     <Layers size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">PeÃ§as em ProduÃ§Ã£o</p>
+                    <p className="text-xs text-zinc-500 font-medium">Peças em Produção</p>
                     <h3 className="text-2xl font-bold">{stats.metrics?.activePieces || 0} <span className="text-sm font-normal text-zinc-400">un</span></h3>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Atrasados', description: 'Contagem de pedidos ativos cuja data de entrega (prazo) Ã© anterior Ã  data de hoje.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Pedidos Atrasados', description: 'Contagem de pedidos ativos cuja data de entrega (prazo) é anterior à data de hoje.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className={cn("p-3 rounded-xl", (stats.metrics?.overdueOrders || 0) > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}>
                     <AlertCircle size={24} />
@@ -2954,25 +2956,25 @@ export default function App() {
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'ProduÃ§Ã£o Hoje', description: 'Quantidade de peÃ§as que passaram por alguma etapa de finalizaÃ§Ã£o no dia atual.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Produção Hoje', description: 'Quantidade de peças que passaram por alguma etapa de finalização no dia atual.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
                     <CheckCircle2 size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">ProduÃ§Ã£o Hoje</p>
-                    <h3 className="text-2xl font-bold">{stats.metrics?.todayFinalizedPieces || 0} <span className="text-sm font-normal text-zinc-400">peÃ§as</span></h3>
+                    <p className="text-xs text-zinc-500 font-medium">Produção Hoje</p>
+                    <h3 className="text-2xl font-bold">{stats.metrics?.todayFinalizedPieces || 0} <span className="text-sm font-normal text-zinc-400">peças</span></h3>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo MÃ©dio', description: 'MÃ©dia de tempo (em dias) que um pedido leva para ser concluÃ­do, desde a criaÃ§Ã£o atÃ© a Ãºltima etapa.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio', description: 'Média de tempo (em dias) que um pedido leva para ser concluído, desde a criação até a última etapa.' })}>
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
                     <Clock size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Tempo MÃ©dio</p>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio</p>
                     <h3 className="text-2xl font-bold">{((stats.metrics?.avgLeadTimeSeconds || 0) / 86400).toFixed(1)} <span className="text-sm font-normal text-zinc-400">dias</span></h3>
                   </div>
                 </div>
@@ -2986,7 +2988,7 @@ export default function App() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold flex items-center gap-2">
                       <List size={18} className="text-zinc-400" />
-                      Pedidos em ProduÃ§Ã£o
+                      Pedidos em Produção
                     </h3>
                   </div>
                   <div className="overflow-x-auto">
@@ -3041,8 +3043,8 @@ export default function App() {
                               <td className="px-4 py-3 text-center">
                                 <span className={cn(
                                   "inline-flex px-2 py-1 rounded-full text-[10px] font-bold",
-                                  order.status === 'Em ProduÃ§Ã£o' ? 'bg-sky-100 text-sky-700' :
-                                    order.status === 'FinalizaÃ§Ã£o' ? 'bg-amber-100 text-amber-700' :
+                                  order.status === 'Em Produção' ? 'bg-sky-100 text-sky-700' :
+                                    order.status === 'Finalização' ? 'bg-amber-100 text-amber-700' :
                                       'bg-zinc-100 text-zinc-700'
                                 )}>
                                   {order.status}
@@ -3057,7 +3059,7 @@ export default function App() {
                           .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                           .length === 0 && (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produÃ§Ã£o.</td>
+                            <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum pedido em produção.</td>
                           </tr>
                         )}
                       </tbody>
@@ -3079,8 +3081,8 @@ export default function App() {
                         <tr className="bg-zinc-50 border-b border-zinc-100">
                           <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Colaborador</th>
                           <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Pedidos Finais</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">PeÃ§as Feitas</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Tempo MÃ©dio/PeÃ§a</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Peças Feitas</th>
+                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500 text-center">Tempo Médio/Peça</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-50">
@@ -3094,7 +3096,7 @@ export default function App() {
                         ))}
                         {(!stats.productivity || stats.productivity.length === 0) && (
                           <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">Sem dados de produtividade no perÃ­odo.</td>
+                            <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500">Sem dados de produtividade no período.</td>
                           </tr>
                         )}
                       </tbody>
@@ -3124,7 +3126,7 @@ export default function App() {
                     ))}
                     {(!stats.atRiskOrders || stats.atRiskOrders.length === 0) && (
                       <div className="text-center py-4 text-emerald-600 bg-emerald-50 rounded-lg border border-emerald-100 text-sm">
-                        Nenhum pedido em risco! ðŸŽ‰
+                        Nenhum pedido em risco! 🎉
                       </div>
                     )}
                   </div>
@@ -3134,7 +3136,7 @@ export default function App() {
                 <Card className="p-6 border-amber-100">
                   <h3 className="font-bold mb-4 flex items-center gap-2 text-amber-700">
                     <Filter size={18} />
-                    Gargalos da ProduÃ§Ã£o
+                    Gargalos da Produção
                   </h3>
                   <p className="text-xs text-zinc-500 mb-4">Setores com mais pedidos aguardando ou em andamento no momento.</p>
                   <div className="space-y-3">
@@ -3169,7 +3171,6 @@ export default function App() {
             productTypeFilter={productTypeFilter}
             setSelectedOrder={setSelectedOrder}
             fetchExecutions={fetchExecutions}
-            confirmTimeoutRef={confirmTimeoutRef}
           />
         )}
 
@@ -3236,7 +3237,7 @@ export default function App() {
                         <span className="flex items-center gap-1"><UserIcon size={12} /> {user.email}</span>
                         {currentUser?.role === 'Admin' && (
                           <>
-                            <span>â€¢</span>
+                            <span>•</span>
                             <span>R$ {user.hourly_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h</span>
                           </>
                         )}
@@ -3276,7 +3277,7 @@ export default function App() {
                     : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
                 )}
               >
-                <BarChart3 size={16} /> VisÃ£o Geral & Entregas
+                <BarChart3 size={16} /> Visão Geral & Entregas
               </button>
               <button
                 type="button"
@@ -3300,7 +3301,7 @@ export default function App() {
                     : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
                 )}
               >
-                <AlertCircle size={16} /> RelatÃ³rio de Perdas & Retrabalho
+                <AlertCircle size={16} /> Relatório de Perdas & Retrabalho
               </button>
             </div>
 
@@ -3314,8 +3315,8 @@ export default function App() {
                         <AlertCircle size={24} />
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500 font-medium">Total PeÃ§as Perdidas</p>
-                        <h3 className="text-2xl font-bold text-rose-700">{lossReportData?.summary?.total_perdido || 0} <span className="text-xs font-normal text-zinc-500">peÃ§as</span></h3>
+                        <p className="text-xs text-zinc-500 font-medium">Total Peças Perdidas</p>
+                        <h3 className="text-2xl font-bold text-rose-700">{lossReportData?.summary?.total_perdido || 0} <span className="text-xs font-normal text-zinc-500">peças</span></h3>
                       </div>
                     </div>
                   </Card>
@@ -3350,7 +3351,7 @@ export default function App() {
                         <Clock size={24} />
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500 font-medium">Impacto MÃ©dio no Prazo</p>
+                        <p className="text-xs text-zinc-500 font-medium">Impacto Médio no Prazo</p>
                         <h3 className="text-2xl font-bold text-purple-700">{lossReportData?.summary?.impacto_prazo_horas?.toFixed(1) || '0.0'} <span className="text-xs font-normal text-zinc-500">horas/ped</span></h3>
                       </div>
                     </div>
@@ -3361,7 +3362,7 @@ export default function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card className="p-6">
                     <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <Layers size={16} className="text-rose-600" /> Perdas por Setor / Etapa (GrÃ¡fico)
+                      <Layers size={16} className="text-rose-600" /> Perdas por Setor / Etapa (Gráfico)
                     </h3>
                     <div className="h-64 w-full">
                       <ResponsiveContainer width="100%" height="100%">
@@ -3370,7 +3371,7 @@ export default function App() {
                           <XAxis dataKey="stage_name" fontSize={10} axisLine={false} tickLine={false} />
                           <YAxis fontSize={10} axisLine={false} tickLine={false} />
                           <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                          <Bar dataKey="quantidade_perdida" name="PeÃ§as Perdidas" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="quantidade_perdida" name="Peças Perdidas" fill="#e11d48" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -3401,7 +3402,7 @@ export default function App() {
                           ))}
                           {(lossReportData?.perdas_por_setor || []).length === 0 && (
                             <tr>
-                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhuma perda registrada no perÃ­odo.</td>
+                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhuma perda registrada no período.</td>
                             </tr>
                           )}
                         </tbody>
@@ -3414,7 +3415,7 @@ export default function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card className="p-6">
                     <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <BarChart3 size={16} className="text-rose-600" /> DistribuiÃ§Ã£o por Motivo (GrÃ¡fico)
+                      <BarChart3 size={16} className="text-rose-600" /> Distribuição por Motivo (Gráfico)
                     </h3>
                     <div className="h-64 w-full">
                       <ResponsiveContainer width="100%" height="100%">
@@ -3423,7 +3424,7 @@ export default function App() {
                           <XAxis type="number" fontSize={10} axisLine={false} tickLine={false} />
                           <YAxis dataKey="motivo" type="category" fontSize={9} axisLine={false} tickLine={false} width={130} />
                           <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                          <Bar dataKey="quantidade_perdida" name="PeÃ§as Perdidas" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                          <Bar dataKey="quantidade_perdida" name="Peças Perdidas" fill="#f59e0b" radius={[0, 4, 4, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -3439,7 +3440,7 @@ export default function App() {
                           <tr className="border-b border-zinc-100 bg-zinc-50">
                             <th className="py-2.5 px-3 font-bold text-zinc-500">Motivo Categorizado</th>
                             <th className="py-2.5 px-3 font-bold text-zinc-500">Setor Origem</th>
-                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">PeÃ§as</th>
+                            <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Peças</th>
                             <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">% Perdas</th>
                           </tr>
                         </thead>
@@ -3454,7 +3455,7 @@ export default function App() {
                           ))}
                           {(lossReportData?.perdas_por_motivo || []).length === 0 && (
                             <tr>
-                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhum motivo registrado no perÃ­odo.</td>
+                              <td colSpan={4} className="text-center py-6 text-zinc-400">Nenhum motivo registrado no período.</td>
                             </tr>
                           )}
                         </tbody>
@@ -3466,10 +3467,10 @@ export default function App() {
                 {/* Section 3: Impacto em Prazo de Entrega (Custo do Retrabalho) */}
                 <Card className="p-6">
                   <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-2">
-                    <Clock size={16} className="text-purple-600" /> Impacto no Prazo por Pedidos com ReposiÃ§Ã£o (Custo do Retrabalho)
+                    <Clock size={16} className="text-purple-600" /> Impacto no Prazo por Pedidos com Reposição (Custo do Retrabalho)
                   </h3>
                   <p className="text-xs text-zinc-500 mb-4">
-                    Compara o tempo total de produÃ§Ã£o dos pedidos que tiveram perdas contra a mÃ©dia dos pedidos sem perdas.
+                    Compara o tempo total de produção dos pedidos que tiveram perdas contra a média dos pedidos sem perdas.
                   </p>
                   <div className="overflow-x-auto border border-zinc-100 rounded-xl">
                     <table className="w-full text-left text-xs">
@@ -3477,9 +3478,9 @@ export default function App() {
                         <tr className="bg-zinc-50 border-b border-zinc-100">
                           <th className="py-3 px-4 font-bold text-zinc-500">Pedido</th>
                           <th className="py-3 px-4 font-bold text-zinc-500">Cliente</th>
-                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">PeÃ§as Perdidas</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Peças Perdidas</th>
                           <th className="py-3 px-4 font-bold text-zinc-500 text-center">Lead Time (com perda)</th>
-                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">MÃ©dia Sem Perda</th>
+                          <th className="py-3 px-4 font-bold text-zinc-500 text-center">Média Sem Perda</th>
                           <th className="py-3 px-4 font-bold text-zinc-500 text-center">Atraso Adicional (Retrabalho)</th>
                         </tr>
                       </thead>
@@ -3498,7 +3499,7 @@ export default function App() {
                         ))}
                         {(lossReportData?.impacto_pedidos || []).length === 0 && (
                           <tr>
-                            <td colSpan={6} className="text-center py-6 text-zinc-400">Nenhum pedido com reposiÃ§Ã£o/retrabalho registrado.</td>
+                            <td colSpan={6} className="text-center py-6 text-zinc-400">Nenhum pedido com reposição/retrabalho registrado.</td>
                           </tr>
                         )}
                       </tbody>
@@ -3514,7 +3515,7 @@ export default function App() {
             {/* Delivery & Performance KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {/* Entregues Hoje */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Entregues Hoje', description: 'Total de pedidos marcados como concluÃ­dos na data de hoje.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Entregues Hoje', description: 'Total de pedidos marcados como concluídos na data de hoje.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
                     <CheckCircle size={24} />
@@ -3526,21 +3527,21 @@ export default function App() {
                 </div>
               </Card>
 
-              {/* Entregues no PerÃ­odo */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No PerÃ­odo', description: 'Total de pedidos concluÃ­dos dentro do intervalo de datas selecionado no filtro.' })}>
+              {/* Entregues no Período */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Período', description: 'Total de pedidos concluídos dentro do intervalo de datas selecionado no filtro.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
                     <Archive size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">No PerÃ­odo</p>
+                    <p className="text-xs text-zinc-500 font-medium">No Período</p>
                     <h3 className="text-2xl font-bold">{deliveryReportData?.entregues_periodo || 0}</h3>
                   </div>
                 </div>
               </Card>
 
               {/* Pedidos no Prazo (%) */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Prazo (%)', description: 'Percentual de pedidos entregues cuja data de finalizaÃ§Ã£o foi igual ou anterior ao prazo prometido.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'No Prazo (%)', description: 'Percentual de pedidos entregues cuja data de finalização foi igual ou anterior ao prazo prometido.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
                     <TrendingUp size={24} />
@@ -3552,14 +3553,14 @@ export default function App() {
                 </div>
               </Card>
 
-              {/* Lead Time MÃ©dio */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Lead Time MÃ©dio', description: 'MÃ©dia de dias decorridos entre a data de criaÃ§Ã£o do pedido e a sua data de finalizaÃ§Ã£o.' })}>
+              {/* Lead Time Médio */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Lead Time Médio', description: 'Média de dias decorridos entre a data de criação do pedido e a sua data de finalização.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
                     <Clock size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Lead Time MÃ©dio</p>
+                    <p className="text-xs text-zinc-500 font-medium">Lead Time Médio</p>
                     <h3 className="text-2xl font-bold">
                       {deliveryReportData?.lead_time_medio_dias?.toFixed(1) || '0.0'}
                       <span className="text-sm font-normal text-zinc-400 ml-1">dias</span>
@@ -3569,7 +3570,7 @@ export default function App() {
               </Card>
 
               {/* Cumprimento de Meta (%) */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Cumprimento Meta', description: 'Percentual de atingimento da meta de produÃ§Ã£o diÃ¡ria (peÃ§as produzidas vs meta configurada).' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Cumprimento Meta', description: 'Percentual de atingimento da meta de produção diária (peças produzidas vs meta configurada).' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-purple-50 rounded-xl text-purple-600">
                     <Target size={24} />
@@ -3582,7 +3583,7 @@ export default function App() {
               </Card>
 
               {/* Total de Pedidos */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Total Pedidos', description: 'Volume total de pedidos processados ou registrados no sistema durante o perÃ­odo.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Total Pedidos', description: 'Volume total de pedidos processados ou registrados no sistema durante o período.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Package size={24} />
@@ -3595,7 +3596,7 @@ export default function App() {
               </Card>
 
               {/* Etapas Finalizadas */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Etapas Finalizadas', description: 'Contagem total de etapas individuais concluÃ­das no perÃ­odo.' })}>
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Etapas Finalizadas', description: 'Contagem total de etapas individuais concluídas no período.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <CheckSquare size={24} />
@@ -3607,27 +3608,27 @@ export default function App() {
                 </div>
               </Card>
 
-              {/* Tempo MÃ©dio por Etapa */}
-              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo MÃ©dio/Etapa', description: 'MÃ©dia de tempo real gasto em cada etapa produtiva, comparada ao tempo esperado.' })}>
+              {/* Tempo Médio por Etapa */}
+              <Card className="p-6 cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Médio/Etapa', description: 'Média de tempo real gasto em cada etapa produtiva, comparada ao tempo esperado.' })}>
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-zinc-100 rounded-xl text-zinc-600">
                     <Timer size={24} />
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-500 font-medium">Tempo MÃ©dio/Etapa</p>
+                    <p className="text-xs text-zinc-500 font-medium">Tempo Médio/Etapa</p>
                     <h3 className="text-2xl font-bold">{formatSeconds(reportData?.summary?.avg_stage_time || 0)}</h3>
                   </div>
                 </div>
               </Card>
             </div>
             
-            {/* ProduÃ§Ã£o por Etapa no PerÃ­odo (Visual) */}
+            {/* Produção por Etapa no Período (Visual) */}
             {reportData?.production_by_stage && reportData.production_by_stage.length > 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                 <Card className="p-6 border-zinc-200 shadow-sm bg-white">
                   <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-4 flex items-center gap-2">
                     <BarChart3 size={16} className="text-emerald-600" />
-                    PeÃ§as Produzidas por Etapa (GrÃ¡fico)
+                    Peças Produzidas por Etapa (Gráfico)
                   </h3>
                   <div className="h-64 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -3638,7 +3639,7 @@ export default function App() {
                         <Tooltip
                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                         />
-                        <Bar dataKey="total_pieces" name="PeÃ§as Produzidas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="total_pieces" name="Peças Produzidas" fill="#10b981" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -3655,7 +3656,7 @@ export default function App() {
                         <tr className="border-b border-zinc-100 bg-zinc-50">
                           <th className="py-2.5 px-3 font-bold text-zinc-500">Etapa</th>
                           <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Ordens Finalizadas</th>
-                          <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">PeÃ§as Produzidas</th>
+                          <th className="py-2.5 px-3 font-bold text-zinc-500 text-center">Peças Produzidas</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
@@ -3672,7 +3673,7 @@ export default function App() {
                                     "text-[9px] text-zinc-400 inline-block transition-transform duration-200",
                                     isExpanded && "rotate-90 text-zinc-800"
                                   )}>
-                                    â–¶
+                                    ▶
                                   </span>
                                   {item.stage_name}
                                 </td>
@@ -3697,7 +3698,7 @@ export default function App() {
                                               <th className="py-2 px-3">Cliente</th>
                                               <th className="py-2 px-3 text-center">Pecas</th>
                                               <th className="py-2 px-3">Operador</th>
-                                              <th className="py-2 px-3 text-right">HorÃ¡rio</th>
+                                              <th className="py-2 px-3 text-right">Horário</th>
                                             </tr>
                                           </thead>
                                           <tbody className="divide-y divide-zinc-100">
@@ -3729,7 +3730,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Detalhamento dos Pedidos do PerÃ­odo */}
+            {/* Detalhamento dos Pedidos do Período */}
             {reportData?.orders_list && reportData.orders_list.length > 0 && (
               <Card className="p-6 border-zinc-200 shadow-sm mb-8">
                 <div className="flex items-center justify-between mb-4">
@@ -3772,12 +3773,12 @@ export default function App() {
                         </div>
                         <p className="text-xs font-bold text-zinc-700 truncate line-clamp-1">{order.client_name}</p>
                         
-                        {/* Etapas finalizadas neste perÃ­odo */}
+                        {/* Etapas finalizadas neste período */}
                         {order.stages_worked_in_period && order.stages_worked_in_period.length > 0 ? (
                           <div className="flex flex-wrap gap-1 mt-1 max-w-[190px]">
                             {order.stages_worked_in_period.map((st: any, sidx: number) => (
-                              <span key={sidx} title={`ConcluÃ­do por ${st.operator}`} className="text-[8px] leading-tight bg-emerald-50 text-emerald-700 border border-emerald-100 px-1 py-0.5 rounded font-bold">
-                                âœ“ {st.stage_name}
+                              <span key={sidx} title={`Concluído por ${st.operator}`} className="text-[8px] leading-tight bg-emerald-50 text-emerald-700 border border-emerald-100 px-1 py-0.5 rounded font-bold">
+                                ✓ {st.stage_name}
                               </span>
                             ))}
                           </div>
@@ -3787,7 +3788,7 @@ export default function App() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-xs font-black text-zinc-900">{order.quantity}</p>
-                        <p className="text-[8px] text-zinc-400 font-bold uppercase">PeÃ§as</p>
+                        <p className="text-[8px] text-zinc-400 font-bold uppercase">Peças</p>
                       </div>
                     </motion.div>
                   ))}
@@ -3827,7 +3828,7 @@ export default function App() {
                 <Card className="p-8 border-rose-200">
                   <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-rose-600">
                     <AlertCircle size={20} />
-                    RelatÃ³rio de Atrasos
+                    Relatório de Atrasos
                   </h3>
                   <div className="overflow-x-auto max-h-80 overflow-y-auto">
                     <table className="w-full text-left">
@@ -3863,7 +3864,7 @@ export default function App() {
               <Card className="p-8">
                 <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                   <BarChart3 size={20} />
-                  Volume de ProduÃ§Ã£o por {reportPeriod === 'day' ? 'Dia' : reportPeriod === 'week' ? 'Semana' : 'MÃªs'}
+                  Volume de Produção por {reportPeriod === 'day' ? 'Dia' : reportPeriod === 'week' ? 'Semana' : 'Mês'}
                 </h3>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
@@ -3875,7 +3876,7 @@ export default function App() {
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                       />
                       <Bar dataKey="orders" name="Pedidos" fill="#18181b" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="pieces" name="PeÃ§as" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="pieces" name="Peças" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -3885,11 +3886,11 @@ export default function App() {
             {/* Painel de Metas & Produtividade */}
             {goalsProductivityData && (() => {
               const statusBadge = (s: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta', pct: number | null) => {
-                if (s === 'sem_meta') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500">â€” Sem meta</span>;
-                const label = pct !== null ? `${Math.round(pct * 100)}%` : 'â€”';
-                if (s === 'verde') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">âœ“ {label}</span>;
-                if (s === 'amarelo') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">âš  {label}</span>;
-                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">âœ— {label}</span>;
+                if (s === 'sem_meta') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500">— Sem meta</span>;
+                const label = pct !== null ? `${Math.round(pct * 100)}%` : '—';
+                if (s === 'verde') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">✓ {label}</span>;
+                if (s === 'amarelo') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {label}</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">✗ {label}</span>;
               };
               const periodCell = (p: { real: number; target: number | null; pct: number | null; status: 'verde' | 'amarelo' | 'vermelho' | 'sem_meta' }) => (
                 <div className="flex flex-col items-center gap-0.5">
@@ -3897,7 +3898,7 @@ export default function App() {
                   {p.target !== null && <span className="text-[9px] text-zinc-400 font-mono">/ {p.target}</span>}
                 </div>
               );
-              const unitLabel = (t: string) => t === 'por_pedido' ? 'pedidos' : 'peÃ§as';
+              const unitLabel = (t: string) => t === 'por_pedido' ? 'pedidos' : 'peças';
               return (
                 <Card className="p-8 border-zinc-200 shadow-lg bg-white relative overflow-hidden">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
@@ -3906,7 +3907,7 @@ export default function App() {
                         <Target size={20} className="text-zinc-600" />
                         Painel de Metas e Produtividade
                       </h3>
-                      <p className="text-xs text-zinc-500 mt-1">Desempenho por colaborador e setor â€” ordenado do pior para o melhor % atingido.</p>
+                      <p className="text-xs text-zinc-500 mt-1">Desempenho por colaborador e setor — ordenado do pior para o melhor % atingido.</p>
                     </div>
                     <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-lg self-start">
                       <button onClick={() => setGoalsViewType('collaborator')} className={cn('px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5', goalsViewType === 'collaborator' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500 hover:text-zinc-700')}>
@@ -3928,8 +3929,8 @@ export default function App() {
                             <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Meta/dia</th>
                             <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Hoje</th>
                             <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Semana</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">MÃªs</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status MÃªs</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status Mês</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
@@ -3940,13 +3941,13 @@ export default function App() {
                           }).map((row, i) => (
                             <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
                               <td className="px-4 py-3 font-bold text-zinc-800 whitespace-nowrap">
-                                {row.month.status === 'verde' && (row.month.pct ?? 0) >= 1 && <span title="Meta atingida">ðŸ† </span>}
+                                {row.month.status === 'verde' && (row.month.pct ?? 0) >= 1 && <span title="Meta atingida">🏆 </span>}
                                 {row.user_name}
                                 {row.is_custom && <span className="ml-1 text-[9px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full border border-violet-200">personalizada</span>}
                               </td>
                               <td className="px-4 py-3 text-zinc-600 whitespace-nowrap">{row.stage_name}</td>
                               <td className="px-4 py-3 text-zinc-500 whitespace-nowrap text-[11px]">{unitLabel(row.calculation_type)}</td>
-                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">â€”</span>}</td>
+                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">—</span>}</td>
                               <td className="px-4 py-3 text-center">{periodCell(row.today)}</td>
                               <td className="px-4 py-3 text-center">{periodCell(row.week)}</td>
                               <td className="px-4 py-3 text-center">{periodCell(row.month)}</td>
@@ -3954,7 +3955,7 @@ export default function App() {
                             </tr>
                           ))}
                           {(goalsProductivityData.collaborators || []).length === 0 && (
-                            <tr><td colSpan={8} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de colaborador no perÃ­odo.</td></tr>
+                            <tr><td colSpan={8} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de colaborador no período.</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -3969,8 +3970,8 @@ export default function App() {
                             <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Meta/dia</th>
                             <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Hoje</th>
                             <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Semana</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">MÃªs</th>
-                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status MÃªs</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Mês</th>
+                            <th className="px-4 py-3 text-xs font-bold text-zinc-500 text-center whitespace-nowrap">Status Mês</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
@@ -3982,7 +3983,7 @@ export default function App() {
                             <tr key={i} className="hover:bg-zinc-50/50 transition-colors">
                               <td className="px-4 py-3 font-bold text-zinc-800 whitespace-nowrap">{row.stage_name}</td>
                               <td className="px-4 py-3 text-zinc-500 whitespace-nowrap text-[11px]">{unitLabel(row.calculation_type)}</td>
-                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">â€”</span>}</td>
+                              <td className="px-4 py-3 text-center font-mono text-zinc-700 font-bold">{row.meta_diaria ?? <span className="text-zinc-400 text-xs">—</span>}</td>
                               <td className="px-4 py-3 text-center">{periodCell(row.today)}</td>
                               <td className="px-4 py-3 text-center">{periodCell(row.week)}</td>
                               <td className="px-4 py-3 text-center">{periodCell(row.month)}</td>
@@ -3990,7 +3991,7 @@ export default function App() {
                             </tr>
                           ))}
                           {(goalsProductivityData.sectors || []).length === 0 && (
-                            <tr><td colSpan={7} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de setores no perÃ­odo.</td></tr>
+                            <tr><td colSpan={7} className="px-4 py-8 text-center text-zinc-400 italic text-xs">Nenhum dado de setores no período.</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -4005,11 +4006,11 @@ export default function App() {
               operationalReportData && (
                 <div className="space-y-8 pb-12">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* ProduÃ§Ã£o Detalhada */}
+                    {/* Produção Detalhada */}
                     <Card className="p-6">
                       <h3 className="text-base font-bold mb-4 flex items-center gap-2">
                         <Clock size={18} className="text-zinc-400" />
-                        ProduÃ§Ã£o Detalhada (Etapas)
+                        Produção Detalhada (Etapas)
                       </h3>
                       <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                         <table className="w-full text-left">
@@ -4050,7 +4051,7 @@ export default function App() {
                             <tr className="bg-zinc-50 border-b border-zinc-100">
                               <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Pedido</th>
                               <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Progresso</th>
-                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">PrÃ³xima</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500">Próxima</th>
                               <th className="px-3 py-2 text-[10px] font-bold uppercase text-zinc-500 text-center">Prazo</th>
                             </tr>
                           </thead>
@@ -4073,7 +4074,7 @@ export default function App() {
                                   </div>
                                 </td>
                                 <td className="px-3 py-2 text-[10px] text-zinc-600 font-medium">
-                                  {order.proxima_etapa || <span className="text-emerald-500 font-bold">ConcluÃ­do</span>}
+                                  {order.proxima_etapa || <span className="text-emerald-500 font-bold">Concluído</span>}
                                 </td>
                                 <td className="px-3 py-2 text-center">
                                   <span className={cn(
@@ -4095,17 +4096,17 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Pedidos ConcluÃ­dos */}
+                    {/* Pedidos Concluídos */}
                     <Card className="p-6 border-emerald-100">
                       <h3 className="text-base font-bold mb-4 flex items-center gap-2 text-emerald-700">
                         <CheckCircle size={18} />
-                        Pedidos ConcluÃ­dos no PerÃ­odo
+                        Pedidos Concluídos no Período
                       </h3>
                       <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                         <table className="w-full text-left">
                           <thead>
                             <tr className="bg-emerald-50 border-b border-emerald-100 text-emerald-700">
-                              <th className="px-3 py-2 text-[10px] font-bold uppercase">ConclusÃ£o</th>
+                              <th className="px-3 py-2 text-[10px] font-bold uppercase">Conclusão</th>
                               <th className="px-3 py-2 text-[10px] font-bold uppercase">Pedido</th>
                               <th className="px-3 py-2 text-[10px] font-bold uppercase">Lead Time</th>
                               <th className="px-3 py-2 text-[10px] font-bold uppercase text-center">Status</th>
@@ -4154,7 +4155,7 @@ export default function App() {
                                 </p>
                               </div>
                               <div className="text-right">
-                                <p className="text-xs font-mono font-black text-indigo-600">{user.pecas} peÃ§as</p>
+                                <p className="text-xs font-mono font-black text-indigo-600">{user.pecas} peças</p>
                                 <p className="text-[9px] text-zinc-400 font-bold uppercase">{user.etapas} etapas</p>
                               </div>
                             </div>
@@ -4177,7 +4178,7 @@ export default function App() {
               <Card className="p-8">
                 <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                   <Clock size={20} />
-                  Tempo MÃ©dio por Etapa (min)
+                  Tempo Médio por Etapa (min)
                 </h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -4185,7 +4186,7 @@ export default function App() {
                       <XAxis type="number" hide />
                       <YAxis dataKey="name" type="category" fontSize={10} width={100} axisLine={false} tickLine={false} />
                       <Tooltip
-                        formatter={(value: any) => [`${(Number(value || 0) / 60).toFixed(1)} min`, 'Tempo MÃ©dio']}
+                        formatter={(value: any) => [`${(Number(value || 0) / 60).toFixed(1)} min`, 'Tempo Médio']}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                       />
                       <Bar dataKey="avg_time" fill="#f59e0b" radius={[0, 4, 4, 0]} />
@@ -4198,7 +4199,7 @@ export default function App() {
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                 <PieChartIcon size={20} />
-                Tempo MÃ©dio por Perfil de Pedido
+                Tempo Médio por Perfil de Pedido
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -4207,9 +4208,9 @@ export default function App() {
                       <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Perfil</th>
                       <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Cores</th>
                       <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. Pedidos</th>
-                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. MÃ©dia PeÃ§as</th>
-                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">MÃ©dia Real</th>
-                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">MÃ­n/MÃ¡x</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd. Média Peças</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Média Real</th>
+                      <th className="pb-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-right">Mín/Máx</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-50">
@@ -4223,7 +4224,7 @@ export default function App() {
                             </div>
                           </td>
                           <td className="py-4 text-center">
-                            {(p.print_type === 'Silk' || p.print_type === 'SublimaÃ§Ã£o') ? (
+                            {(p.print_type === 'Silk' || p.print_type === 'Sublimação') ? (
                               <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
                                 {p.num_colors} {p.num_colors === 1 ? 'Cor' : 'Cores'}
                               </span>
@@ -4246,7 +4247,7 @@ export default function App() {
                     ) : (
                       <tr>
                         <td colSpan={6} className="py-12 text-center text-zinc-400 italic text-sm">
-                          Aguardando mais pedidos finalizados para gerar mÃ©dias por perfil...
+                          Aguardando mais pedidos finalizados para gerar médias por perfil...
                         </td>
                       </tr>
                     )}
@@ -4276,7 +4277,7 @@ export default function App() {
                         onChange={(e) => setReportStartDate(e.target.value)}
                         className="bg-zinc-800 border-none text-white text-xs rounded-md px-2 py-1 focus:ring-1 focus:ring-zinc-700 appearance-none"
                       />
-                      <span className="text-zinc-600">atÃ©</span>
+                      <span className="text-zinc-600">até</span>
                       <input
                         type="date"
                         value={reportEndDate}
@@ -4320,7 +4321,7 @@ export default function App() {
 
                   <div className="ml-auto flex items-center gap-4 group">
                     <div className="text-right">
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Meta Custo/PeÃ§a</p>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">Meta Custo/Peça</p>
                       <div className="flex items-center gap-2">
                         <span className="text-zinc-400 text-xs font-medium">R$</span>
                         <input
@@ -4352,7 +4353,7 @@ export default function App() {
 
               {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Custo Total M.O.', description: 'Soma do custo de mÃ£o de obra de todos os colaboradores para as etapas finalizadas no perÃ­odo selecionado.' })}>
+                <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Custo Total M.O.', description: 'Soma do custo de mão de obra de todos os colaboradores para as etapas finalizadas no período selecionado.' })}>
                   <div className="absolute top-0 right-0 p-8 opacity-5">
                     <DollarSign size={80} />
                   </div>
@@ -4374,7 +4375,7 @@ export default function App() {
                       ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-rose-500"
                       : (Number(metaCustoPeca) || 0) > 0 ? "after:content-[''] after:absolute after:top-0 after:left-0 after:w-1 after:h-full after:bg-emerald-500" : ""
                   )}
-                  onClick={() => setInfoModal({ title: 'Custo MÃ©dio / PeÃ§a', description: 'Valor mÃ©dio investido em mÃ£o de obra para cada peÃ§a produzida. Calculado dividindo o Custo Total M.O. pelo Volume Produzido.' })}
+                  onClick={() => setInfoModal({ title: 'Custo Médio / Peça', description: 'Valor médio investido em mão de obra para cada peça produzida. Calculado dividindo o Custo Total M.O. pelo Volume Produzido.' })}
                 >
                   <div className="flex items-center gap-4">
                     <div className={cn(
@@ -4386,7 +4387,7 @@ export default function App() {
                       <Target size={24} />
                     </div>
                     <div>
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Custo MÃ©dio / PeÃ§a</p>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Custo Médio / Peça</p>
                       <div className="flex items-baseline gap-2">
                         <h3 className="text-2xl font-black text-zinc-900">R$ {((Number(reportData?.summary?.total_labor_cost) || 0) / (Number(reportData?.summary?.total_parts) || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
                         {(Number(metaCustoPeca) || 0) > 0 && (
@@ -4405,7 +4406,7 @@ export default function App() {
                   </div>
                 </Card>
 
-                <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Volume Produzido', description: 'Quantidade total de peÃ§as fÃ­sicas que foram finalizadas em todas as suas etapas obrigatÃ³rias no perÃ­odo.' })}>
+                <Card className="p-6 border-none shadow-sm bg-white overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Volume Produzido', description: 'Quantidade total de peças físicas que foram finalizadas em todas as suas etapas obrigatórias no período.' })}>
                   <div className="absolute top-0 right-0 p-8 opacity-5">
                     <Package size={80} />
                   </div>
@@ -4415,12 +4416,12 @@ export default function App() {
                     </div>
                     <div>
                       <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">Volume Produzido</p>
-                      <h3 className="text-2xl font-black text-zinc-900">{(Number(reportData?.summary?.total_parts) || 0).toLocaleString('pt-BR')} <span className="text-xs font-medium text-zinc-400 uppercase">PeÃ§as</span></h3>
+                      <h3 className="text-2xl font-black text-zinc-900">{(Number(reportData?.summary?.total_parts) || 0).toLocaleString('pt-BR')} <span className="text-xs font-medium text-zinc-400 uppercase">Peças</span></h3>
                     </div>
                   </div>
                 </Card>
 
-                <Card className="p-6 border-none shadow-sm bg-zinc-900 overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Total Gasto', description: 'Soma de todas as horas trabalhadas pelos colaboradores nas etapas de produÃ§Ã£o finalizadas no perÃ­odo.' })}>
+                <Card className="p-6 border-none shadow-sm bg-zinc-900 overflow-hidden relative cursor-help hover:border-zinc-300 transition-colors" onClick={() => setInfoModal({ title: 'Tempo Total Gasto', description: 'Soma de todas as horas trabalhadas pelos colaboradores nas etapas de produção finalizadas no período.' })}>
                   <div className="absolute top-0 right-0 p-8 opacity-10 text-white">
                     <Clock size={80} />
                   </div>
@@ -4447,9 +4448,9 @@ export default function App() {
                       <div>
                         <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
                           <PieChartIcon size={20} className="text-emerald-500" />
-                          ComposiÃ§Ã£o de Custos
+                          Composição de Custos
                         </h3>
-                        <p className="text-xs text-zinc-400 font-medium">DivisÃ£o do investimento em mÃ£o de obra por colaborador</p>
+                        <p className="text-xs text-zinc-400 font-medium">Divisão do investimento em mão de obra por colaborador</p>
                       </div>
                     </div>
                     <div className="h-80">
@@ -4481,7 +4482,7 @@ export default function App() {
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-4">
                           <Activity size={40} className="opacity-20" />
-                          <p className="text-sm font-medium italic">Nenhuma produÃ§Ã£o registrada neste perÃ­odo</p>
+                          <p className="text-sm font-medium italic">Nenhuma produção registrada neste período</p>
                         </div>
                       )}
                     </div>
@@ -4505,7 +4506,7 @@ export default function App() {
                         <TrendingUp size={20} className="text-emerald-400" />
                         Ranking de Rentabilidade
                       </h3>
-                      <p className="text-xs text-zinc-500 font-medium mb-8">Colaboradores com menor custo por peÃ§a produzida</p>
+                      <p className="text-xs text-zinc-500 font-medium mb-8">Colaboradores com menor custo por peça produzida</p>
 
                       <div className="space-y-6">
                         {memoizedCostsByCollaborator.map((c: any, i: number) => {
@@ -4529,7 +4530,7 @@ export default function App() {
                                       "text-sm font-black font-mono",
                                       isEfficient ? "text-emerald-400" : "text-rose-400"
                                     )}>
-                                      R$ {costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-medium opacity-50">/pÃ§</span>
+                                      R$ {costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} <span className="text-[10px] font-medium opacity-50">/pç</span>
                                     </p>
                                   </div>
                                 </div>
@@ -4555,9 +4556,9 @@ export default function App() {
                       <div>
                         <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
                           <FileText size={20} className="text-sky-500" />
-                          Custos por Ordem de ProduÃ§Ã£o
+                          Custos por Ordem de Produção
                         </h3>
-                        <p className="text-xs text-zinc-400 font-medium">AnÃ¡lise detalhada de cada pedido finalizado neste perÃ­odo</p>
+                        <p className="text-xs text-zinc-400 font-medium">Análise detalhada de cada pedido finalizado neste período</p>
                       </div>
                       <button className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors">
                         <Download size={18} />
@@ -4579,7 +4580,7 @@ export default function App() {
 
                                 <div className="flex-grow grid grid-cols-2 md:grid-cols-3 gap-4">
                                   <div>
-                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">PeÃ§as</span>
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Peças</span>
                                     <span className="text-sm font-black text-zinc-900">{Number(p?.pecas) || 0}</span>
                                   </div>
                                   <div className="hidden md:block">
@@ -4587,7 +4588,7 @@ export default function App() {
                                     <span className="text-sm font-black text-zinc-900">{(Number(p?.lead_time_horas) || 0).toFixed(1)}h</span>
                                   </div>
                                   <div className="text-right">
-                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Custo PeÃ§a</span>
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-0.5 tracking-widest">Custo Peça</span>
                                     <span className={cn(
                                       "text-sm font-black font-mono",
                                       isEfficient ? "text-emerald-600" : "text-rose-600"
@@ -4608,7 +4609,7 @@ export default function App() {
                           })
                         ) : (
                           <div className="text-center py-12 text-zinc-400 italic font-medium">
-                            Nenhum pedido concluÃ­do para anÃ¡lise.
+                            Nenhum pedido concluído para análise.
                           </div>
                         )}
                       </div>
@@ -4624,7 +4625,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto pb-12">
             <div className="mb-6">
               <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
-              <p className="text-zinc-500">Acompanhamento em tempo real da produÃ§Ã£o e tempos de execuÃ§Ã£o</p>
+              <p className="text-zinc-500">Acompanhamento em tempo real da produção e tempos de execução</p>
             </div>
             <TaskMonitor onShowInfo={(t, d) => setInfoModal({ title: t, description: d })} />
           </div>
@@ -4636,20 +4637,20 @@ export default function App() {
               <div className="flex justify-between items-start mb-6">
                 <h3 className="text-lg font-bold flex items-center gap-2">
                   <Settings size={20} />
-                  IntegraÃ§Ã£o Supabase
+                  Integração Supabase
                 </h3>
                 <button
                   onClick={async () => {
                     const data = await safeFetch('/api/supabase/status');
                     if (data?.status === 'success') {
-                      alert('âœ… Supabase conectado com sucesso!');
+                      alert('✅ Supabase conectado com sucesso!');
                     } else {
-                      alert(`âŒ Erro: ${data?.message || 'Falha na conexÃ£o'}`);
+                      alert(`❌ Erro: ${data?.message || 'Falha na conexão'}`);
                     }
                   }}
                   className="text-[10px] font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700"
                 >
-                  Testar ConexÃ£o
+                  Testar Conexão
                 </button>
               </div>
               <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
@@ -4667,7 +4668,7 @@ export default function App() {
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                 <BarChart3 size={20} />
-                ConfiguraÃ§Ã£o de Capacidade Produtiva
+                Configuração de Capacidade Produtiva
               </h3>
               <form className="space-y-6" onSubmit={async (e) => {
                 e.preventDefault();
@@ -4713,7 +4714,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">EficiÃªncia Operacional (%)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Eficiência Operacional (%)</label>
                     <input
                       name="eficiencia_percentual"
                       type="number"
@@ -4723,7 +4724,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Ãšteis no MÃªs</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Dias Úteis no Mês</label>
                     <input
                       name="dias_uteis_mes"
                       type="number"
@@ -4733,7 +4734,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Meta Custo/PeÃ§a (R$)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Meta Custo/Peça (R$)</label>
                     <input
                       name="meta_custo_por_peca"
                       type="number"
@@ -4745,7 +4746,7 @@ export default function App() {
                   </div>
                 </div>
                 <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                  Salvar ConfiguraÃ§Ãµes
+                  Salvar Configurações
                 </button>
               </form>
             </Card>
@@ -4753,11 +4754,11 @@ export default function App() {
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
                 <Clock size={20} />
-                HorÃ¡rios de Pausa AutomÃ¡tica
+                Horários de Pausa Automática
               </h3>
               <p className="text-xs text-zinc-400 mb-6">
-                Ao atingir o horÃ¡rio configurado, todas as tarefas em andamento sÃ£o pausadas automaticamente.
-                O sistema requer que um Admin esteja com o sistema aberto no horÃ¡rio.
+                Ao atingir o horário configurado, todas as tarefas em andamento são pausadas automaticamente.
+                O sistema requer que um Admin esteja com o sistema aberto no horário.
               </p>
               <form className="space-y-5" onSubmit={async (e) => {
                 e.preventDefault();
@@ -4774,12 +4775,12 @@ export default function App() {
                   setAutoPauseTimeWeekday(weekday);
                   setAutoPauseTimeFriday(friday);
                   setAutoPauseTimeLunch(lunch);
-                  alert('âœ… HorÃ¡rios salvos com sucesso!');
+                  alert('✅ Horários salvos com sucesso!');
                 }
               }}>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">AlmoÃ§o (HorÃ¡rio de Pausa)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Almoço (Horário de Pausa)</label>
                     <input
                       name="auto_pause_time_lunch"
                       type="time"
@@ -4789,7 +4790,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Seg â€“ Qui (Fim de Expediente)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase">Seg – Qui (Fim de Expediente)</label>
                     <input
                       name="auto_pause_time_weekday"
                       type="time"
@@ -4810,14 +4811,14 @@ export default function App() {
                   </div>
                 </div>
                 <button type="submit" className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors">
-                  Salvar HorÃ¡rios
+                  Salvar Horários
                 </button>
               </form>
             </Card>
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                 <Settings size={20} />
-                Gerenciar Etapas de ProduÃ§Ã£o
+                Gerenciar Etapas de Produção
               </h3>
 
               <div className="flex flex-wrap gap-2 mb-8">
@@ -4833,8 +4834,8 @@ export default function App() {
                   step="0.01"
                   value={newStageTime || ''}
                   onChange={(e) => setNewStageTime(Number(e.target.value))}
-                  placeholder="Tempo Ideal (min/peÃ§a)"
-                  title="Tempo ideal da etapa em minutos por peÃ§a"
+                  placeholder="Tempo Ideal (min/peça)"
+                  title="Tempo ideal da etapa em minutos por peça"
                   className="p-2 border border-zinc-200 rounded-lg text-sm w-36 focus:outline-none focus:border-zinc-400"
                 />
                  <select
@@ -4842,16 +4843,16 @@ export default function App() {
                   onChange={(e) => setNewStageCalculationType(e.target.value as any)}
                   className="p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
                 >
-                  <option value="por_pedido">ðŸ“„ Por pedido</option>
-                  <option value="por_peca">ðŸ‘• Por peÃ§a</option>
-                  <option value="por_lote">ðŸ“¦ Por lote</option>
+                  <option value="por_pedido">📄 Por pedido</option>
+                  <option value="por_peca">👕 Por peça</option>
+                  <option value="por_lote">📦 Por lote</option>
                 </select>
                 <input
                   type="number"
                   value={newStageMetaDiaria}
                   onChange={(e) => setNewStageMetaDiaria(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="Meta DiÃ¡ria"
-                  title="Meta de produÃ§Ã£o diÃ¡ria base para esta etapa"
+                  placeholder="Meta Diária"
+                  title="Meta de produção diária base para esta etapa"
                   className="p-2 border border-zinc-200 rounded-lg text-sm w-28 focus:outline-none focus:border-zinc-400"
                 />
                 <button
@@ -4907,23 +4908,23 @@ export default function App() {
                             value={editingStageTime === 0 ? '' : editingStageTime}
                             onChange={(e) => setEditingStageTime(Number(e.target.value))}
                             className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
-                            title="Tempo ideal por peÃ§a em minutos"
+                            title="Tempo ideal por peça em minutos"
                           />
                           <select
                             value={editingStageCalculationType}
                             onChange={(e) => setEditingStageCalculationType(e.target.value as any)}
                             className="p-1 border border-zinc-300 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
                           >
-                            <option value="por_pedido">ðŸ“„ Por pedido</option>
-                            <option value="por_peca">ðŸ‘• Por peÃ§a</option>
-                            <option value="por_lote">ðŸ“¦ Por lote</option>
+                            <option value="por_pedido">📄 Por pedido</option>
+                            <option value="por_peca">👕 Por peça</option>
+                            <option value="por_lote">📦 Por lote</option>
                           </select>
                           <input
                             type="number"
                             value={editingStageMetaDiaria}
                             onChange={(e) => setEditingStageMetaDiaria(e.target.value === '' ? '' : Number(e.target.value))}
-                            placeholder="Meta DiÃ¡ria"
-                            title="Meta de produÃ§Ã£o diÃ¡ria base para esta etapa"
+                            placeholder="Meta Diária"
+                            title="Meta de produção diária base para esta etapa"
                             className="p-1 border border-zinc-300 rounded text-sm w-24 text-center"
                           />
                           <button
@@ -4962,7 +4963,7 @@ export default function App() {
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">{stage.name}</span>
                             {stage.calculation_type === 'por_pedido' && <Badge variant="info" className="lowercase italic opacity-70">por pedido</Badge>}
-                            {stage.calculation_type === 'por_peca' && <Badge variant="success" className="lowercase italic opacity-70">por peÃ§a</Badge>}
+                            {stage.calculation_type === 'por_peca' && <Badge variant="success" className="lowercase italic opacity-70">por peça</Badge>}
                             {stage.calculation_type === 'por_lote' && <Badge variant="warning" className="lowercase italic opacity-70">por lote</Badge>}
                           </div>
                           <div className="flex items-center gap-3 mt-0.5">
@@ -5042,7 +5043,7 @@ export default function App() {
                   <Target size={16} className="text-zinc-500" />
                   Metas Individuais por Colaborador (Overrides)
                 </h4>
-                <p className="text-xs text-zinc-500 mb-4">Configure metas personalizadas por colaborador que sobrescrevem a meta padrÃ£o do setor.</p>
+                <p className="text-xs text-zinc-500 mb-4">Configure metas personalizadas por colaborador que sobrescrevem a meta padrão do setor.</p>
                 <div className="space-y-2">
                   {stages.map(stage => (
                     <div key={stage.id} className="border border-zinc-100 rounded-xl overflow-hidden">
@@ -5056,7 +5057,7 @@ export default function App() {
                         <span className="text-sm font-medium text-zinc-700 flex items-center gap-2">
                           {stage.name}
                           <span className="text-[10px] text-zinc-400 font-mono">
-                            Meta padrÃ£o: {stage.meta_diaria ?? 'â€”'} {stage.calculation_type === 'por_pedido' ? 'pedidos' : 'peÃ§as'}/dia
+                            Meta padrão: {stage.meta_diaria ?? '—'} {stage.calculation_type === 'por_pedido' ? 'pedidos' : 'peças'}/dia
                           </span>
                         </span>
                         <ChevronRight size={14} className={cn('text-zinc-400 transition-transform', expandedGoalStageId === stage.id && 'rotate-90')} />
@@ -5073,7 +5074,7 @@ export default function App() {
                                 {override ? (
                                   <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200">Meta personalizada: {override.meta_diaria}</span>
                                 ) : (
-                                  <span className="text-[10px] text-zinc-400">Usa padrÃ£o do setor ({stage.meta_diaria ?? 'â€”'})</span>
+                                  <span className="text-[10px] text-zinc-400">Usa padrão do setor ({stage.meta_diaria ?? '—'})</span>
                                 )}
                                 <div className="flex items-center gap-2 ml-auto">
                                   <input
@@ -5125,10 +5126,10 @@ export default function App() {
             <Card className="p-8">
               <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
                 <AlertCircle size={20} className="text-rose-600" />
-                Mapeamento de Motivos de Perda & Etapa de Reentrada PadrÃ£o
+                Mapeamento de Motivos de Perda & Etapa de Reentrada Padrão
               </h3>
               <p className="text-xs text-zinc-500 mb-6">
-                Configure para qual etapa a peÃ§a de reposiÃ§Ã£o reentra automaticamente no fluxo quando um operador registra uma perda.
+                Configure para qual etapa a peça de reposição reentra automaticamente no fluxo quando um operador registra uma perda.
               </p>
               <div className="space-y-3">
                 {lossReasonsList.map((reason, idx) => (
@@ -5238,27 +5239,27 @@ export default function App() {
             <Card className="p-8 border border-rose-100 bg-rose-50/10">
               <h3 className="text-lg font-bold text-rose-900 mb-2 flex items-center gap-2">
                 <AlertTriangle size={20} className="text-rose-600" />
-                Zona de Perigo: AÃ§Ãµes CrÃ­ticas
+                Zona de Perigo: Ações Críticas
               </h3>
               <p className="text-xs text-zinc-500 mb-6">
-                Estas aÃ§Ãµes sÃ£o irreversÃ­veis e afetam permanentemente os dados do sistema. Certifique-se do que estÃ¡ fazendo.
+                Estas ações são irreversíveis e afetam permanentemente os dados do sistema. Certifique-se do que está fazendo.
               </p>
               
               <div className="p-5 bg-white border border-rose-200/50 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 hover:shadow-sm transition-all duration-200">
                 <div className="space-y-1">
-                  <h4 className="font-bold text-sm text-zinc-900">Zerar RelatÃ³rios & HistÃ³rico de ProduÃ§Ã£o</h4>
+                  <h4 className="font-bold text-sm text-zinc-900">Zerar Relatórios & Histórico de Produção</h4>
                   <p className="text-xs text-zinc-500 max-w-xl leading-relaxed">
                     Apaga permanentemente todos os registros de tempos operacionais e pausas (<code className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded text-[10px] font-mono">stage_executions</code> e <code className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded text-[10px] font-mono">pauses</code>). 
-                    Os pedidos, clientes e configuraÃ§Ãµes <strong>nÃ£o serÃ£o excluÃ­dos</strong>, mas todas as mÃ©tricas de relatÃ³rios e produtividade voltarÃ£o a zero.
+                    Os pedidos, clientes e configurações <strong>não serão excluídos</strong>, mas todas as métricas de relatórios e produtividade voltarão a zero.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={async () => {
-                    const promptVal = prompt("âš ï¸ AVISO CRÃTICO: Isto irÃ¡ zerar todas as estatÃ­sticas de relatÃ³rios operacionais e produtividade dos colaboradores permanentemente.\n\nPara prosseguir, digite \"CONFIRMAR\" abaixo:");
+                    const promptVal = prompt("⚠️ AVISO CRÍTICO: Isto irá zerar todas as estatísticas de relatórios operacionais e produtividade dos colaboradores permanentemente.\n\nPara prosseguir, digite \"CONFIRMAR\" abaixo:");
                     if (promptVal !== "CONFIRMAR") {
                       if (promptVal !== null) {
-                        alert("OperaÃ§Ã£o cancelada. A confirmaÃ§Ã£o nÃ£o foi digitada corretamente.");
+                        alert("Operação cancelada. A confirmação não foi digitada corretamente.");
                       }
                       return;
                     }
@@ -5275,19 +5276,19 @@ export default function App() {
 
                       const data = await res.json();
                       if (res.ok && data.success) {
-                        alert("âœ… " + data.message);
-                        fetchData(); // Recarrega todas as informaÃ§Ãµes
+                        alert("✅ " + data.message);
+                        fetchData(); // Recarrega todas as informações
                       } else {
-                        alert("âŒ Falha ao zerar relatÃ³rios: " + (data.error || "Erro desconhecido"));
+                        alert("❌ Falha ao zerar relatórios: " + (data.error || "Erro desconhecido"));
                       }
                     } catch (err: any) {
                       console.error("Erro ao resetar:", err);
-                      alert("âŒ Erro de rede ou servidor ao realizar a limpeza.");
+                      alert("❌ Erro de rede ou servidor ao realizar a limpeza.");
                     }
                   }}
                   className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all duration-200 shadow-sm shadow-rose-100 hover:shadow active:scale-98 whitespace-nowrap self-start md:self-center pointer-events-auto"
                 >
-                  Zerar RelatÃ³rios e Tempos
+                  Zerar Relatórios e Tempos
                 </button>
               </div>
             </Card>
@@ -5438,7 +5439,7 @@ export default function App() {
                         className="flex items-center gap-1 px-2 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-lg transition-all font-bold text-xs"
                       >
                         <FileText size={13} />
-                        <span className="hidden xl:inline">HistÃ³rico</span>
+                        <span className="hidden xl:inline">Histórico</span>
                       </button>
                       {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && (
                         <button
@@ -5459,9 +5460,9 @@ export default function App() {
                       } className="text-[9px] py-0.5 px-2">
                         {selectedOrder.status}
                       </Badge>
-                      {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'SublimaÃ§Ã£o') && selectedOrder.num_colors && (
+                      {(selectedOrder.print_type === 'Silk' || selectedOrder.print_type === 'Sublimação') && selectedOrder.num_colors && (
                         <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          ðŸŽ¨ {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
+                          🎨 {selectedOrder.num_colors} {selectedOrder.num_colors === 1 ? 'Cor' : 'Cores'}
                         </span>
                       )}
                     </div>
@@ -5473,7 +5474,7 @@ export default function App() {
                           <div className="lg:col-span-5 space-y-4 overflow-y-auto pr-1 custom-scrollbar">
                             <section>
                               <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                                <Package size={14} /> INFORMAÃ‡Ã•ES GERAIS
+                                <Package size={14} /> INFORMAÇÕES GERAIS
                               </h3>
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm">
@@ -5500,7 +5501,7 @@ export default function App() {
                               </div>
                             </section>
                             <section className="p-4 sm:p-5 bg-white border border-zinc-200 rounded-2xl shadow-sm">
-                              <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">DETALHES DE PRODUÃ‡ÃƒO</h4>
+                              <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">DETALHES DE PRODUÇÃO</h4>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
                                   <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Produto</span>
@@ -5508,7 +5509,7 @@ export default function App() {
                                 </div>
                                 <div>
                                   <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-0.5">Quantidade</span>
-                                  <span className="text-xs font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-zinc-500 font-medium text-[10px]">pÃ§s</span></span>
+                                  <span className="text-xs font-bold text-zinc-900">{selectedOrder.quantity} <span className="text-zinc-500 font-medium text-[10px]">pçs</span></span>
                                 </div>
                                 <div className="col-span-2 pt-2 border-t border-zinc-50">
                                   <span className="text-[9px] font-bold text-zinc-400 uppercase block mb-1">Estampa</span>
@@ -5532,7 +5533,7 @@ export default function App() {
                                     <table className="w-full text-left text-xs">
                                       <thead>
                                         <tr className="bg-indigo-100/60 text-indigo-950 font-bold uppercase text-[9px] border-b border-indigo-100">
-                                          <th className="px-3 py-2.5">Item / DescriÃ§Ã£o</th>
+                                          <th className="px-3 py-2.5">Item / Descrição</th>
                                           <th className="px-3 py-2.5 text-center">Tamanho</th>
                                           <th className="px-3 py-2.5 text-right">Qtd Total</th>
                                           <th className="px-3 py-2.5 text-center">Falta (Corte)</th>
@@ -5545,7 +5546,7 @@ export default function App() {
                                           const displaySize = getItemDisplaySize(item);
                                           return (
                                             <tr key={idx} className="hover:bg-indigo-50/40 text-xs">
-                                              <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descriÃ§Ã£o'}</td>
+                                              <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
                                               <td className="px-3 py-2.5 text-center">
                                                 <span className="inline-block px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
                                                   {displaySize}
@@ -5571,7 +5572,7 @@ export default function App() {
                                   </div>
                                 </section>
 
-                                {/* Resumo de PeÃ§as para Corte (Abaixo da Lista do Pedido) */}
+                                {/* Resumo de Peças para Corte (Abaixo da Lista do Pedido) */}
                                 {(() => {
                                   const cuttingItems = selectedOrder.items.filter(it => {
                                     const qtyPedida = it.quantity ?? it.quantidade ?? 1;
@@ -5587,10 +5588,10 @@ export default function App() {
                                     <section className="p-4 bg-amber-50/90 border border-amber-200/90 rounded-2xl shadow-sm space-y-3">
                                       <div className="flex items-center justify-between">
                                         <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-950 flex items-center gap-1.5">
-                                          <Scissors size={13} className="text-amber-600 animate-pulse" /> RESUMO DE PEÃ‡AS PARA CORTE (FALTA EM ESTOQUE OLIST)
+                                          <Scissors size={13} className="text-amber-600 animate-pulse" /> RESUMO DE PEÇAS PARA CORTE (FALTA EM ESTOQUE OLIST)
                                         </h4>
                                         <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
-                                          {totalCuttingQty} {totalCuttingQty === 1 ? 'PEÃ‡A A CORTAR' : 'PEÃ‡AS A CORTAR'}
+                                          {totalCuttingQty} {totalCuttingQty === 1 ? 'PEÇA A CORTAR' : 'PEÇAS A CORTAR'}
                                         </span>
                                       </div>
 
@@ -5611,7 +5612,7 @@ export default function App() {
                                               const displaySize = getItemDisplaySize(item);
                                               return (
                                                 <tr key={idx} className="hover:bg-amber-50/50 text-xs">
-                                                  <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descriÃ§Ã£o'}</td>
+                                                  <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
                                                   <td className="px-3 py-2.5 text-center">
                                                     <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
                                                       {displaySize}
@@ -5632,7 +5633,7 @@ export default function App() {
 
                                       <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2.5 rounded-xl flex items-center gap-2 border border-amber-200/60">
                                         <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-                                        <span>Estes itens nÃ£o possuem saldo suficiente no estoque do Olist ERP e precisarÃ£o passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
+                                        <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
                                       </div>
                                     </section>
                                   );
@@ -5646,7 +5647,7 @@ export default function App() {
                             {selectedOrder.observations && (
                               <section>
                                 <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
-                                  <ClipboardList size={12} /> OBSERVAÃ‡Ã•ES
+                                  <ClipboardList size={12} /> OBSERVAÇÕES
                                 </h3>
                                 <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl text-xs font-medium text-amber-900 leading-relaxed italic">
                                   "{selectedOrder.observations}"
@@ -5666,7 +5667,7 @@ export default function App() {
                           <div className="lg:col-span-4 space-y-4 flex flex-col h-full border-x lg:border-zinc-100 px-4">
                             <h3 className="text-xs font-black text-zinc-900 flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÃ‡ÃƒO
+                                <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
                               </div>
                               {(() => {
                                 const stagesStatusList = selectedOrder.stages_status || [];
@@ -5719,7 +5720,7 @@ export default function App() {
                                             {execution && stageTimes && (
                                               <p className="text-[9px] text-zinc-400 truncate font-medium">
                                                 <span className="uppercase font-bold text-zinc-600">{execution.user_name}</span>
-                                                <span className="opacity-30 mx-1">â€¢</span>
+                                                <span className="opacity-30 mx-1">•</span>
                                                 <span className="font-mono text-zinc-500">Total: {formatSeconds(stageTimes.totalAccumulatedSeconds)}</span>
                                               </p>
                                             )}
@@ -5746,7 +5747,7 @@ export default function App() {
                                         {execution?.status === 'Em andamento' && stageTimes && (
                                           <div className="shrink-0 py-0.5 px-2 border border-emerald-200 bg-emerald-50 rounded-md text-emerald-700 font-mono text-[10px] font-bold flex items-center gap-1 shadow-xs">
                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                            <span>SessÃ£o: {formatSeconds(stageTimes.currentSessionSeconds)}</span>
+                                            <span>Sessão: {formatSeconds(stageTimes.currentSessionSeconds)}</span>
                                           </div>
                                         )}
 
@@ -5760,7 +5761,7 @@ export default function App() {
                                       {stage.calculation_type !== 'por_pedido' && (
                                         <div className="mt-2 text-[10px] space-y-1 bg-zinc-50/80 p-2 rounded-md border border-zinc-100">
                                           <div className="flex items-center justify-between text-zinc-700 font-bold">
-                                            <span>Progresso de peÃ§as:</span>
+                                            <span>Progresso de peças:</span>
                                             <span className="font-mono text-emerald-700">
                                               {orderStage.quantidade_boa || 0} / {orderStage.quantidade_pedido || selectedOrder.quantity}
                                             </span>
@@ -5779,7 +5780,7 @@ export default function App() {
                                             ) : <span />}
                                             {orderStage.pendencia_reposicao ? (
                                               <span className="bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold animate-pulse">
-                                                ReposiÃ§Ã£o pendente: +{orderStage.pendencia_reposicao} pc
+                                                Reposição pendente: +{orderStage.pendencia_reposicao} pc
                                               </span>
                                             ) : null}
                                           </div>
@@ -5951,7 +5952,7 @@ export default function App() {
                     const form = e.currentTarget;
                     const formData = new FormData(form);
 
-                    // ValidaÃ§Ã£o: NÃ£o permitir pedido sem nenhuma etapa
+                    // Validação: Não permitir pedido sem nenhuma etapa
                     if (newOrderRequiredStages.length === 0) {
                       alert("Por favor, selecione pelo menos uma etapa para o pedido.");
                       return;
@@ -5965,7 +5966,7 @@ export default function App() {
                       const MAX_FILE_SIZE = 4 * 1024 * 1024;
                       for (let i = 0; i < fileInput.files.length; i++) {
                         if (fileInput.files[i].size > MAX_FILE_SIZE) {
-                          alert(`O arquivo "${fileInput.files[i].name}" Ã© muito grande. O limite mÃ¡ximo Ã© de 4MB por arquivo.`);
+                          alert(`O arquivo "${fileInput.files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
                           setIsCreatingOrder(false);
                           return;
                         }
@@ -6058,7 +6059,7 @@ export default function App() {
                           className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
                         >
                           <option>Dry Fit</option>
-                          <option>AlgodÃ£o</option>
+                          <option>Algodão</option>
                           <option>Poliamida</option>
                         </select>
                       </div>
@@ -6072,7 +6073,7 @@ export default function App() {
                         >
                           <option>Silk</option>
                           <option>DTF</option>
-                          <option>SublimaÃ§Ã£o</option>
+                          <option>Sublimação</option>
                         </select>
                       </div>
                     </div>
@@ -6102,7 +6103,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">ObservaÃ§Ãµes</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
                       <textarea
                         name="observations"
                         value={newOrderForm.observations}
@@ -6114,7 +6115,7 @@ export default function App() {
                     {/* Templates Section Relocated */}
                     <div className="mt-4 mb-2">
                       <div className="flex justify-between items-center mb-2">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates RÃ¡pidos</label>
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
                         {currentUser?.role === 'Admin' && (
                           <button
                             type="button"
@@ -6199,7 +6200,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Preview do Tempo de ProduÃ§Ã£o */}
+                    {/* Preview do Tempo de Produção */}
                     {(() => {
                       const qty = Number(newOrderForm.quantity) || 0;
                       let totalTimeSec = 0;
@@ -6235,14 +6236,14 @@ export default function App() {
                                </div>
                                <div>
                                  <p className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5", totalTimeSec > 0 ? "text-emerald-600" : "text-amber-600")}>
-                                   PrevisÃ£o Tempo de ProduÃ§Ã£o
+                                   Previsão Tempo de Produção
                                  </p>
                                  <p className={cn("text-sm font-medium", totalTimeSec > 0 ? "text-emerald-800" : "text-amber-800")}>
-                                   Custo de tempo com base em {qty} peÃ§a(s)
+                                   Custo de tempo com base em {qty} peça(s)
                                  </p>
                                  {totalTimeSec === 0 && (
                                    <p className="text-[10px] text-amber-700 mt-1 font-semibold leading-tight max-w-[250px]">
-                                     âš ï¸ Estas etapas ainda nÃ£o possuem o "Tempo Ideal" configurado no painel da Engrenagem.
+                                     ⚠️ Estas etapas ainda não possuem o "Tempo Ideal" configurado no painel da Engrenagem.
                                    </p>
                                  )}
                                </div>
@@ -6326,7 +6327,7 @@ export default function App() {
 
                       if (!res.ok) {
                         const errData = await res.json().catch(() => null);
-                        alert(`Erro: ${errData?.error || 'Falha na operaÃ§Ã£o'}`);
+                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
                         return;
                       }
 
@@ -6344,7 +6345,7 @@ export default function App() {
                         name="name"
                         type="text"
                         defaultValue={selectedUserForEdit?.name}
-                        placeholder="Ex: JoÃ£o Silva"
+                        placeholder="Ex: João Silva"
                         className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                         required
                       />
@@ -6362,11 +6363,11 @@ export default function App() {
                     </div>
                     {!selectedUserForEdit && (
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha TemporÃ¡ria</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Senha Temporária</label>
                         <input
                           name="password"
                           type="password"
-                          placeholder="MÃ­nimo 6 caracteres"
+                          placeholder="Mínimo 6 caracteres"
                           className="w-full p-2 border border-zinc-200 rounded-lg text-sm"
                           required
                         />
@@ -6374,14 +6375,14 @@ export default function App() {
                     )}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">FunÃ§Ã£o / Acesso</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
                         <select
                           name="role"
-                          defaultValue={selectedUserForEdit?.role || 'ProduÃ§Ã£o'}
+                          defaultValue={selectedUserForEdit?.role || 'Produção'}
                           className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
                         >
                           <option value="Admin">Admin</option>
-                          <option value="ProduÃ§Ã£o">ProduÃ§Ã£o</option>
+                          <option value="Produção">Produção</option>
                           <option value="Comercial">Comercial</option>
                         </select>
                       </div>
@@ -6425,7 +6426,7 @@ export default function App() {
                           Processando...
                         </>
                       ) : (
-                        selectedUserForEdit ? 'Salvar AlteraÃ§Ãµes' : 'Convidar Colaborador'
+                        selectedUserForEdit ? 'Salvar Alterações' : 'Convidar Colaborador'
                       )}
                     </button>
                   </form>
@@ -6481,7 +6482,7 @@ export default function App() {
 
                       if (!res.ok) {
                         const errData = await res.json().catch(() => null);
-                        alert(`Erro: ${errData?.error || 'Falha na operaÃ§Ã£o'}`);
+                        alert(`Erro: ${errData?.error || 'Falha na operação'}`);
                         return;
                       }
 
@@ -6506,7 +6507,7 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade PadrÃ£o</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade Padrão</label>
                         <input
                           name="quantity"
                           type="number"
@@ -6518,19 +6519,19 @@ export default function App() {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto PadrÃ£o</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Produto Padrão</label>
                         <select
                           name="product_type"
                           defaultValue={editingTemplate?.product_type || 'Dry Fit'}
                           className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
                         >
                           <option>Dry Fit</option>
-                          <option>AlgodÃ£o</option>
+                          <option>Algodão</option>
                           <option>Poliamida</option>
                         </select>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa PadrÃ£o</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Estampa Padrão</label>
                         <select
                           name="print_type"
                           defaultValue={editingTemplate?.print_type || 'Silk'}
@@ -6538,13 +6539,13 @@ export default function App() {
                         >
                           <option>Silk</option>
                           <option>DTF</option>
-                          <option>SublimaÃ§Ã£o</option>
+                          <option>Sublimação</option>
                         </select>
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de ProduÃ§Ã£o</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-3">Etapas do Fluxo de Produção</label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 bg-zinc-50 rounded-xl border border-zinc-100">
                         {stages.filter(s => s.active).map(stage => (
                           <label key={stage.id} className={cn(
@@ -6578,7 +6579,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">ObservaÃ§Ãµes PadrÃ£o</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações Padrão</label>
                       <textarea
                         name="observations"
                         defaultValue={editingTemplate?.observations}
@@ -6600,7 +6601,7 @@ export default function App() {
                           Salvando...
                         </>
                       ) : (
-                        editingTemplate ? 'Salvar AlteraÃ§Ãµes' : 'Criar Template'
+                        editingTemplate ? 'Salvar Alterações' : 'Criar Template'
                       )}
                     </button>
                   </form>
@@ -6698,7 +6699,7 @@ export default function App() {
                       <FileText size={64} className="text-zinc-400" />
                       <div className="text-center">
                         <p className="font-bold text-lg mb-1">Arquivo: {selectedFullImage.split('/').pop()}</p>
-                        <p className="text-zinc-500 text-sm">Este arquivo nÃ£o pode ser visualizado diretamente.</p>
+                        <p className="text-zinc-500 text-sm">Este arquivo não pode ser visualizado diretamente.</p>
                       </div>
                       <a
                         href={selectedFullImage}
@@ -6718,7 +6719,7 @@ export default function App() {
           }
         </AnimatePresence >
 
-        {/* â”€â”€ Edit Order Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Edit Order Modal ──────────────────────────────────────────────── */}
         <AnimatePresence>
           {
             showEditOrderModal && selectedOrder && (
@@ -6751,7 +6752,7 @@ export default function App() {
                     <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
                       <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
                       <p className="text-amber-700 text-xs font-medium">
-                        Este pedido jÃ¡ possui tempo registrado em execuÃ§Ãµes. Alterar quantidade ou tipo pode afetar indicadores histÃ³ricos.
+                        Este pedido já possui tempo registrado em execuções. Alterar quantidade ou tipo pode afetar indicadores históricos.
                       </p>
                     </div>
                   )}
@@ -6775,7 +6776,7 @@ export default function App() {
                           className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
                         >
                           <option>Dry Fit</option>
-                          <option>AlgodÃ£o</option>
+                          <option>Algodão</option>
                           <option>Poliamida</option>
                         </select>
                       </div>
@@ -6788,7 +6789,7 @@ export default function App() {
                         >
                           <option>Silk</option>
                           <option>DTF</option>
-                          <option>SublimaÃ§Ã£o</option>
+                          <option>Sublimação</option>
                         </select>
                       </div>
                       <div className="space-y-1">
@@ -6802,7 +6803,7 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">NÂº de Cores</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº de Cores</label>
                         <input
                           type="number"
                           min="1"
@@ -6823,7 +6824,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Etapas de ProduÃ§Ã£o</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Etapas de Produção</label>
                       <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
                         {stages.filter(s => s.active).map(stage => {
                           const checked = (editOrderForm.required_stages || []).includes(stage.id);
@@ -6959,7 +6960,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-500 uppercase">ObservaÃ§Ãµes</label>
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase">Observações</label>
                       <textarea
                         value={editOrderForm.observations || ''}
                         onChange={(e) => setEditOrderForm({ ...editOrderForm, observations: e.target.value })}
@@ -6982,7 +6983,7 @@ export default function App() {
                           isEditingOrder ? "opacity-70 cursor-not-allowed" : "hover:bg-zinc-800 active:scale-[0.98]"
                         )}
                       >
-                        {isEditingOrder ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle size={16} /> Salvar AlteraÃ§Ãµes</>}
+                        {isEditingOrder ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : <><CheckCircle size={16} /> Salvar Alterações</>}
                       </button>
                     </div>
                   </div>
@@ -6992,7 +6993,7 @@ export default function App() {
           }
         </AnimatePresence >
 
-        {/* â”€â”€ Order History Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Order History Modal ───────────────────────────────────────────── */}
         <AnimatePresence>
           {
             showHistoryModal && selectedOrder && (
@@ -7013,7 +7014,7 @@ export default function App() {
                 >
                   <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
                     <div>
-                      <h2 className="font-bold text-lg">HistÃ³rico de AlteraÃ§Ãµes</h2>
+                      <h2 className="font-bold text-lg">Histórico de Alterações</h2>
                       <p className="text-xs text-zinc-500 font-mono">{selectedOrder.order_number}</p>
                     </div>
                     <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors">
@@ -7028,7 +7029,7 @@ export default function App() {
                     ) : orderHistory.length === 0 ? (
                       <div className="text-center py-12 text-zinc-400">
                         <FileText size={32} className="mx-auto mb-3 opacity-50" />
-                        <p className="text-sm">Nenhum registro de alteraÃ§Ã£o encontrado.</p>
+                        <p className="text-sm">Nenhum registro de alteração encontrado.</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
@@ -7112,7 +7113,7 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-      {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de ProduÃ§Ã£o e Perdas */}
+      {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de Produção e Perdas */}
       {executionActionModal && selectedOrder && (() => {
         const { type, executionId, stageId } = executionActionModal;
         const isPause = type === 'pause';
@@ -7141,9 +7142,9 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="font-bold text-zinc-900 text-sm">
-                      Apontamento de ProduÃ§Ã£o
+                      Apontamento de Produção
                     </h3>
-                    <p className="text-xs text-zinc-500">{stage?.name} â€” Pedido #{selectedOrder.order_number}</p>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
                   </div>
                 </div>
                 <button onClick={() => setExecutionActionModal(null)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600" disabled={isActionLoading}>
@@ -7178,27 +7179,27 @@ export default function App() {
 
                 <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1.5">
                   <div className="flex justify-between font-medium text-zinc-600">
-                    <span>PeÃ§as boas concluÃ­das atÃ© agora:</span>
+                    <span>Peças boas concluídas até agora:</span>
                     <span className="font-bold text-zinc-900 font-mono">{currentGood} / {totalReq}</span>
                   </div>
                   {currentLoss > 0 && (
                     <div className="flex justify-between font-medium text-rose-600">
                       <span>Perdas registradas no pedido:</span>
-                      <span className="font-bold font-mono">{currentLoss} peÃ§as</span>
+                      <span className="font-bold font-mono">{currentLoss} peças</span>
                     </div>
                   )}
                   <div className="flex justify-between font-medium text-amber-700">
-                    <span>PeÃ§as restantes para finalizar:</span>
-                    <span className="font-bold font-mono">{remaining} peÃ§as</span>
+                    <span>Peças restantes para finalizar:</span>
+                    <span className="font-bold font-mono">{remaining} peças</span>
                   </div>
                 </div>
 
-                {/* SeÃ§Ã£o 1: PeÃ§as Boas Produzidas */}
+                {/* Seção 1: Peças Boas Produzidas */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
                       <TrendingUp size={14} className="text-emerald-600" />
-                      PeÃ§as boas produzidas nesta sessÃ£o (+):
+                      Peças boas produzidas nesta sessão (+):
                     </label>
                     {remaining > 0 && (
                       <button
@@ -7219,7 +7220,7 @@ export default function App() {
                   />
                 </div>
 
-                {/* SeÃ§Ã£o 2: Registrar Perda (Opcional / ExpansÃ­vel) */}
+                {/* Seção 2: Registrar Perda (Opcional / Expansível) */}
                 <div className="pt-2 border-t border-zinc-100 space-y-2">
                   <button
                     type="button"
@@ -7229,8 +7230,8 @@ export default function App() {
                     <span className="flex items-center gap-1.5">
                       <AlertTriangle size={14} />
                       {actionLossQuantityInput > 0
-                        ? `âš ï¸ Perda registrada nesta sessÃ£o: ${actionLossQuantityInput} peÃ§a(s)`
-                        : 'âš ï¸ Houve alguma perda / refugo nesta sessÃ£o?'}
+                        ? `⚠️ Perda registrada nesta sessão: ${actionLossQuantityInput} peça(s)`
+                        : '⚠️ Houve alguma perda / refugo nesta sessão?'}
                     </span>
                     <span className="text-[10px] underline">
                       {showActionLossSection ? 'Ocultar' : (actionLossQuantityInput > 0 ? 'Editar Perda' : '+ Adicionar Perda')}
@@ -7241,7 +7242,7 @@ export default function App() {
                     <div className="p-3 bg-rose-50/30 rounded-xl border border-rose-100 space-y-3 animate-in fade-in duration-200 text-xs">
                       <div>
                         <label className="block text-[11px] font-bold text-zinc-700 mb-1">
-                          Quantidade de peÃ§as perdidas nesta sessÃ£o:
+                          Quantidade de peças perdidas nesta sessão:
                         </label>
                         <input
                           type="number"
@@ -7277,7 +7278,7 @@ export default function App() {
 
                           {actionLossReasonInput === 'Outro' && (
                             <div>
-                              <label className="block text-[11px] font-bold text-zinc-700 mb-1">Detalhamento do motivo (obrigatÃ³rio):</label>
+                              <label className="block text-[11px] font-bold text-zinc-700 mb-1">Detalhamento do motivo (obrigatório):</label>
                               <input
                                 type="text"
                                 placeholder="Explique o motivo..."
@@ -7289,7 +7290,7 @@ export default function App() {
                           )}
 
                           <div>
-                            <label className="block text-[11px] font-bold text-zinc-700 mb-1">Etapa para reentrada de reposiÃ§Ã£o:</label>
+                            <label className="block text-[11px] font-bold text-zinc-700 mb-1">Etapa para reentrada de reposição:</label>
                             <select
                               value={actionLossReentryStageIdInput || stageId}
                               onChange={(e) => setActionLossReentryStageIdInput(Number(e.target.value))}
@@ -7306,14 +7307,14 @@ export default function App() {
                   )}
                 </div>
 
-                {/* SeÃ§Ã£o 3: ObservaÃ§Ã£o do Apontamento (Opcional) */}
+                {/* Seção 3: Observação do Apontamento (Opcional) */}
                 <div className="pt-2 border-t border-zinc-100 space-y-1.5">
                   <label className="block text-xs font-bold text-zinc-800 flex items-center gap-1.5">
                     <ClipboardList size={14} className="text-zinc-500" />
-                    ObservaÃ§Ã£o da etapa (opcional):
+                    Observação da etapa (opcional):
                   </label>
                   <textarea
-                    placeholder="Adicione alguma observaÃ§Ã£o sobre esta sessÃ£o..."
+                    placeholder="Adicione alguma observação sobre esta sessão..."
                     value={actionObservationInput}
                     onChange={(e) => setActionObservationInput(e.target.value)}
                     rows={2}
@@ -7350,7 +7351,7 @@ export default function App() {
                       type="button"
                       onClick={() => handleConfirmExecutionAction('finish')}
                       disabled={isActionLoading || !canFinish}
-                      title={!canFinish ? `Faltam ${remaining - actionQuantityInput} peÃ§as para finalizar. Preencha a quantidade restante.` : 'Finalizar etapa'}
+                      title={!canFinish ? `Faltam ${remaining - actionQuantityInput} peças para finalizar. Preencha a quantidade restante.` : 'Finalizar etapa'}
                       className={cn(
                         "flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5",
                         canFinish
@@ -7391,7 +7392,7 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="font-bold text-zinc-900 text-sm">Registrar Progresso Parcial</h3>
-                    <p className="text-xs text-zinc-500">{stage?.name} â€” Pedido #{selectedOrder.order_number}</p>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
                   </div>
                 </div>
                 <button onClick={() => setIsProgressModalOpen(false)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
@@ -7402,18 +7403,18 @@ export default function App() {
               <div className="py-2 space-y-4">
                 <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-100 text-xs space-y-1">
                   <div className="flex justify-between font-medium text-zinc-600">
-                    <span>PeÃ§as concluÃ­das atÃ© agora:</span>
+                    <span>Peças concluídas até agora:</span>
                     <span className="font-bold text-zinc-900 font-mono">{currentGood} / {totalReq}</span>
                   </div>
                   <div className="flex justify-between font-medium text-amber-700">
-                    <span>PeÃ§as restantes para finalizar:</span>
-                    <span className="font-bold font-mono">{remaining} peÃ§as</span>
+                    <span>Peças restantes para finalizar:</span>
+                    <span className="font-bold font-mono">{remaining} peças</span>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Quantidade de peÃ§as concluÃ­das agora (+):
+                    Quantidade de peças concluídas agora (+):
                   </label>
                   <input
                     type="number"
@@ -7423,7 +7424,7 @@ export default function App() {
                     className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                   <p className="text-[10px] text-zinc-400 mt-1">
-                    Isso somarÃ¡ Ã  produÃ§Ã£o diÃ¡ria do dia e atualizarÃ¡ o total acumulado do pedido.
+                    Isso somará à produção diária do dia e atualizará o total acumulado do pedido.
                   </p>
                 </div>
               </div>
@@ -7441,7 +7442,7 @@ export default function App() {
                   onClick={handleSaveProgress}
                   className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-xs hover:bg-emerald-700 transition-colors"
                 >
-                  Confirmar (+{progressIncrementInput} peÃ§as)
+                  Confirmar (+{progressIncrementInput} peças)
                 </button>
               </div>
             </div>
@@ -7461,8 +7462,8 @@ export default function App() {
                     <AlertCircle size={20} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-zinc-900 text-sm">Registrar Perda de PeÃ§a</h3>
-                    <p className="text-xs text-zinc-500">{stage?.name} â€” Pedido #{selectedOrder.order_number}</p>
+                    <h3 className="font-bold text-zinc-900 text-sm">Registrar Perda de Peça</h3>
+                    <p className="text-xs text-zinc-500">{stage?.name} — Pedido #{selectedOrder.order_number}</p>
                   </div>
                 </div>
                 <button onClick={() => setIsLossModalOpen(false)} className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600">
@@ -7472,17 +7473,17 @@ export default function App() {
 
               <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-[11px] text-amber-800 space-y-1">
                 <p className="font-bold flex items-center gap-1">
-                  â„¹ï¸ Regra de ReposiÃ§Ã£o
+                  ℹ️ Regra de Reposição
                 </p>
                 <p>
-                  A quantidade do pedido <strong>nunca diminui</strong>. O registro de perda gera automaticamente uma <strong>pendÃªncia de reposiÃ§Ã£o</strong> na etapa de reentrada.
+                  A quantidade do pedido <strong>nunca diminui</strong>. O registro de perda gera automaticamente uma <strong>pendência de reposição</strong> na etapa de reentrada.
                 </p>
               </div>
 
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Quantidade de PeÃ§as Perdidas:
+                    Quantidade de Peças Perdidas:
                   </label>
                   <input
                     type="number"
@@ -7512,12 +7513,12 @@ export default function App() {
                     ))}
                     {lossReasonsList.length === 0 && (
                       <>
-                        <option value="Falta de matÃ©ria-prima/peÃ§a (estoque)">Falta de matÃ©ria-prima/peÃ§a (estoque)</option>
+                        <option value="Falta de matéria-prima/peça (estoque)">Falta de matéria-prima/peça (estoque)</option>
                         <option value="Defeito de corte">Defeito de corte</option>
                         <option value="Falha na estampa/DTF">Falha na estampa/DTF</option>
                         <option value="Defeito de costura">Defeito de costura</option>
                         <option value="Extravio">Extravio</option>
-                        <option value="Reprovado na conferÃªncia (qualidade)">Reprovado na conferÃªncia (qualidade)</option>
+                        <option value="Reprovado na conferência (qualidade)">Reprovado na conferência (qualidade)</option>
                         <option value="Outro">Outro</option>
                       </>
                     )}
@@ -7527,11 +7528,11 @@ export default function App() {
                 {lossReasonInput === 'Outro' && (
                   <div>
                     <label className="block text-xs font-bold text-zinc-700 mb-1">
-                      Detalhamento do Motivo (ObrigatÃ³rio):
+                      Detalhamento do Motivo (Obrigatório):
                     </label>
                     <input
                       type="text"
-                      placeholder="Descreva a causa especÃ­fica..."
+                      placeholder="Descreva a causa específica..."
                       value={lossReasonDetailInput}
                       onChange={(e) => setLossReasonDetailInput(e.target.value)}
                       className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none"
@@ -7541,7 +7542,7 @@ export default function App() {
 
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Etapa de Reentrada da ReposiÃ§Ã£o:
+                    Etapa de Reentrada da Reposição:
                   </label>
                   <select
                     value={lossReentryStageIdInput || lossStageId}
@@ -7555,7 +7556,7 @@ export default function App() {
                     ))}
                   </select>
                   <p className="text-[10px] text-zinc-400 mt-1">
-                    Sugerido automaticamente com base no motivo. VocÃª pode ajustar manualmente para casos atÃ­picos.
+                    Sugerido automaticamente com base no motivo. Você pode ajustar manualmente para casos atípicos.
                   </p>
                 </div>
               </div>
@@ -7573,7 +7574,7 @@ export default function App() {
                   onClick={handleSaveLoss}
                   className="flex-1 py-2.5 bg-rose-600 text-white font-bold rounded-xl text-xs hover:bg-rose-700 transition-colors"
                 >
-                  Confirmar Perda e Gerar ReposiÃ§Ã£o
+                  Confirmar Perda e Gerar Reposição
                 </button>
               </div>
             </div>
@@ -7611,7 +7612,7 @@ export default function App() {
                   <span className="text-sm font-bold text-zinc-800">{safeFormat(selectedDraftOrder.deadline, 'dd/MM/yyyy')}</span>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Status ImportaÃ§Ã£o</span>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase block">Status Importação</span>
                   <span className="inline-flex px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold uppercase">Rascunho</span>
                 </div>
               </div>
@@ -7630,7 +7631,7 @@ export default function App() {
                       <table className="w-full text-left text-xs">
                         <thead>
                           <tr className="bg-zinc-50 text-zinc-600 font-bold uppercase text-[9px] border-b border-zinc-200">
-                            <th className="px-3 py-2">Item / DescriÃ§Ã£o</th>
+                            <th className="px-3 py-2">Item / Descrição</th>
                             <th className="px-2 py-2 text-center">Tamanho</th>
                             <th className="px-2 py-2 text-right">Qtd Total</th>
                             <th className="px-2 py-2 text-center">Falta (Corte)</th>
@@ -7643,7 +7644,7 @@ export default function App() {
                             const displaySize = getItemDisplaySize(item);
                             return (
                               <tr key={idx} className="hover:bg-zinc-50/50 text-xs">
-                                <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descriÃ§Ã£o'}</td>
+                                <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
                                 <td className="px-3 py-2.5 text-center">
                                   <span className="inline-block px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
                                     {displaySize}
@@ -7669,7 +7670,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Resumo de PeÃ§as para Corte (Abaixo do Lista do Pedido) */}
+                  {/* Resumo de Peças para Corte (Abaixo do Lista do Pedido) */}
                   {(() => {
                     const cuttingItems = selectedDraftOrder.items.filter(it => {
                       const qtyPedida = it.quantity ?? it.quantidade ?? 1;
@@ -7686,10 +7687,10 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <h4 className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-2">
                             <Scissors size={15} className="text-amber-600 animate-pulse" />
-                            Resumo de PeÃ§as para Corte (Falta em Estoque Olist)
+                            Resumo de Peças para Corte (Falta em Estoque Olist)
                           </h4>
                           <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
-                            {totalCuttingQty} {totalCuttingQty === 1 ? 'peÃ§a a cortar' : 'peÃ§as a cortar'}
+                            {totalCuttingQty} {totalCuttingQty === 1 ? 'peça a cortar' : 'peças a cortar'}
                           </span>
                         </div>
 
@@ -7710,7 +7711,7 @@ export default function App() {
                                 const displaySize = getItemDisplaySize(item);
                                 return (
                                   <tr key={idx} className="hover:bg-amber-50/50 text-xs">
-                                    <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descriÃ§Ã£o'}</td>
+                                    <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
                                     <td className="px-3 py-2.5 text-center">
                                       <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
                                         {displaySize}
@@ -7731,7 +7732,7 @@ export default function App() {
 
                         <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2 rounded-lg flex items-center gap-1.5 border border-amber-200/60">
                           <AlertTriangle size={13} className="text-amber-600 shrink-0" />
-                          <span>Estes itens nÃ£o possuem saldo suficiente no estoque do Olist ERP e precisarÃ£o passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
+                          <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
                         </div>
                       </div>
                     );
@@ -7741,7 +7742,7 @@ export default function App() {
 
               {/* Form Controls */}
               <div className="space-y-4 pt-2 border-t border-zinc-100">
-                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">DefiniÃ§Ãµes para ProduÃ§Ã£o</h3>
+                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Definições para Produção</h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Tipo de Estampa */}
@@ -7756,7 +7757,7 @@ export default function App() {
                     >
                       <option value="DTF">DTF (Direct to Film)</option>
                       <option value="Silk">Silk-screen (Serigrafia)</option>
-                      <option value="SublimaÃ§Ã£o">SublimaÃ§Ã£o Total</option>
+                      <option value="Sublimação">Sublimação Total</option>
                       <option value="Bordado">Bordado Computadorizado</option>
                     </select>
                   </div>
@@ -7770,16 +7771,16 @@ export default function App() {
                       type="text"
                       value={confirmDraftForm.product_type}
                       onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, product_type: e.target.value }))}
-                      placeholder="Ex: Dry Fit, AlgodÃ£o 30.1, PoliÃ©ster..."
+                      placeholder="Ex: Dry Fit, Algodão 30.1, Poliéster..."
                       className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
 
                   {/* Num Cores (if Silk/Sublimacao) */}
-                  {(confirmDraftForm.print_type === 'Silk' || confirmDraftForm.print_type === 'SublimaÃ§Ã£o') && (
+                  {(confirmDraftForm.print_type === 'Silk' || confirmDraftForm.print_type === 'Sublimação') && (
                     <div>
                       <label className="block text-xs font-bold text-zinc-700 mb-1">
-                        NÃºmero de Cores da Estampa
+                        Número de Cores da Estampa
                       </label>
                       <input
                         type="number"
@@ -7793,16 +7794,16 @@ export default function App() {
                   )}
                 </div>
 
-                {/* ObservaÃ§Ãµes */}
+                {/* Observações */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    ObservaÃ§Ãµes de ProduÃ§Ã£o
+                    Observações de Produção
                   </label>
                   <textarea
                     rows={2}
                     value={confirmDraftForm.observations}
                     onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, observations: e.target.value }))}
-                    placeholder="InstruÃ§Ãµes para o corte, estampa ou costura..."
+                    placeholder="Instruções para o corte, estampa ou costura..."
                     className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -7810,7 +7811,7 @@ export default function App() {
                 {/* Required Stages Checkboxes */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-700 mb-2">
-                    Etapas do Fluxo de ProduÃ§Ã£o
+                    Etapas do Fluxo de Produção
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {stages.filter(st => st.active).map(st => {
@@ -7869,7 +7870,7 @@ export default function App() {
                   className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
                 >
                   {isConfirmingDraft ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
-                  <span>Liberar para ProduÃ§Ã£o</span>
+                  <span>Liberar para Produção</span>
                 </button>
               </div>
             </div>
@@ -7884,11 +7885,11 @@ export default function App() {
             <div className="bg-indigo-900 text-white p-6 relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-indigo-300 text-xs font-mono font-bold uppercase tracking-wider mb-1">
-                  <Package size={16} /> IntegraÃ§Ã£o Olist ERP
+                  <Package size={16} /> Integração Olist ERP
                 </div>
                 <h2 className="text-xl font-black">Rascunhos de Pedidos Importados ({draftOrders.length})</h2>
                 <p className="text-xs text-indigo-200 mt-0.5">
-                  Estes pedidos aguardam revisÃ£o da vendedora para definiÃ§Ã£o de estampa e liberaÃ§Ã£o para produÃ§Ã£o.
+                  Estes pedidos aguardam revisão da vendedora para definição de estampa e liberação para produção.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -7923,11 +7924,11 @@ export default function App() {
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-600 font-bold uppercase text-[10px]">
-                        <th className="px-4 py-3">NÂº Pedido Olist</th>
+                        <th className="px-4 py-3">Nº Pedido Olist</th>
                         <th className="px-4 py-3">Cliente</th>
                         <th className="px-4 py-3 text-center">Itens / Quantidade</th>
                         <th className="px-4 py-3 text-center">Prazo Estimado</th>
-                        <th className="px-4 py-3 text-right">AÃ§Ãµes</th>
+                        <th className="px-4 py-3 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
@@ -7937,7 +7938,7 @@ export default function App() {
                           <td className="px-4 py-3 font-semibold text-zinc-800">{draft.client_name}</td>
                           <td className="px-4 py-3 text-center">
                             <span className="inline-flex items-center gap-1 font-mono font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs">
-                              {draft.quantity} pÃ§s {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
+                              {draft.quantity} pçs {draft.items && draft.items.length > 0 && `(${draft.items.length} SKUs)`}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center font-medium text-zinc-600">
@@ -7995,8 +7996,5 @@ export default function App() {
     </div>
   );
 }
-
-
-
 
 
