@@ -2,7 +2,7 @@
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Eye, EyeOff, Search, Clock, FileText, CheckCircle, Circle, Check, Archive, Plus, Scissors, Timer, X, Edit2 } from 'lucide-react';
-import { cn, formatSeconds, safeFormat, isImage, isPdf } from '../lib/utils';
+import { cn, formatSeconds, safeFormat, isImage, isPdf, getOrderCuttingQty } from '../lib/utils';
 import { Badge } from '../components/Badge';
 
 const Card = ({ children, className, ...props }: any) => (
@@ -38,6 +38,7 @@ export const Orders = ({
   handleUpdateDeadline,
   editingDtfValue,
   fetchExecutions,
+  confirmTimeoutRef,
 }: any) => {
   return (
           <div className="space-y-6">
@@ -89,7 +90,7 @@ export const Orders = ({
                         const hasStage = Array.isArray(o.required_stages) && o.required_stages.map(String).includes(String(selectedStageFilter));
                         if (!hasStage) return false;
                         if (selectedStageStatus) {
-                          const st = (o.stages_status || []).find((s: any) => String(s.id) === String(selectedStageFilter));
+                          const st = (Array.isArray(o.stages_status) ? o.stages_status : []).find((s: any) => String(s.id) === String(selectedStageFilter));
                           if (selectedStageStatus === 'Pending' && st?.finished) return false;
                           if (selectedStageStatus === 'Finished' && !st?.finished) return false;
                         }
@@ -191,7 +192,7 @@ export const Orders = ({
                         <div className="flex flex-col">
                           <span className="text-sm flex items-center gap-1.5 font-bold text-zinc-800">
                             {order.product_type}
-                            {((order.art_url && isPdf(order.art_url)) || (order.art_urls && order.art_urls.some(url => isPdf(url)))) && (
+                            {((order.art_url && isPdf(order.art_url)) || (order.art_urls && (Array.isArray(order.art_urls) ? order.art_urls : []).some(url => isPdf(url)))) && (
                               <FileText size={14} className="text-rose-500" title="Possui PDF" />
                             )}
                           </span>
@@ -408,3 +409,7 @@ export const Orders = ({
 
   );
 };
+
+
+
+
