@@ -17,11 +17,9 @@ export const OrderDetailsDrawer = ({
   setSelectedOrder,
   stages,
   executions,
-  pauses,
   currentUser,
   now,
   orderStageObservations,
-  stagesStatusList,
   isGeneratingLink,
   isUploadingArt,
   isCancellingOrder,
@@ -685,3 +683,4 @@ export const OrderDetailsDrawer = ({
     </AnimatePresence>
   );
 };
+

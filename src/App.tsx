@@ -4017,11 +4017,9 @@ export default function App() {
           setSelectedOrder={setSelectedOrder}
           stages={stages}
           executions={executions}
-          pauses={pauses}
           currentUser={currentUser}
           now={now}
           orderStageObservations={orderStageObservations}
-          stagesStatusList={stagesStatusList}
           isGeneratingLink={isGeneratingLink}
           isUploadingArt={isUploadingArt}
           isCancellingOrder={isCancellingOrder}
@@ -4214,6 +4212,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
