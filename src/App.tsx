@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -592,7 +593,13 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
 
 export default function App() {
   const [infoModal, setInfoModal] = useState<{ title: string, description: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const rawTab = location.pathname.split('/')[1];
+  const activeTab = (rawTab || 'dashboard') as 'dashboard' | 'kanban' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor';
+  const setActiveTab = (tab: string) => {
+    navigate(tab === 'dashboard' ? '/' : '/' + tab);
+  };
   const [printOpen, setPrintOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -7988,6 +7995,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 
 
