@@ -45,7 +45,7 @@ export const Orders = ({
               <Card className="flex-grow p-4 bg-zinc-50 border-zinc-200">
                 <div className="flex items-center gap-3 text-zinc-500 text-xs italic">
                   <Search size={14} />
-                  Use a barra de busca número ou nome do cliente.
+                  Use a barra de busca no topo para localizar OPs por nÃºmero ou nome do cliente.
                 </div>
               </Card>
 
@@ -73,7 +73,7 @@ export const Orders = ({
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Gaveteiro</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">observação da Etapa</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">ObservaÃ§Ã£o da Etapa</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-right">Tempo</th>
                 </tr>
               </thead>
@@ -151,7 +151,7 @@ export const Orders = ({
                         }
                       } catch (e) {}
                     }
-                    const hasPendingReplacements = stagesList.some(s => s.pendencia_Reposição > 0);
+                    const hasPendingReplacements = stagesList.some(s => s.pendencia_reposicao > 0);
                   return (
                     <tr
                       key={order.id}
@@ -179,7 +179,7 @@ export const Orders = ({
                               <div className="mt-1 flex items-center gap-1">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-md text-[10px] font-black animate-pulse shadow-sm">
                                   <Scissors size={11} className="text-amber-700 shrink-0" />
-                                  FALTA ESTOQUE: {cutQty} PÃƒâ€¡S (CORTE)
+                                  FALTA ESTOQUE: {cutQty} PÃ‡S (CORTE)
                                 </span>
                               </div>
                             );
@@ -195,7 +195,7 @@ export const Orders = ({
                               <FileText size={14} className="text-rose-500" title="Possui PDF" />
                             )}
                           </span>
-                          <span className="text-[10px] text-zinc-500 font-medium">{order.print_type} Ã¢â‚¬Â¢ {order.quantity} un</span>
+                          <span className="text-[10px] text-zinc-500 font-medium">{order.print_type} â€¢ {order.quantity} un</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
@@ -298,7 +298,7 @@ export const Orders = ({
                               setEditingDtfValue(order.dtf_location || '');
                             }}
                             className="group flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-lg text-xs font-bold text-amber-900 shadow-sm transition-all cursor-pointer"
-                            title="Clique para alterar a localização"
+                            title="Clique para alterar a localizaÃ§Ã£o do gaveteiro"
                           >
                             <Archive size={12} className="text-amber-600 shrink-0" />
                             <span>{order.dtf_location}</span>
@@ -312,7 +312,7 @@ export const Orders = ({
                               setEditingDtfValue('');
                             }}
                             className="flex items-center gap-1 px-2.5 py-1 bg-zinc-50 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-700 transition-all cursor-pointer"
-                            title="Clique para definir a gaveta / observação"
+                            title="Clique para definir a gaveta / observaÃ§Ã£o"
                           >
                             <Plus size={11} className="text-zinc-400" />
                             <span>Gaveteiro</span>
@@ -335,7 +335,7 @@ export const Orders = ({
                       <td className="px-6 py-4 text-sm font-medium text-zinc-600">
                         {(() => {
                           const active = stagesList.find(s => !s.finished);
-                          if (!active) return <span className="text-zinc-400 font-medium">ConcluÃƒÂ­do</span>;
+                          if (!active) return <span className="text-zinc-400 font-medium">ConcluÃ­do</span>;
                           const qty = active.quantidade_pedido || order.quantity || 0;
                           const current = active.quantidade_boa || 0;
                           const exec = order.active_stage_execution;
@@ -372,14 +372,14 @@ export const Orders = ({
                                   </span>
                                 )}
                               </div>
-                              {active.pendencia_Reposição > 0 && (
+                              {active.pendencia_reposicao > 0 && (
                                 <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1 flex items-center gap-1 w-max animate-pulse">
-                                  Ã¢Å¡Â Ã¯Â¸Â Reposição} pc
+                                  âš ï¸ ReposiÃ§Ã£o: +{active.pendencia_reposicao} pc
                                 </span>
                               )}
                               {isFinishedToday && (
                                 <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5 mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
-                                  Ã¢Å“â€œ {latestFinished.stage_name} hoje
+                                  âœ“ {latestFinished.stage_name} hoje
                                 </span>
                               )}
                             </div>
@@ -387,9 +387,9 @@ export const Orders = ({
                         })()}
                       </td>
                       <td className="px-6 py-4 text-sm text-zinc-600">
-                        {order.active_stage_observaçãon ? (
+                        {order.active_stage_observation ? (
                           <span className="italic text-zinc-700">
-                            Ã°Å¸â€œÂ "{order.active_stage_observaçãon}"
+                            ðŸ“ "{order.active_stage_observation}"
                           </span>
                         ) : (
                           <span className="text-zinc-400 italic font-light">-</span>
@@ -404,7 +404,7 @@ export const Orders = ({
             </table>
             </Card>
           </div>
+
+
   );
 };
-
-
