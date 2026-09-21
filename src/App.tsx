@@ -2854,6 +2854,8 @@ export default function App() {
             handleOpenDraftReview={handleOpenDraftReview}
             setInfoModal={setInfoModal}
             getOrderRisk={getOrderRisk}
+            printTypeFilter={printTypeFilter}
+            productTypeFilter={productTypeFilter}
             orders={orders}
           />
         )}
@@ -3894,6 +3896,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card } from '../components/ui/Card';
-import { Package, Trash2, CheckCircle2, Clock, AlertTriangle, Activity, Shirt, Scissors, Edit2, Target } from 'lucide-react';
+import { Badge } from '../components/Badge';
+import { Package, AlertCircle, Filter, Layers, List, Users, Trash2, CheckCircle2, Clock, AlertTriangle, Activity, Shirt, Scissors, Edit2, Target } from 'lucide-react';
 import { ProductionProgressPanel } from '../components/ProductionProgressPanel';
 import { cn, safeFormat, getOrderCuttingQty } from '../lib/utils';
 import {
@@ -32,7 +33,9 @@ export const DashboardTab = ({
   handleOpenDraftReview,
   setInfoModal,
   getOrderRisk,
-  orders
+  orders,
+  printTypeFilter,
+  productTypeFilter
 }: any) => {
   if (!stats) return null;
   return (
@@ -375,4 +378,6 @@ export const DashboardTab = ({
         
   );
 };
+
+
 
