@@ -16,7 +16,7 @@ export const NewOrderModal = ({
   newOrderRequiredStages,
   setNewOrderRequiredStages,
   currentUser,
-  orderTemplates,
+  templates,
   setEditingTemplate,
   setTemplateFormStages,
   setIsTemplateEditorOpen,
@@ -379,6 +379,7 @@ export const NewOrderModal = ({
 
   );
 };
+
 
 
 
