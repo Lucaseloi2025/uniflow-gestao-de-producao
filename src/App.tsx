@@ -4968,6 +4968,7 @@ export default function App() {
           fetchUsers={fetchUsers}
           isSubmitting={isSubmitting}
           setIsSubmitting={setIsSubmitting}
+          currentUser={currentUser}
         />
 
         {/* Template Editor Modal */}
@@ -6530,6 +6531,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
