@@ -3722,6 +3722,7 @@ export default function App() {
           handleRequestToggleDtf={handleRequestToggleDtf}
           handleUpdateDtfLocation={handleUpdateDtfLocation}
           handleStartStage={handleStartStage}
+          activeOrderTotalTime={activeOrderTotalTime}
           handlePauseStage={handlePauseStage}
           handleResumeStage={handleResumeStage}
           handleFinishStage={handleFinishStage}
@@ -3896,6 +3897,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

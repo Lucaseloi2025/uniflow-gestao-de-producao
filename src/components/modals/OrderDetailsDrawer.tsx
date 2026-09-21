@@ -1,4 +1,4 @@
-﻿import React, { useRef } from 'react';
+import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, safeFormat, isImage, isPdf, formatSeconds, getOrderCuttingQty } from '../../lib/utils';
 import { getItemDisplaySize, aggregateCuttingDemand } from '../../lib/cuttingUtils';
@@ -38,6 +38,7 @@ export const OrderDetailsDrawer = ({
   handleRequestToggleDtf,
   handleUpdateDtfLocation,
   handleStartStage,
+  activeOrderTotalTime,
   handlePauseStage,
   handleResumeStage,
   handleFinishStage,
@@ -683,4 +684,5 @@ export const OrderDetailsDrawer = ({
     </AnimatePresence>
   );
 };
+
 
