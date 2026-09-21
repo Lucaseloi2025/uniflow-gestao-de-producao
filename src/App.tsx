@@ -604,7 +604,7 @@ const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc: string
 
 export default function App() {
   const [infoModal, setInfoModal] = useState<{ title: string, description: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'cutting' | 'pcp' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor'>('dashboard');
   const [printOpen, setPrintOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -2330,12 +2330,6 @@ export default function App() {
             active={activeTab === 'cutting'}
             onClick={() => { setActiveTab('cutting'); setIsMobileMenuOpen(false); }}
             badge={cortePendingBadgeCount > 0 ? cortePendingBadgeCount : undefined}
-          />
-          <SidebarItem
-            icon={Layers}
-            label="Necessidades Prod."
-            active={activeTab === 'pcp'}
-            onClick={() => { setActiveTab('pcp'); setIsMobileMenuOpen(false); }}
           />
           {currentUser?.role === 'Admin' && (
             <SidebarItem
