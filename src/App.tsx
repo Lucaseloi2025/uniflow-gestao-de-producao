@@ -81,7 +81,7 @@ import { Costs } from './pages/Costs';
 import { Collaborators } from './pages/Collaborators';
 import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
 import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
-import { DashboardTab } from './pages/Dashboard';
+import { DashboardTab } from './pages/DashboardTab';
 import { aggregateCuttingDemand, getItemDisplaySize, sortSizes, extractItemDetails } from './lib/cuttingUtils';
 
 import {
@@ -3893,6 +3893,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
