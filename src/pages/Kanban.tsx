@@ -116,7 +116,7 @@ export const Kanban = ({
                     {order.stages_status && order.stages_status.length > 0 && (
                       <div className="mb-3 space-y-2">
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                                  <span className="text-zinc-300">'</span>
+                          {order.stages_status.map((stage, i) => {
                             const isCurrent = !stage.finished && (i === 0 || order.stages_status[i - 1].finished);
                             const isFinished = stage.finished;
                             return (
