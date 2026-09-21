@@ -94,7 +94,7 @@ export const Kanban = ({
                     <div className="flex justify-between items-start mb-3">
                       <span className="text-[10px] font-mono text-zinc-400">{order.order_number}</span>
                       <Badge variant={isOverdue ? 'danger' : (differenceInDays(parseISO(order.deadline), new Date()) < 2 ? 'warning' : 'default')}>
-                              <span>FALTA ESTOQUE: {cutQty} PÇS (CORTE)</span>
+                        {safeFormat(order.deadline, 'dd/MM')}
                       </Badge>
                     </div>
                     <p className="text-xs text-zinc-500 mb-2">{order.quantity}x {order.product_type}</p>
@@ -105,7 +105,7 @@ export const Kanban = ({
                           <div className="mb-3">
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-[10px] font-black animate-pulse shadow-sm w-full">
                               <Scissors size={12} className="text-amber-700 shrink-0" />
-                              <span>FALTA ESTOQUE: {cutQty} PÃ‡S (CORTE)</span>
+                              <span>FALTA ESTOQUE: {cutQty} PÇS (CORTE)</span>
                             </span>
                           </div>
                         );
