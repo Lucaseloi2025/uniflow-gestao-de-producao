@@ -166,7 +166,6 @@ export default function App() {
         </div>
       </div>
     );
-  } /></div></div>;
   }
 
   if (!session) {
@@ -820,6 +819,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
