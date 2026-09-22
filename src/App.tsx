@@ -74,7 +74,6 @@ import { LossModal } from './components/modals/LossModal';
 import { OlistDraftReviewModal } from './components/modals/OlistDraftReviewModal';
 import { OlistDraftListModal } from './components/modals/OlistDraftListModal';
 import { OrderDetailsDrawer } from './components/modals/OrderDetailsDrawer';
-import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
 import { Card } from './components/ui/Card';
 import { PrintContainer } from './components/PrintContainer';
 import { Sidebar } from './components/Sidebar';
@@ -819,6 +818,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
