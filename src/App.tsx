@@ -82,6 +82,9 @@ import { Collaborators } from './pages/Collaborators';
 import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
 import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
 import { Card } from './components/ui/Card';
+import { PrintContainer } from './components/PrintContainer';
+import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { SidebarItem } from './components/ui/SidebarItem';
 import { InfoModal } from './components/modals/InfoModal';
 import { RunningTaskBanner } from './components/RunningTaskBanner';
@@ -89,6 +92,9 @@ import { DashboardTab } from './pages/DashboardTab';
 import { TaskMonitor } from './pages/TaskMonitor';
 import { SettingsTab } from './pages/SettingsTab';
 import { Card } from './components/ui/Card';
+import { PrintContainer } from './components/PrintContainer';
+import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { SidebarItem } from './components/ui/SidebarItem';
 import { InfoModal } from './components/modals/InfoModal';
 import { RunningTaskBanner } from './components/RunningTaskBanner';
@@ -117,56 +123,6 @@ import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderT
 // Components
 
 
-  useEffect(() => {
-    if (!execution.start_time) return;
-
-    const updateTimer = () => {
-      setTimes(calculateExecutionTimes(execution, execution.pauses || [], Date.now()));
-    };
-
-    updateTimer(); // Initial call
-    const timer = setInterval(updateTimer, 1000);
-    return () => clearInterval(timer);
-  }, [execution]);
-
-  return (
-    <motion.div
-      initial={{ height: 0, opacity: 0 }}
-      animate={{ height: 'auto', opacity: 1 }}
-      exit={{ height: 0, opacity: 0 }}
-      className="bg-zinc-900 text-white overflow-hidden shadow-lg mb-2 rounded-xl"
-    >
-      <div
-        className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-zinc-800 transition-colors"
-        onClick={onNavigate}
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 animate-pulse">
-            <Play size={16} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tarefa em Andamento</p>
-            <p className="text-sm font-bold">
-              {execution.stage_name} <span className="text-zinc-500 mx-2">•</span> <span className="font-mono">{execution.order_number}</span>
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Sessão Atual</span>
-            <span className="text-sm font-mono font-bold text-emerald-300">{formatSeconds(times.currentSessionSeconds)}</span>
-          </div>
-          <div className="h-6 w-px bg-zinc-700 mx-1" />
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Tempo Total</span>
-            <span className="text-xl font-mono font-bold tabular-nums">{formatSeconds(times.totalAccumulatedSeconds)}</span>
-          </div>
-          <ChevronRight size={20} className="text-zinc-600" />
-        </div>
-      </div>
-    </motion.div>
-  );
-};
 
 export default function App() {
   const [infoModal, setInfoModal] = useState<{ title: string, description: string } | null>(null);
@@ -1775,77 +1731,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#F8F9FA] font-sans text-zinc-900 overflow-hidden">
-      {/* Print Container */}
-      {(activeTab === 'kanban' || activeTab === 'orders') && (
-        <div className="print-container hidden text-black bg-white w-full p-8 font-sans">
-          <div className="mb-6 border-b border-zinc-300 pb-4 flex justify-between items-end">
-            <div>
-              <h1 className="text-2xl font-bold uppercase tracking-tight">Sequência de Produção</h1>
-              <p className="text-sm mt-1 text-zinc-500">
-                Emitido em: {format(new Date(), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
-              </p>
-            </div>
-            <div className="text-right text-sm">
-              {selectedStageFilter && (
-                <p>Etapa: <strong>{stages.find(s => s.id.toString() === selectedStageFilter)?.name || selectedStageFilter}</strong></p>
-              )}
-              {printTypeFilter && <p>Estampa: <strong>{printTypeFilter}</strong></p>}
-            </div>
-          </div>
-          <table className="w-full border-collapse text-sm text-left">
-            <thead>
-              <tr className="bg-zinc-100 border-b-2 border-zinc-300 uppercase text-[10px] tracking-wider text-zinc-600">
-                <th className="p-2 border-r border-zinc-200">Cliente</th>
-                <th className="p-2 border-r border-zinc-200 text-center">Qtde</th>
-                <th className="p-2 border-r border-zinc-200">Estampa</th>
-                <th className="p-2 border-r border-zinc-200">Etapa atual</th>
-                <th className="p-2 border-r border-zinc-200 text-center">Prazo</th>
-                <th className="p-2 text-left" style={{minWidth: '200px'}}>Observação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(orders || [])
-                .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
-                .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
-                .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
-                .filter(o => {
-                    if (!searchTerm) return true;
-                    const search = searchTerm.toLowerCase();
-                    return (
-                      o.order_number.toLowerCase().includes(search) ||
-                      o.client_name.toLowerCase().includes(search) ||
-                      o.product_type.toLowerCase().includes(search) ||
-                      (o.print_type || '').toLowerCase().includes(search)
-                    );
-                })
-                .filter(o => {
-                    if (!selectedStageFilter) return true;
-                    const st = o.stages_status.find(s => s.id.toString() === selectedStageFilter);
-                    if (!st) return false;
-                    if (selectedStageStatus === 'Finished') return st.finished;
-                    return !st.finished;
-                })
-                .sort((a, b) => (a.deadline || '').localeCompare(b.deadline || ''))
-                .map((o, idx) => (
-                  <tr key={o.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
-                    <td className="p-2 border-b border-zinc-200 border-r font-medium truncate max-w-[220px]">{o.client_name}</td>
-                    <td className="p-2 border-b border-zinc-200 border-r text-center font-bold">{o.quantity}</td>
-                    <td className="p-2 border-b border-zinc-200 border-r text-xs">{o.print_type || '-'}</td>
-                    <td className="p-2 border-b border-zinc-200 border-r text-xs font-semibold text-zinc-700">{o.active_stage_name || '-'}</td>
-                    <td className="p-2 border-b border-zinc-200 border-r text-center text-xs font-medium">{safeFormat(o.deadline, 'dd/MM')}</td>
-                    <td className="p-2 border-b border-zinc-200 text-xs text-zinc-700" style={{minWidth: '200px'}}>
-                      {o.active_stage_observation 
-                        ? <span className="italic">📝 {o.active_stage_observation.length > 120 
-                            ? `${o.active_stage_observation.slice(0, 120)}...` 
-                            : o.active_stage_observation}</span>
-                        : ''}
-                    </td>
-                  </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <PrintContainer activeTab={activeTab} orders={orders} stages={stages} selectedStageFilter={selectedStageFilter} printTypeFilter={printTypeFilter} productTypeFilter={productTypeFilter} searchTerm={searchTerm} selectedStageStatus={selectedStageStatus} />
 
       {/* Mobile Overlay */}
       <AnimatePresence>
@@ -1860,105 +1746,15 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
-      <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 border-r border-zinc-200 bg-white p-6 flex flex-col gap-8 transition-transform duration-300 lg:relative lg:translate-x-0",
-        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center text-white">
-              <Package size={18} />
-            </div>
-            <h1 className="font-bold text-xl tracking-tight">ComfortPro</h1>
-          </div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden p-1 text-zinc-400">
-            <X size={20} />
-          </button>
-        </div>
-
-        <nav className="flex flex-col gap-2 flex-1">
-          <SidebarItem
-            icon={LayoutDashboard}
-            label="Dashboard"
-            active={activeTab === 'dashboard'}
-            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-          />
-          <SidebarItem
-            icon={ClipboardList}
-            label="Kanban"
-            active={activeTab === 'kanban'}
-            onClick={() => { setActiveTab('kanban'); setIsMobileMenuOpen(false); }}
-          />
-          <SidebarItem
-            icon={Package}
-            label="Pedidos"
-            active={activeTab === 'orders'}
-            onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
-          />
-          <SidebarItem
-            icon={Scissors}
-            label="Central de Corte"
-            active={activeTab === 'cutting'}
-            onClick={() => { setActiveTab('cutting'); setIsMobileMenuOpen(false); }}
-            badge={cortePendingBadgeCount > 0 ? cortePendingBadgeCount : undefined}
-          />
-          {currentUser?.role === 'Admin' && (
-            <SidebarItem
-              icon={Users}
-              label="Colaboradores"
-              active={activeTab === 'collaborators'}
-              onClick={() => { setActiveTab('collaborators'); setIsMobileMenuOpen(false); }}
-            />
-          )}
-          <SidebarItem
-            icon={FileText}
-            label="Relatórios"
-            active={activeTab === 'reports'}
-            onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
-          />
-          {currentUser?.role === 'Admin' && (
-            <SidebarItem
-              icon={Activity}
-              label="Monitor"
-              active={activeTab === 'monitor'}
-              onClick={() => { setActiveTab('monitor'); setIsMobileMenuOpen(false); }}
-            />
-          )}
-          {currentUser?.role === 'Admin' && (
-            <SidebarItem
-              icon={DollarSign}
-              label="Custos"
-              active={activeTab === 'costs'}
-              onClick={() => { setActiveTab('costs'); setIsMobileMenuOpen(false); }}
-            />
-          )}
-          {currentUser?.role === 'Admin' && (
-            <SidebarItem
-              icon={Settings}
-              label="Configurações"
-              active={activeTab === 'settings'}
-              onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
-            />
-          )}
-        </nav>
-
-        <div className="mt-auto pt-6 border-t border-zinc-100">
-          <div className="flex items-center gap-3 px-2 mb-4">
-            <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600">
-              <UserIcon size={20} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate">{currentUser?.name || '---'}</p>
-              <p className="text-xs text-zinc-500 truncate">{currentUser?.role || '---'}</p>
-            </div>
-          </div>
-          <button onClick={handleLogout} className="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-medium text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-            <LogOut size={16} />
-            Sair da Conta
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
+        currentUser={currentUser}
+        cortePendingBadgeCount={cortePendingBadgeCount}
+        handleLogout={handleLogout}
+      />
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-4 lg:p-8">
@@ -2004,400 +1800,52 @@ export default function App() {
             </div>
           )}
         </AnimatePresence>
-        <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl lg:text-2xl font-bold tracking-tight">
-                {activeTab === 'dashboard' && 'Visão Geral'}
-                {activeTab === 'kanban' && 'Fluxo de Produção'}
-                {activeTab === 'orders' && 'Todos os Pedidos'}
-                {activeTab === 'collaborators' && 'Colaboradores'}
-                {activeTab === 'reports' && 'Relatórios'}
-                {activeTab === 'costs' && 'Análise de Custos'}
-                {activeTab === 'settings' && 'Configurações do Sistema'}
-                {activeTab === 'monitor' && 'Monitor de Tarefas (Tempo Real)'}
-              </h2>
-              <p className="text-zinc-500 text-xs lg:text-sm">
-                {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
-              </p>
-            </div>
-            <button
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden p-2 bg-white border border-zinc-200 rounded-lg text-zinc-600"
-            >
-              <Menu size={20} />
-            </button>
-          </div>
-
-          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-            {activeTab === 'collaborators' && (
-              <div className="relative w-full lg:w-auto">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Buscar por nome ou email..."
-                  value={userSearchTerm}
-                  onChange={(e) => setUserSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 lg:min-w-[250px]"
-                />
-              </div>
-            )}
-            {(activeTab === 'kanban' || activeTab === 'orders') && (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Pesquisar..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-400 sm:min-w-[200px]"
-                  />
-                </div>
-                <div className="flex items-center gap-1 bg-white border border-zinc-200 rounded-lg p-1">
-                  <select
-                    value={selectedStageFilter}
-                    onChange={(e) => setSelectedStageFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-sm focus:outline-none"
-                  >
-                    <option value="">Todas as Etapas</option>
-                    {stages.map(stage => (
-                      <option key={stage.id} value={stage.id}>{stage.name}</option>
-                    ))}
-                  </select>
-                  {selectedStageFilter && (
-                    <select
-                      value={selectedStageStatus}
-                      onChange={(e) => setSelectedStageStatus(e.target.value as any)}
-                      className="px-2 py-1 bg-zinc-100 rounded text-[10px] font-bold focus:outline-none"
-                    >
-                      <option value="Pending">Pendente</option>
-                      <option value="Finished">Concluído</option>
-                    </select>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 bg-white border border-zinc-200 rounded-lg p-1">
-                  <select
-                    value={productTypeFilter}
-                    onChange={(e) => setProductTypeFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
-                  >
-                    <option value="">Produtos</option>
-                    <option value="Dry Fit">Dry Fit</option>
-                    <option value="Algodão">Algodão</option>
-                    <option value="Poliamida">Poliamida</option>
-                  </select>
-                  <div className="w-px h-4 bg-zinc-200 mx-1" />
-                  <select
-                    value={printTypeFilter}
-                    onChange={(e) => setPrintTypeFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
-                  >
-                    <option value="">Estampas</option>
-                    <option value="Silk">Silk</option>
-                    <option value="DTF">DTF</option>
-                    <option value="Sublimação">Sublimação</option>
-                  </select>
-                </div>
-                <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 ml-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all shadow-sm active:scale-95"
-                  title="Imprimir Sequência"
-                >
-                  <Printer size={16} />
-                  <span className="hidden sm:inline">Imprimir</span>
-                </button>
-              </div>
-            )}
-            {activeTab === 'collaborators' && (
-              <button
-                onClick={() => {
-                  setSelectedUserForEdit(null);
-                  setShowUserModal(true);
-                }}
-                className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
-              >
-                <Plus size={18} />
-                Convidar Colaborador
-              </button>
-            )}
-            {activeTab === 'dashboard' && (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm overflow-x-auto">
-                  <button
-                    onClick={() => setDateRange(null)}
-                    className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", !dateRange ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Tudo
-                  </button>
-                  <button
-                    onClick={() => setDateRange({
-                      start: startOfWeek(new Date()).toISOString(),
-                      end: endOfWeek(new Date()).toISOString()
-                    })}
-                    className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", dateRange?.start === startOfWeek(new Date()).toISOString() ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Semana
-                  </button>
-                  <button
-                    onClick={() => setDateRange({
-                      start: startOfMonth(new Date()).toISOString(),
-                      end: endOfMonth(new Date()).toISOString()
-                    })}
-                    className={cn("whitespace-nowrap px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", dateRange?.start === startOfMonth(new Date()).toISOString() ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Mês
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
-                  <select
-                    value={productTypeFilter}
-                    onChange={(e) => setProductTypeFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
-                  >
-                    <option value="">Produtos</option>
-                    <option value="Dry Fit">Dry Fit</option>
-                    <option value="Algodão">Algodão</option>
-                    <option value="Poliamida">Poliamida</option>
-                  </select>
-                  <div className="w-px h-4 bg-zinc-200 mx-1" />
-                  <select
-                    value={printTypeFilter}
-                    onChange={(e) => setPrintTypeFilter(e.target.value)}
-                    className="flex-1 px-2 py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[100px]"
-                  >
-                    <option value="">Estampas</option>
-                    <option value="Silk">Silk</option>
-                    <option value="DTF">DTF</option>
-                    <option value="Sublimação">Sublimação</option>
-                  </select>
-                </div>
-              </div>
-            )}
-            {activeTab === 'reports' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
-                  <button
-                    onClick={() => {
-                      setReportPeriod('day');
-                      setReportStartDate(format(new Date(), 'yyyy-MM-dd'));
-                      setReportEndDate(format(new Date(), 'yyyy-MM-dd'));
-                    }}
-                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Diário
-                  </button>
-                  <button
-                    onClick={() => {
-                      setReportPeriod('day');
-                      setReportStartDate(format(new Date(), 'yyyy-MM-dd'));
-                      setReportEndDate(format(new Date(), 'yyyy-MM-dd'));
-                    }}
-                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'day' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Diário
-                  </button>
-                  <button
-                    onClick={() => {
-                      setReportPeriod('week');
-                      setReportStartDate(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
-                      setReportEndDate(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
-                    }}
-                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'week' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Semanal
-                  </button>
-                  <button
-                    onClick={() => {
-                      setReportPeriod('month');
-                      setReportStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-                      setReportEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-                    }}
-                    className={cn("px-3 py-1.5 text-[10px] font-medium rounded-md transition-colors", reportPeriod === 'month' ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-50")}
-                  >
-                    Mensal
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2 bg-white border border-zinc-200 p-1.5 rounded-lg shadow-sm">
-                  <div className="flex items-center gap-2 px-2">
-                    <Calendar size={14} className="text-zinc-400" />
-                    <input
-                      type="date"
-                      value={reportStartDate}
-                      onChange={(e) => setReportStartDate(e.target.value)}
-                      className="text-[10px] font-medium bg-transparent focus:outline-none"
-                    />
-                    <span className="text-zinc-300">|</span>
-                    <input
-                      type="date"
-                      value={reportEndDate}
-                      onChange={(e) => setReportEndDate(e.target.value)}
-                      className="text-[10px] font-medium bg-transparent focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 bg-white border border-zinc-200 p-1 rounded-lg shadow-sm">
-                  <div className="flex items-center gap-1 px-2 border-r border-zinc-100 py-1 sm:py-0">
-                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Colab:</span>
-                    <select
-                      value={reportUser}
-                      onChange={(e) => setReportUser(e.target.value)}
-                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
-                    >
-                      <option value="">Todos</option>
-                      {users.map(user => (
-                        <option key={user.id} value={user.id}>{user.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-1 px-2 py-1 sm:py-0">
-                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Etapa:</span>
-                    <select
-                      value={reportStage}
-                      onChange={(e) => setReportStage(e.target.value)}
-                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
-                    >
-                      <option value="">Todas</option>
-                      {stages.map(stage => (
-                        <option key={stage.id} value={stage.id}>{stage.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-1 px-2 border-l border-zinc-100 py-1 sm:py-0">
-                    <span className="text-[8px] font-bold text-zinc-400 uppercase">Setor:</span>
-                    <select
-                      value={reportPrintType}
-                      onChange={(e) => setReportPrintType(e.target.value)}
-                      className="py-1 bg-transparent text-[10px] font-medium focus:outline-none min-w-[80px]"
-                    >
-                      <option value="">Todos</option>
-                      <option value="Silk">Silk</option>
-                      <option value="DTF">DTF</option>
-                      <option value="Sublimação">Sublimação</option>
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setIsPrintModalOpen(true)}
-                  className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-900 text-white rounded-lg text-[10px] font-bold hover:bg-zinc-800 transition-all shadow-sm active:scale-95 ml-auto sm:ml-0"
-                  title="Imprimir Relatório"
-                >
-                  <Printer size={12} />
-                  <span>Imprimir Relatório</span>
-                </button>
-              </div>
-            )}
-            {activeTab === 'dashboard' ? (
-              currentUser?.role === 'Admin' ? (
-                <button
-                  onClick={() => setActiveTab('settings')}
-                  className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"
-                >
-                  <Target size={18} />
-                  Definir Metas
-                </button>
-              ) : null
-            ) : (
-              <div className="flex items-center gap-3 w-full lg:w-auto">
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const formData = new FormData(e.currentTarget);
-                    const scannedValue = (formData.get('escanearOp') as string).trim();
-                    if (!scannedValue) return;
-
-                    // Procura especificamente no campo client_name (como solicitado pelo usuário)
-                    const searchLower = scannedValue.toLowerCase();
-                    let foundOrder = orders.find(o => 
-                      o.client_name && o.client_name.toLowerCase().includes(searchLower)
-                    );
-
-                    const handleOrderFound = (order: Order) => {
-                      setSelectedOrder(order);
-                      fetchExecutions(order.id);
-                      (e.target as HTMLFormElement).reset();
-                    };
-
-                    if (foundOrder) {
-                      handleOrderFound(foundOrder);
-                    } else {
-                      // Se não encontrar localmente, busca na API focando no nome do cliente
-                      safeFetch(`/api/orders?search=${encodeURIComponent(scannedValue)}`).then(data => {
-                        if (data && data.length > 0) {
-                          // Prioriza match no client_name
-                          const clientMatch = data.find((o: Order) => 
-                            o.client_name && o.client_name.toLowerCase().includes(searchLower)
-                          );
-                          if (clientMatch) {
-                            handleOrderFound(clientMatch);
-                          } else {
-                            // Se encontrar algo por outros campos mas o usuário quer apenas cliente
-                            // podemos abrir o primeiro se for um scan literal do campo circled
-                            handleOrderFound(data[0]);
-                          }
-                        } else {
-                          alert('OP (Cliente) não encontrada no sistema.');
-                        }
-                      });
-                    }
-                  }}
-                  className="relative group flex-1 lg:w-64"
-                >
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none transition-colors group-focus-within:text-zinc-900 text-zinc-400">
-                    <Search className="h-4 w-4" />
-                  </div>
-                  <input
-                    type="text"
-                    name="escanearOp"
-                    ref={scanInputRef}
-                    placeholder="Escanear OP (Cliente)..."
-                    className="block w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-bold text-zinc-900 placeholder:text-zinc-400 placeholder:font-normal focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-all outline-none"
-                    autoComplete="off"
-                  />
-                </form>
-
-                <button
-                  onClick={handleSyncOlist}
-                  disabled={isSyncingOlist}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm whitespace-nowrap text-xs font-bold active:scale-95 disabled:opacity-50 cursor-pointer"
-                  title="Buscar novos pedidos aprovados dos últimos 7 dias do Olist ERP"
-                >
-                  <RefreshCw size={15} className={cn(isSyncingOlist && "animate-spin")} />
-                  <span>{isSyncingOlist ? "Sincronizando..." : "Sincronizar Olist"}</span>
-                </button>
-
-                <button
-                  onClick={() => setIsDraftsListModalOpen(true)}
-                  className="relative bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm whitespace-nowrap text-xs font-bold active:scale-95 cursor-pointer"
-                  title="Ver lista de rascunhos de pedidos importados do Olist ERP"
-                >
-                  <Package size={15} />
-                  <span>Rascunhos Olist</span>
-                  {draftOrders.length > 0 && (
-                    <span className="bg-white text-amber-900 font-black px-1.5 py-0.5 rounded-full text-[10px] shadow-sm">
-                      {draftOrders.length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowNewOrderModal(true);
-                    setNewOrderRequiredStages(stages.filter(s => s.active).map(s => s.id));
-                  }}
-                  className="bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm whitespace-nowrap"
-                >
-                  <Plus size={18} />
-                  Novo Pedido
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
+        <Header
+          activeTab={activeTab}
+          currentUser={currentUser}
+          dateRange={dateRange}
+          draftOrders={draftOrders}
+          fetchExecutions={fetchExecutions}
+          handleSyncOlist={handleSyncOlist}
+          isSyncingOlist={isSyncingOlist}
+          orders={orders}
+          printTypeFilter={printTypeFilter}
+          productTypeFilter={productTypeFilter}
+          reportEndDate={reportEndDate}
+          reportPeriod={reportPeriod}
+          reportPrintType={reportPrintType}
+          reportStage={reportStage}
+          reportStartDate={reportStartDate}
+          reportUser={reportUser}
+          searchTerm={searchTerm}
+          selectedStageFilter={selectedStageFilter}
+          selectedStageStatus={selectedStageStatus}
+          setActiveTab={setActiveTab}
+          setDateRange={setDateRange}
+          setIsDraftsListModalOpen={setIsDraftsListModalOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+          setIsPrintModalOpen={setIsPrintModalOpen}
+          setNewOrderRequiredStages={setNewOrderRequiredStages}
+          setPrintTypeFilter={setPrintTypeFilter}
+          setProductTypeFilter={setProductTypeFilter}
+          setReportEndDate={setReportEndDate}
+          setReportPeriod={setReportPeriod}
+          setReportPrintType={setReportPrintType}
+          setReportStage={setReportStage}
+          setReportStartDate={setReportStartDate}
+          setReportUser={setReportUser}
+          setSearchTerm={setSearchTerm}
+          setSelectedOrder={setSelectedOrder}
+          setSelectedStageFilter={setSelectedStageFilter}
+          setSelectedStageStatus={setSelectedStageStatus}
+          setSelectedUserForEdit={setSelectedUserForEdit}
+          setShowNewOrderModal={setShowNewOrderModal}
+          setShowUserModal={setShowUserModal}
+          setUserSearchTerm={setUserSearchTerm}
+          stages={stages}
+          users={users}
+          userSearchTerm={userSearchTerm}
+        />
 
         {activeTab === 'dashboard' && (
           <DashboardTab
@@ -2841,6 +2289,10 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
 
 
 
