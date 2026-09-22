@@ -6,7 +6,7 @@ import {
   ChevronRight, ClipboardList, Clock, Edit2, Plus, 
   Settings, Target, Trash2 
 } from 'lucide-react';
-import { cn, safeFormat, safeFetch } from '../lib/utils';
+import { cn, safeFormat } from '../lib/utils';
 import type { Stage, User, OrderTemplate } from '../types';
 
 export const SettingsTab = ({
@@ -18,7 +18,7 @@ export const SettingsTab = ({
   setEditingStageId, setEditingStageMetaDiaria, setEditingStageName, setEditingStageTime, setEditingTemplate,
   setExpandedGoalStageId, setGoalEditValues, setIsTemplateEditorOpen, setLossReasonsList, setNewStageCalculationType,
   setNewStageMetaDiaria, setNewStageName, setNewStageTime, setTemplateFormStages,
-  fetchCollaboratorGoals, fetchData, handleSaveLossReasonsMapping, moveStage
+  fetchCollaboratorGoals, fetchData, handleSaveLossReasonsMapping, moveStage, safeFetch
 }: any) => {
   return (
     <div className="max-w-2xl space-y-8 pb-12">
@@ -686,5 +686,6 @@ export const SettingsTab = ({
 
   );
 };
+
 
 
