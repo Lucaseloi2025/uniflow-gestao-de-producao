@@ -61,9 +61,7 @@ import { supabase } from './lib/supabase';
 import PrintableReport from './PrintableReport';
 import { Session } from '@supabase/supabase-js';
 import PublicTracking from './PublicTracking';
-import { Orders } from './pages/Orders';
 import { Badge } from './components/Badge';
-import { Kanban } from './pages/Kanban';
 import { UserModal } from './components/modals/UserModal';
 import { NewOrderModal } from './components/modals/NewOrderModal';
 import { TemplateEditorModal } from './components/modals/TemplateEditorModal';
@@ -76,10 +74,6 @@ import { LossModal } from './components/modals/LossModal';
 import { OlistDraftReviewModal } from './components/modals/OlistDraftReviewModal';
 import { OlistDraftListModal } from './components/modals/OlistDraftListModal';
 import { OrderDetailsDrawer } from './components/modals/OrderDetailsDrawer';
-import { Reports } from './pages/Reports';
-import { Costs } from './pages/Costs';
-import { Collaborators } from './pages/Collaborators';
-import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
 import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
 import { Card } from './components/ui/Card';
 import { PrintContainer } from './components/PrintContainer';
@@ -89,9 +83,6 @@ import { Header } from './components/Header';
 import { SidebarItem } from './components/ui/SidebarItem';
 import { InfoModal } from './components/modals/InfoModal';
 import { RunningTaskBanner } from './components/RunningTaskBanner';
-import { DashboardTab } from './pages/DashboardTab';
-import { TaskMonitor } from './pages/TaskMonitor';
-import { SettingsTab } from './pages/SettingsTab';
 import { Card } from './components/ui/Card';
 import { PrintContainer } from './components/PrintContainer';
 import { Sidebar } from './components/Sidebar';
@@ -123,6 +114,27 @@ import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderT
 
 
 // Components
+import { Suspense, lazy } from 'react';
+
+const Orders = lazy(() => import('./pages/Orders').then(m => ({ default: m.Orders })));
+const Kanban = lazy(() => import('./pages/Kanban').then(m => ({ default: m.Kanban })));
+const Reports = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const Costs = lazy(() => import('./pages/Costs').then(m => ({ default: m.Costs })));
+const Collaborators = lazy(() => import('./pages/Collaborators').then(m => ({ default: m.Collaborators })));
+const ConsolidatedCuttingPanel = lazy(() => import('./components/ConsolidatedCuttingPanel').then(m => ({ default: m.ConsolidatedCuttingPanel })));
+const DashboardTab = lazy(() => import('./pages/DashboardTab').then(m => ({ default: m.DashboardTab })));
+const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
+const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
+
+const FallbackLoading = () => (
+  <div className="flex-1 flex items-center justify-center p-12">
+    <div className="flex flex-col items-center gap-4 text-zinc-400">
+      <div className="w-8 h-8 border-4 border-zinc-200 border-t-indigo-500 rounded-full animate-spin"></div>
+      <p className="text-sm font-medium animate-pulse">Carregando mdulo...</p>
+    </div>
+  </div>
+);
+
 
 
 
@@ -312,6 +324,7 @@ export default function App() {
           userSearchTerm={userSearchTerm}
         />
 
+        <Suspense fallback={<FallbackLoading />}>
         {activeTab === 'dashboard' && (
           <DashboardTab
             stats={stats}
@@ -522,6 +535,7 @@ export default function App() {
             moveStage={moveStage}
           />
         )}
+        </Suspense>
       </main>
 
       <InfoModal
@@ -754,6 +768,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
 
 
