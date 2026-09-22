@@ -1702,7 +1702,6 @@ export function useAppLogic() {
     handleEditOrderSubmit,
     handleFinishStage,
     handleGenerateTrackingLink,
-    handleGlobalKeyDown,
     handleLogin,
     handleLogout,
     handleOpenActionModal,
@@ -1923,6 +1922,7 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
 
 
