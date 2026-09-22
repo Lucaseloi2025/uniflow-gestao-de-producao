@@ -127,11 +127,18 @@ const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ defaul
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
 const FallbackLoading = () => (
-  <div className="flex-1 flex items-center justify-center p-12">
-    <div className="flex flex-col items-center gap-4 text-zinc-400">
-      <div className="w-8 h-8 border-4 border-zinc-200 border-t-indigo-500 rounded-full animate-spin"></div>
-      <p className="text-sm font-medium animate-pulse">Carregando mdulo...</p>
+  <div className="flex-1 flex flex-col p-4 lg:p-8 space-y-6 w-full animate-pulse">
+    <div className="flex justify-between items-center w-full">
+      <div className="h-8 bg-zinc-200 rounded-lg w-1/4"></div>
+      <div className="h-10 bg-zinc-200 rounded-lg w-32"></div>
     </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="h-32 bg-zinc-200 rounded-xl"></div>
+      <div className="h-32 bg-zinc-200 rounded-xl"></div>
+      <div className="h-32 bg-zinc-200 rounded-xl"></div>
+      <div className="h-32 bg-zinc-200 rounded-xl"></div>
+    </div>
+    <div className="h-96 bg-zinc-200 rounded-xl w-full"></div>
   </div>
 );
 
@@ -149,7 +156,17 @@ export default function App() {
   }
 
   if (appLogic.isAuthLoading) {
-    return <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA]"><div className="animate-spin text-zinc-400"><RefreshCw size={24} /></div></div>;
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-16 h-16 bg-zinc-200 rounded-2xl animate-pulse flex items-center justify-center shadow-sm">
+            <RefreshCw size={28} className="text-zinc-400 animate-spin" />
+          </div>
+          <div className="h-4 w-32 bg-zinc-200 rounded-full animate-pulse"></div>
+        </div>
+      </div>
+    );
+  } /></div></div>;
   }
 
   if (!session) {
@@ -203,7 +220,33 @@ export default function App() {
   }
 
   if (!currentUser) {
-    return <div className="flex h-screen items-center justify-center bg-[#F8F9FA]"><p className="text-zinc-500 font-medium animate-pulse">Carregando permissões de perfil...</p></div>;
+    return (
+      <div className="flex h-screen bg-[#F8F9FA] font-sans overflow-hidden">
+        <div className="w-64 bg-white border-r border-zinc-200 p-6 flex flex-col gap-6">
+          <div className="h-10 bg-zinc-200 rounded-lg animate-pulse"></div>
+          <div className="space-y-4 mt-8">
+            <div className="h-12 bg-zinc-100 rounded-xl animate-pulse"></div>
+            <div className="h-12 bg-zinc-100 rounded-xl animate-pulse"></div>
+            <div className="h-12 bg-zinc-100 rounded-xl animate-pulse"></div>
+          </div>
+        </div>
+        <div className="flex-1 p-8 flex flex-col gap-8">
+          <div className="flex justify-between items-center">
+            <div className="h-10 w-48 bg-zinc-200 rounded-lg animate-pulse"></div>
+            <div className="flex gap-4">
+              <div className="h-10 w-32 bg-zinc-200 rounded-lg animate-pulse"></div>
+              <div className="h-10 w-10 bg-zinc-200 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-6">
+            <div className="h-32 bg-zinc-200 rounded-2xl animate-pulse"></div>
+            <div className="h-32 bg-zinc-200 rounded-2xl animate-pulse"></div>
+            <div className="h-32 bg-zinc-200 rounded-2xl animate-pulse"></div>
+            <div className="h-32 bg-zinc-200 rounded-2xl animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -759,15 +802,27 @@ export default function App() {
         />
 
       {/* Global Toast Message */}
-      {toastMessage && (
-        <div className="fixed bottom-4 right-4 bg-zinc-900 border border-zinc-800 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-bold z-[100] flex items-center gap-2 animate-pulse">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            className="fixed bottom-6 right-6 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold z-[100] flex items-center gap-3"
+          >
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
+
+
+
 
 
 

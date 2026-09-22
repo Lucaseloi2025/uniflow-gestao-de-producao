@@ -641,9 +641,9 @@ export function useAppLogic() {
           msg += `\nPrimeiro erro: ${data.errors[0]?.error || JSON.stringify(data.errors[0])}`;
         }
       }
-      alert(msg);
+      showToast(msg);
     } catch (err: any) {
-      alert(`Erro na sincronização Olist: ${err.message}`);
+      showToast(`Erro na sincronização Olist: ${err.message}`);
     } finally {
       setIsSyncingOlist(false);
     }
@@ -678,9 +678,9 @@ export function useAppLogic() {
       setSelectedDraftOrder(null);
       await fetchData();
       await fetchDraftOrders();
-      alert(`Pedido #${selectedDraftOrder.order_number} liberado para produção com sucesso!`);
+      showToast(`Pedido #${selectedDraftOrder.order_number} liberado para produção com sucesso!`);
     } catch (err: any) {
-      alert(`Erro ao liberar pedido: ${err.message}`);
+      showToast(`Erro ao liberar pedido: ${err.message}`);
     } finally {
       setIsConfirmingDraft(false);
     }
@@ -701,7 +701,7 @@ export function useAppLogic() {
       }
       await fetchDraftOrders();
     } catch (err: any) {
-      alert(`Erro ao excluir rascunho: ${err.message}`);
+      showToast(`Erro ao excluir rascunho: ${err.message}`);
     }
   };
 
@@ -719,9 +719,9 @@ export function useAppLogic() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao limpar rascunhos antigos');
       await fetchDraftOrders();
-      alert('Rascunhos antigos limpos com sucesso!');
+      showToast('Rascunhos antigos limpos com sucesso!');
     } catch (err: any) {
-      alert(`Erro ao limpar rascunhos: ${err.message}`);
+      showToast(`Erro ao limpar rascunhos: ${err.message}`);
     }
   };
 
@@ -898,7 +898,7 @@ export function useAppLogic() {
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder({ ...selectedOrder, dtf_complete: currentStatus });
       }
-      alert('Erro ao atualizar status do DTF.');
+      showToast('Erro ao atualizar status do DTF.');
     }
     fetchData();
   };
@@ -961,10 +961,10 @@ export function useAppLogic() {
         fetchData();
       } else {
         const err = await res.json();
-        alert(err.error || 'Erro ao excluir pedido');
+        showToast(err.error || 'Erro ao excluir pedido');
       }
     } catch (err) {
-      alert('Erro na conexão com o servidor');
+      showToast('Erro na conexão com o servidor');
     } finally {
       setIsDeletingOrder(false);
     }
@@ -999,7 +999,7 @@ export function useAppLogic() {
       showToast('Link copiado!');
     } catch (err: any) {
       console.error('[Tracking Link] Error:', err);
-      alert(err.message || 'Erro ao gerar e copiar link de acompanhamento.');
+      showToast(err.message || 'Erro ao gerar e copiar link de acompanhamento.');
     } finally {
       setIsGeneratingLink(false);
     }
@@ -1024,10 +1024,10 @@ export function useAppLogic() {
         }
       } else {
         const err = await res.json();
-        alert(err.error || 'Erro ao cancelar pedido');
+        showToast(err.error || 'Erro ao cancelar pedido');
       }
     } catch (err) {
-      alert('Erro na conexão com o servidor');
+      showToast('Erro na conexão com o servidor');
     } finally {
       setIsCancellingOrder(false);
     }
@@ -1064,11 +1064,11 @@ export function useAppLogic() {
 
     // Client-side validation
     if (!editOrderForm.quantity || Number(editOrderForm.quantity) <= 0) {
-      alert('Quantidade deve ser maior que zero.');
+      showToast('Quantidade deve ser maior que zero.');
       return;
     }
     if (!editOrderForm.num_colors || Number(editOrderForm.num_colors) < 1) {
-      alert('Número de cores deve ser pelo menos 1.');
+      showToast('Número de cores deve ser pelo menos 1.');
       return;
     }
 
@@ -1099,10 +1099,10 @@ export function useAppLogic() {
         setSelectedOrder({ ...selectedOrder, ...editOrderForm } as Order);
       } else {
         const err = await res.json();
-        alert(err.error || err.message || 'Erro ao editar pedido');
+        showToast(err.error || err.message || 'Erro ao editar pedido');
       }
     } catch (err) {
-      alert('Erro na conexão com o servidor');
+      showToast('Erro na conexão com o servidor');
     } finally {
       setIsEditingOrder(false);
     }
@@ -1121,7 +1121,7 @@ export function useAppLogic() {
     const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
     for (let i = 0; i < files.length; i++) {
       if (files[i].size > MAX_FILE_SIZE) {
-        alert(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+        showToast(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
         return;
       }
     }
@@ -1155,7 +1155,7 @@ export function useAppLogic() {
       }
       fetchData(); // Refresh all orders
     } catch (err) {
-      alert('Erro ao adicionar imagens. Tente novamente.');
+      showToast('Erro ao adicionar imagens. Tente novamente.');
     } finally {
       setIsUploadingArt(false);
     }
@@ -1183,7 +1183,7 @@ export function useAppLogic() {
       fetchActiveExecution();
     } else {
       const err = await res.json();
-      alert(err.error);
+      showToast(err.error);
     }
   };
 
@@ -1227,7 +1227,7 @@ export function useAppLogic() {
       ]);
       fetchData(); // Refresh to ensure backend sync
     } catch (err) {
-      alert("Erro ao reordenar etapas.");
+      showToast("Erro ao reordenar etapas.");
       fetchData(); // Rollback local state
     }
   };
@@ -1261,11 +1261,11 @@ export function useAppLogic() {
     // Validação do motivo se informou perdas
     if (actionLossQuantityInput > 0) {
       if (!actionLossReasonInput) {
-        alert("Por favor, selecione o motivo da perda.");
+        showToast("Por favor, selecione o motivo da perda.");
         return;
       }
       if (actionLossReasonInput === 'Outro' && !actionLossReasonDetailInput.trim()) {
-        alert("Por favor, informe o detalhamento do motivo 'Outro'.");
+        showToast("Por favor, informe o detalhamento do motivo 'Outro'.");
         return;
       }
     }
@@ -1288,7 +1288,7 @@ export function useAppLogic() {
         });
         if (!progRes.ok) {
           const err = await progRes.json();
-          alert(err.error || "Erro ao registrar progresso.");
+          showToast(err.error || "Erro ao registrar progresso.");
           return;
         }
       }
@@ -1312,7 +1312,7 @@ export function useAppLogic() {
         });
         if (!lossRes.ok) {
           const err = await lossRes.json();
-          alert(err.error || "Erro ao registrar perda.");
+          showToast(err.error || "Erro ao registrar perda.");
           return;
         }
       }
@@ -1356,7 +1356,7 @@ export function useAppLogic() {
               await handleConfirmExecutionAction('finish', true);
             }
           } else {
-            alert(err.error || "Erro ao finalizar etapa");
+            showToast(err.error || "Erro ao finalizar etapa");
           }
         }
       }
@@ -1401,7 +1401,7 @@ export function useAppLogic() {
       fetchActiveExecution();
     } else {
       const err = await res.json();
-      alert(err.error || "Erro ao registrar progresso");
+      showToast(err.error || "Erro ao registrar progresso");
     }
   };
 
@@ -1419,7 +1419,7 @@ export function useAppLogic() {
   const handleSaveLoss = async () => {
     if (!selectedOrder || !lossStageId || lossQtyInput <= 0 || !lossReasonInput) return;
     if (lossReasonInput === 'Outro' && !lossReasonDetailInput.trim()) {
-      alert("Por favor, informe o detalhamento do motivo 'Outro'.");
+      showToast("Por favor, informe o detalhamento do motivo 'Outro'.");
       return;
     }
     const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${lossStageId}/loss`, {
@@ -1439,13 +1439,13 @@ export function useAppLogic() {
     });
     if (res.ok) {
       setIsLossModalOpen(false);
-      alert("Perda registrada com sucesso! A pendência de reposição foi enviada para a etapa de reentrada.");
+      showToast("Perda registrada com sucesso! A pendência de reposição foi enviada para a etapa de reentrada.");
       fetchData();
       fetchExecutions(selectedOrder.id);
       fetchActiveExecution();
     } else {
       const err = await res.json();
-      alert(err.error || "Erro ao registrar perda");
+      showToast(err.error || "Erro ao registrar perda");
     }
   };
 
@@ -1459,10 +1459,10 @@ export function useAppLogic() {
       body: JSON.stringify({ reasons: updatedReasons })
     });
     if (res.ok) {
-      alert("Mapeamento de perdas atualizado!");
+      showToast("Mapeamento de perdas atualizado!");
       setLossReasonsList(updatedReasons);
     } else {
-      alert("Erro ao salvar mapeamento de perdas.");
+      showToast("Erro ao salvar mapeamento de perdas.");
     }
   };
 
@@ -1965,4 +1965,5 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
