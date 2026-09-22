@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 
 export const SidebarItem = ({ icon: Icon, label, active, onClick, badge }: { icon: any, label: string, active: boolean, onClick: () => void, badge?: number | string }) => (
   <button
@@ -28,3 +28,4 @@ export const SidebarItem = ({ icon: Icon, label, active, onClick, badge }: { ico
     )}
   </button>
 );
+
