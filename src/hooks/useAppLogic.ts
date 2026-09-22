@@ -1669,15 +1669,12 @@ export function useAppLogic() {
   const isTrackingPage = window.location.pathname.startsWith('/acompanhar/');
   const trackingToken = isTrackingPage ? window.location.pathname.split('/').pop() || null : null;
 
-  if (isTrackingPage) {
-    return <PublicTracking token={trackingToken} />;
-  }
 
-  if (isAuthLoading) {
-    return <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FA]"><div className="animate-spin text-zinc-400"><RefreshCw size={24} /></div></div>;
-  }
+
+
 
   return {
+    safeFetch,
     actionLossQuantityInput,
     actionLossReasonDetailInput,
     actionLossReasonInput,
@@ -1965,5 +1962,8 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
+
+
 
 
