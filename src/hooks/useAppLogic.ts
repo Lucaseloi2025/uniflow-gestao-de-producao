@@ -57,48 +57,9 @@ import {
   Scissors
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase } from './lib/supabase';
-import PrintableReport from './PrintableReport';
+import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import PublicTracking from './PublicTracking';
-import { Orders } from './pages/Orders';
-import { Badge } from './components/Badge';
-import { Kanban } from './pages/Kanban';
-import { UserModal } from './components/modals/UserModal';
-import { NewOrderModal } from './components/modals/NewOrderModal';
-import { TemplateEditorModal } from './components/modals/TemplateEditorModal';
-import { PhotoLightbox } from './components/modals/PhotoLightbox';
-import { EditOrderModal } from './components/modals/EditOrderModal';
-import { OrderHistoryModal } from './components/modals/OrderHistoryModal';
-import { ExecutionActionModal } from './components/modals/ExecutionActionModal';
-import { PartialProgressModal } from './components/modals/PartialProgressModal';
-import { LossModal } from './components/modals/LossModal';
-import { OlistDraftReviewModal } from './components/modals/OlistDraftReviewModal';
-import { OlistDraftListModal } from './components/modals/OlistDraftListModal';
-import { OrderDetailsDrawer } from './components/modals/OrderDetailsDrawer';
-import { Reports } from './pages/Reports';
-import { Costs } from './pages/Costs';
-import { Collaborators } from './pages/Collaborators';
-import { ConsolidatedCuttingPanel } from './components/ConsolidatedCuttingPanel';
-import { ProductionNeedsPanel } from './components/ProductionNeedsPanel';
-import { Card } from './components/ui/Card';
-import { PrintContainer } from './components/PrintContainer';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { SidebarItem } from './components/ui/SidebarItem';
-import { InfoModal } from './components/modals/InfoModal';
-import { RunningTaskBanner } from './components/RunningTaskBanner';
-import { DashboardTab } from './pages/DashboardTab';
-import { TaskMonitor } from './pages/TaskMonitor';
-import { SettingsTab } from './pages/SettingsTab';
-import { Card } from './components/ui/Card';
-import { PrintContainer } from './components/PrintContainer';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { SidebarItem } from './components/ui/SidebarItem';
-import { InfoModal } from './components/modals/InfoModal';
-import { RunningTaskBanner } from './components/RunningTaskBanner';
-import { aggregateCuttingDemand, getItemDisplaySize, sortSizes, extractItemDetails } from './lib/cuttingUtils';
+import { aggregateCuttingDemand, getItemDisplaySize, sortSizes, extractItemDetails } from '../lib/cuttingUtils';
 
 import {
   BarChart,
@@ -115,9 +76,9 @@ import {
 } from 'recharts';
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat } from './lib/utils';
-import { calculateExecutionTimes } from './lib/timerUtils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod, OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData, CollaboratorStageGoal } from './types';
+import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat } from '../lib/utils';
+import { calculateExecutionTimes } from '../lib/timerUtils';
+import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod, OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData, CollaboratorStageGoal } from '../types';
 
 
 // Components
@@ -1962,6 +1923,7 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
 
 
