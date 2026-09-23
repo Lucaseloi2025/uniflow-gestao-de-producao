@@ -6,7 +6,7 @@ import {
   ChevronRight, ClipboardList, Clock, Edit2, Plus, 
   Settings, Target, Trash2 
 } from 'lucide-react';
-import { cn, safeFormat } from '../lib/utils';
+import { cn, safeFormat, formatSeconds } from '../lib/utils';
 import type { Stage, User, OrderTemplate } from '../types';
 
 export const SettingsTab = ({
@@ -686,6 +686,7 @@ export const SettingsTab = ({
 
   );
 };
+
 
 
 

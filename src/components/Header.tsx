@@ -1,7 +1,8 @@
 import React from 'react';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Menu, Search, Target, RefreshCw, Printer, Plus, Package, Calendar } from 'lucide-react';
+import { cn } from '../lib/utils';
 import type { Stage, User, Order } from '../types';
 
 export const Header = ({
@@ -404,3 +405,4 @@ export const Header = ({
         </header>
   );
 };
+
