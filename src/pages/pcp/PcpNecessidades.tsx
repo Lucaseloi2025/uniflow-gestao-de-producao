@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
-import { safeFetch } from '../../lib/utils';
 import { Search } from 'lucide-react';
 import { Badge } from '../../components/Badge';
 
@@ -14,7 +13,7 @@ export const PcpNecessidades = () => {
 
   const fetchData = async () => {
     try {
-      const data = await safeFetch('/api/pcp-phase1/necessidades');
+      const data = (await fetch('/api/pcp-phase1/necessidades')).json();
       if (data) setItems(data);
     } catch (e) {
       console.error(e);
@@ -95,3 +94,4 @@ export const PcpNecessidades = () => {
     </div>
   );
 };
+

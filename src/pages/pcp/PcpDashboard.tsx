@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
-import { Target, AlertTriangle, AlertCircle, Clock, Package, CheckCircle2 } from 'lucide-react';
-import { safeFetch } from '../../lib/utils';
+import { Target, AlertTriangle, AlertCircle, Clock, Package, CheckCircle2, Activity } from 'lucide-react';
 
 export const PcpDashboard = ({ currentUser }: any) => {
   const [data, setData] = useState<any>(null);
@@ -12,7 +11,7 @@ export const PcpDashboard = ({ currentUser }: any) => {
 
   const fetchData = async () => {
     try {
-      const result = await safeFetch('/api/pcp-phase1/dashboard');
+      const result = (await fetch('/api/pcp-phase1/dashboard')).json();
       if (result) setData(result);
     } catch (e) {
       console.error(e);
@@ -94,3 +93,5 @@ export const PcpDashboard = ({ currentUser }: any) => {
     </div>
   );
 };
+
+

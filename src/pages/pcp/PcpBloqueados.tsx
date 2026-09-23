@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
-import { safeFetch } from '../../lib/utils';
 import { Lock, Unlock } from 'lucide-react';
 
 export const PcpBloqueados = ({ currentUser }: any) => {
@@ -12,7 +11,7 @@ export const PcpBloqueados = ({ currentUser }: any) => {
 
   const fetchData = async () => {
     try {
-      const data = await safeFetch('/api/pcp-phase1/bloqueados');
+      const data = (await fetch('/api/pcp-phase1/bloqueados')).json();
       if (data) setBlocks(data);
     } catch (e) {
       console.error(e);
@@ -76,4 +75,5 @@ export const PcpBloqueados = ({ currentUser }: any) => {
     </div>
   );
 };
+
 

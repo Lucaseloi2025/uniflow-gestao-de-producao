@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
-import { safeFetch } from '../../lib/utils';
 import { Badge } from '../../components/Badge';
 
 export const PcpPrioridades = () => {
@@ -12,7 +11,7 @@ export const PcpPrioridades = () => {
 
   const fetchData = async () => {
     try {
-      const data = await safeFetch('/api/pcp-phase1/prioridades');
+      const data = (await fetch('/api/pcp-phase1/prioridades')).json();
       if (data) setOrders(data);
     } catch (e) {
       console.error(e);
@@ -41,7 +40,7 @@ export const PcpPrioridades = () => {
                   <p className="text-sm text-zinc-500">{o.client_name}</p>
                 </div>
                 <Badge variant={
-                  o.pcp_priority === 'CRÍTICO' ? 'destructive' :
+                  o.pcp_priority === 'CRÍTICO' ? 'danger' :
                   o.pcp_priority === 'URGENTE' ? 'warning' : 'default'
                 }>
                   {o.pcp_priority} (Score: {o.pcp_priority_score})
@@ -59,3 +58,5 @@ export const PcpPrioridades = () => {
     </div>
   );
 };
+
+

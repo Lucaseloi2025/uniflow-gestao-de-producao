@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
-import { safeFetch } from '../../lib/utils';
 import { Save } from 'lucide-react';
 
 export const PcpSettings = () => {
@@ -12,7 +11,7 @@ export const PcpSettings = () => {
 
   const fetchData = async () => {
     try {
-      const data = await safeFetch('/api/pcp-phase1/config');
+      const data = (await fetch('/api/pcp-phase1/config')).json();
       if (data) setConfig(data);
     } catch (e) {
       console.error(e);
@@ -54,3 +53,4 @@ export const PcpSettings = () => {
     </div>
   );
 };
+
