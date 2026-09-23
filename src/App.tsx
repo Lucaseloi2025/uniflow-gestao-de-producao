@@ -115,6 +115,11 @@ const Costs = lazy(() => import('./pages/Costs').then(m => ({ default: m.Costs }
 const Collaborators = lazy(() => import('./pages/Collaborators').then(m => ({ default: m.Collaborators })));
 const ConsolidatedCuttingPanel = lazy(() => import('./components/ConsolidatedCuttingPanel').then(m => ({ default: m.ConsolidatedCuttingPanel })));
 const DashboardTab = lazy(() => import('./pages/DashboardTab').then(m => ({ default: m.DashboardTab })));
+const PcpDashboard = lazy(() => import('./pages/pcp/PcpDashboard').then(m => ({ default: m.PcpDashboard })));
+const PcpNecessidades = lazy(() => import('./pages/pcp/PcpNecessidades').then(m => ({ default: m.PcpNecessidades })));
+const PcpPrioridades = lazy(() => import('./pages/pcp/PcpPrioridades').then(m => ({ default: m.PcpPrioridades })));
+const PcpBloqueados = lazy(() => import('./pages/pcp/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
+const PcpSettings = lazy(() => import('./pages/pcp/PcpSettings').then(m => ({ default: m.PcpSettings })));
 const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
@@ -572,7 +577,12 @@ export default function App() {
             moveStage={moveStage}
           />
         )}
-        </Suspense>
+                {activeTab === 'pcp-dashboard' && <PcpDashboard currentUser={currentUser} />}
+        {activeTab === 'pcp-necessidades' && <PcpNecessidades />}
+        {activeTab === 'pcp-prioridades' && <PcpPrioridades />}
+        {activeTab === 'pcp-bloqueados' && <PcpBloqueados currentUser={currentUser} />}
+        {activeTab === 'pcp-settings' && <PcpSettings />}
+          </Suspense>
               </ErrorBoundary>
       </main>
 
@@ -814,6 +824,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

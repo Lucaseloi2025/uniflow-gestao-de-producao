@@ -92,7 +92,7 @@ export function useAppLogic() {
   const navigate = useNavigate();
   const location = useLocation();
   const rawTab = location.pathname.split('/')[1];
-  const activeTab = (rawTab || 'dashboard') as 'dashboard' | 'kanban' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor';
+  const activeTab = (rawTab || 'dashboard') as 'dashboard' | 'kanban' | 'pcp-dashboard' | 'pcp-necessidades' | 'pcp-prioridades' | 'pcp-bloqueados' | 'pcp-settings' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor';
   const setActiveTab = (tab: string) => {
     navigate(tab === 'dashboard' ? '/' : '/' + tab);
   };
@@ -1926,6 +1926,7 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
 
 

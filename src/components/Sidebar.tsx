@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ClipboardList, Package, Scissors, Users, BarChart3, Target, Settings, LogOut, Menu, X, Activity, DollarSign, FileText, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Package, Scissors, Users, BarChart3, Target, Settings, LogOut, Menu, X, Activity, DollarSign, FileText, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SidebarItem } from './ui/SidebarItem';
 
@@ -26,6 +26,43 @@ export const Sidebar = ({
         </div>
 
         <nav className="flex flex-col gap-2 flex-1">
+          {/* PCP MODULE */}
+          {(currentUser?.role === 'Admin' || currentUser?.role === 'PCP') && (
+            <>
+              <div className="mt-4 mb-2 px-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">MÓDULO PCP</div>
+              <SidebarItem
+                icon={Target}
+                label="Painel PCP"
+                active={activeTab === 'pcp-dashboard'}
+                onClick={() => { setActiveTab('pcp-dashboard'); setIsMobileMenuOpen(false); }}
+              />
+              <SidebarItem
+                icon={ClipboardList}
+                label="Necessidades"
+                active={activeTab === 'pcp-necessidades'}
+                onClick={() => { setActiveTab('pcp-necessidades'); setIsMobileMenuOpen(false); }}
+              />
+              <SidebarItem
+                icon={Activity}
+                label="Prioridades"
+                active={activeTab === 'pcp-prioridades'}
+                onClick={() => { setActiveTab('pcp-prioridades'); setIsMobileMenuOpen(false); }}
+              />
+              <SidebarItem
+                icon={AlertTriangle}
+                label="Bloqueados"
+                active={activeTab === 'pcp-bloqueados'}
+                onClick={() => { setActiveTab('pcp-bloqueados'); setIsMobileMenuOpen(false); }}
+              />
+              <SidebarItem
+                icon={Settings}
+                label="Config PCP"
+                active={activeTab === 'pcp-settings'}
+                onClick={() => { setActiveTab('pcp-settings'); setIsMobileMenuOpen(false); }}
+              />
+              <div className="mt-4 mb-2 px-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">PRODUÇÃO</div>
+            </>
+          )}
           <SidebarItem
             icon={LayoutDashboard}
             label="Dashboard"
@@ -110,5 +147,6 @@ export const Sidebar = ({
     </>
   );
 };
+
 
 
