@@ -106,6 +106,7 @@ import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderT
 
 // Components
 import { Suspense, lazy } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Orders = lazy(() => import('./pages/Orders').then(m => ({ default: m.Orders })));
 const Kanban = lazy(() => import('./pages/Kanban').then(m => ({ default: m.Kanban })));
@@ -358,7 +359,8 @@ export default function App() {
           userSearchTerm={userSearchTerm}
         />
 
-        <Suspense fallback={<FallbackLoading />}>
+        <ErrorBoundary fallback={<div className="p-8 text-center"><p className="text-red-500 font-bold mb-4">Ocorreu um erro ao carregar esta página.</p><button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Recarregar</button></div>}>
+              <Suspense fallback={<FallbackLoading />}>
         {activeTab === 'dashboard' && (
           <DashboardTab
             stats={stats}
@@ -571,6 +573,7 @@ export default function App() {
           />
         )}
         </Suspense>
+              </ErrorBoundary>
       </main>
 
       <InfoModal
@@ -811,6 +814,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 
 
