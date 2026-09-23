@@ -13,7 +13,7 @@ export const SettingsTab = ({
   autoPauseTimeFriday, autoPauseTimeLunch, autoPauseTimeWeekday, collaboratorGoals, currentUser,
   editingStageCalculationType, editingStageId, editingStageMetaDiaria, editingStageName, editingStageTime,
   expandedGoalStageId, goalEditValues, lossReasonsList, newStageCalculationType, newStageMetaDiaria,
-  newStageName, newStageTime, stages, stats, templates, users,
+  newStageName, newStageTime, stages, stats, templates, users, metaCustoPeca,
   setAutoPauseTimeFriday, setAutoPauseTimeLunch, setAutoPauseTimeWeekday, setEditingStageCalculationType,
   setEditingStageId, setEditingStageMetaDiaria, setEditingStageName, setEditingStageTime, setEditingTemplate,
   setExpandedGoalStageId, setGoalEditValues, setIsTemplateEditorOpen, setLossReasonsList, setNewStageCalculationType,
@@ -686,6 +686,7 @@ export const SettingsTab = ({
 
   );
 };
+
 
 
 

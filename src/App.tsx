@@ -491,7 +491,7 @@ export default function App() {
         )}
 
         {activeTab === 'costs' && currentUser?.role === 'Admin' && (
-          <Costs
+          <Costs COLORS={COLORS} 
   currentUser={currentUser}
   fetchReports={fetchReports}
   memoizedCostsByCollaborator={memoizedCostsByCollaborator}
@@ -525,7 +525,7 @@ export default function App() {
         )}
 
         {activeTab === 'settings' && (
-          <SettingsTab
+          <SettingsTab metaCustoPeca={metaCustoPeca} 
             autoPauseTimeFriday={autoPauseTimeFriday}
             autoPauseTimeLunch={autoPauseTimeLunch}
             autoPauseTimeWeekday={autoPauseTimeWeekday}
@@ -814,6 +814,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

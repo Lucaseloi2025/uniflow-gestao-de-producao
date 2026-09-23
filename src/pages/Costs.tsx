@@ -8,7 +8,7 @@ import { formatSeconds, cn } from '../lib/utils';
 import { motion } from 'motion/react';
 
 export const Costs = ({
-  currentUser, fetchReports, memoizedCostsByCollaborator, memoizedOrdersCompleted, metaCustoPeca, operationalReportData, reportData, reportEndDate, reportStage, reportStartDate, reportUser, setInfoModal, setMetaCustoPeca, setReportEndDate, setReportStage, setReportStartDate, setReportUser, stages, users
+  currentUser, fetchReports, memoizedCostsByCollaborator, memoizedOrdersCompleted, metaCustoPeca, operationalReportData, reportData, reportEndDate, reportStage, reportStartDate, reportUser, setInfoModal, setMetaCustoPeca, setReportEndDate, setReportStage, setReportStartDate, setReportUser, stages, users, COLORS
 }: any) => {
   return (
           <ErrorBoundary>
@@ -371,6 +371,7 @@ export const Costs = ({
           </ErrorBoundary>
   );
 };
+
 
 
 
