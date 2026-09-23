@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ClipboardList, Package, Scissors, Users, BarChart3, Target, Settings, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Package, Scissors, Users, BarChart3, Target, Settings, LogOut, Menu, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SidebarItem } from './ui/SidebarItem';
 
@@ -110,3 +110,4 @@ export const Sidebar = ({
     </>
   );
 };
+
