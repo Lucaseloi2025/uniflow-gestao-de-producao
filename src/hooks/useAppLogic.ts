@@ -173,7 +173,7 @@ export function useAppLogic() {
   const [isSyncingOlist, setIsSyncingOlist] = useState(false);
   const [isConfirmingDraft, setIsConfirmingDraft] = useState(false);
   const [confirmDraftForm, setConfirmDraftForm] = useState({
-    print_type: 'DTF' as 'DTF' | 'Silk' | 'Sublimação' | 'Bordado',
+    print_type: 'DTF' as 'DTF' | 'Silk' | 'SublimaÃ§Ã£o' | 'Bordado',
     product_type: '',
     num_colors: 1,
     observations: '',
@@ -185,7 +185,7 @@ export function useAppLogic() {
   const [progressStageId, setProgressStageId] = useState<number | null>(null);
   const [progressIncrementInput, setProgressIncrementInput] = useState<number>(0);
 
-  // Modal State: Ação de Pausar / Finalizar Etapa com Quantidade e Perdas
+  // Modal State: AÃ§Ã£o de Pausar / Finalizar Etapa com Quantidade e Perdas
   const [executionActionModal, setExecutionActionModal] = useState<{
     type: 'pause' | 'finish';
     executionId: number;
@@ -326,8 +326,8 @@ export function useAppLogic() {
         if (found) {
           setCurrentUser(found);
         } else {
-          console.warn(`[Auth] Usuário não encontrado na tabela 'users': ${userEmail}`);
-          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Produção', hourly_cost: 0, active: true });
+          console.warn(`[Auth] UsuÃ¡rio nÃ£o encontrado na tabela 'users': ${userEmail}`);
+          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'ProduÃ§Ã£o', hourly_cost: 0, active: true });
         }
       });
     } else {
@@ -421,7 +421,7 @@ export function useAppLogic() {
 
     // Fallback para consulta direta ao Supabase caso a API REST do backend falhe ou retorne nulo
     if (!Array.isArray(ordersData)) {
-      console.warn('[FetchData] /api/orders indisponível via API. Executando fallback direto ao Supabase...');
+      console.warn('[FetchData] /api/orders indisponÃ­vel via API. Executando fallback direto ao Supabase...');
       try {
         let { data: fallbackOrders } = await supabase.rpc('get_orders_with_stages', {
           p_search: searchTerm || null,
@@ -519,7 +519,7 @@ export function useAppLogic() {
               });
             }
           } catch (err) {
-            console.warn('[FetchData] Falha ao buscar observações no fallback:', err);
+            console.warn('[FetchData] Falha ao buscar observaÃ§Ãµes no fallback:', err);
             ordersData.forEach((order: any) => {
               const activeStage = order.stages_status.find((s: any) => !s.finished);
               order.active_stage_name = activeStage?.name || null;
@@ -591,20 +591,20 @@ export function useAppLogic() {
       await fetchData();
       await fetchDraftOrders();
 
-      let msg = `Sincronização concluída com sucesso!\n`;
-      msg += `Pedidos encontrados no Tiny (Histórico): ${data.total_found || 0}\n`;
-      msg += `Pedidos elegíveis (De hoje em diante): ${data.eligible_count || 0}\n`;
+      let msg = `SincronizaÃ§Ã£o concluÃ­da com sucesso!\n`;
+      msg += `Pedidos encontrados no Tiny (HistÃ³rico): ${data.total_found || 0}\n`;
+      msg += `Pedidos elegÃ­veis (De hoje em diante): ${data.eligible_count || 0}\n`;
       msg += `Novos rascunhos importados: ${data.imported_count || 0}\n`;
-      msg += `Pedidos ignorados (já importados): ${data.skipped_count || 0}`;
+      msg += `Pedidos ignorados (jÃ¡ importados): ${data.skipped_count || 0}`;
       if (data.errors_count > 0) {
-        msg += `\n⚠️ Erros: ${data.errors_count}`;
+        msg += `\nâš ï¸ Erros: ${data.errors_count}`;
         if (data.errors && data.errors.length > 0) {
           msg += `\nPrimeiro erro: ${data.errors[0]?.error || JSON.stringify(data.errors[0])}`;
         }
       }
       showToast(msg);
     } catch (err: any) {
-      showToast(`Erro na sincronização Olist: ${err.message}`);
+      showToast(`Erro na sincronizaÃ§Ã£o Olist: ${err.message}`);
     } finally {
       setIsSyncingOlist(false);
     }
@@ -613,7 +613,7 @@ export function useAppLogic() {
   const handleOpenDraftReview = (order: Order) => {
     setSelectedDraftOrder(order);
     setConfirmDraftForm({
-      print_type: (order.print_type && ['DTF', 'Silk', 'Sublimação', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
+      print_type: (order.print_type && ['DTF', 'Silk', 'SublimaÃ§Ã£o', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
       product_type: order.product_type || 'Dry Fit',
       num_colors: order.num_colors || 1,
       observations: order.observations || '',
@@ -634,12 +634,12 @@ export function useAppLogic() {
         body: JSON.stringify(confirmDraftForm)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao liberar pedido para produção');
+      if (!res.ok) throw new Error(data.error || 'Erro ao liberar pedido para produÃ§Ã£o');
 
       setSelectedDraftOrder(null);
       await fetchData();
       await fetchDraftOrders();
-      showToast(`Pedido #${selectedDraftOrder.order_number} liberado para produção com sucesso!`);
+      showToast(`Pedido #${selectedDraftOrder.order_number} liberado para produÃ§Ã£o com sucesso!`);
     } catch (err: any) {
       showToast(`Erro ao liberar pedido: ${err.message}`);
     } finally {
@@ -768,9 +768,9 @@ export function useAppLogic() {
     }
   };
 
-  // Agendador de pausa automática: verifica o horário a cada minuto
+  // Agendador de pausa automÃ¡tica: verifica o horÃ¡rio a cada minuto
   useEffect(() => {
-    if (!currentUser) return; // Qualquer usuário logado pode disparar a verificação
+    if (!currentUser) return; // Qualquer usuÃ¡rio logado pode disparar a verificaÃ§Ã£o
     
     const check = () => {
       const now = new Date();
@@ -780,8 +780,8 @@ export function useAppLogic() {
       const checkTime = (target: string) => {
         if (!target) return false;
         const [hh, mm] = target.split(':').map(Number);
-        // No frontend, mantemos a verificação do exato minuto para disparar apenas uma vez
-        // O backend possui uma janela de ±3 min como margem de segurança
+        // No frontend, mantemos a verificaÃ§Ã£o do exato minuto para disparar apenas uma vez
+        // O backend possui uma janela de Â±3 min como margem de seguranÃ§a
         return now.getHours() === hh && now.getMinutes() === mm;
       };
 
@@ -789,11 +789,11 @@ export function useAppLogic() {
       const isEndOfDay = checkTime(dayOfWeek === 5 ? autoPauseTimeFriday : autoPauseTimeWeekday);
 
       if (isLunch || isEndOfDay) {
-        // Chamamos o novo endpoint robusto que valida o horário no server-side
+        // Chamamos o novo endpoint robusto que valida o horÃ¡rio no server-side
         safeFetch('/api/executions/auto-pause', { method: 'POST' })
           .then((r) => {
             if (r?.paused > 0) {
-              const reason = r.reason === 'almoço' ? 'almoço' : 'fim de expediente';
+              const reason = r.reason === 'almoÃ§o' ? 'almoÃ§o' : 'fim de expediente';
               console.log(`[AutoPause] ${r.paused} tarefa(s) pausada(s) - ${reason}.`);
               fetchData(); // Atualiza a UI para refletir as pausas
             }
@@ -881,7 +881,7 @@ export function useAppLogic() {
         body: JSON.stringify({ dtf_location: location })
       });
       if (!res.ok) {
-        console.warn('Servidor respondeu com código de aviso/erro ao atualizar gaveteiro.');
+        console.warn('Servidor respondeu com cÃ³digo de aviso/erro ao atualizar gaveteiro.');
       }
     } catch (e) {
       console.error(e);
@@ -905,7 +905,7 @@ export function useAppLogic() {
   };
 
   const handleDeleteOrder = async (orderId: number) => {
-    if (!window.confirm('⚠️ EXCLUIR PEDIDO\n\nO pedido será ocultado do sistema mas o histórico de execuções será mantido para auditoria.\n\nDeseja continuar?')) return;
+    if (!window.confirm('âš ï¸ EXCLUIR PEDIDO\n\nO pedido serÃ¡ ocultado do sistema mas o histÃ³rico de execuÃ§Ãµes serÃ¡ mantido para auditoria.\n\nDeseja continuar?')) return;
 
     setIsDeletingOrder(true);
     try {
@@ -925,7 +925,7 @@ export function useAppLogic() {
         showToast(err.error || 'Erro ao excluir pedido');
       }
     } catch (err) {
-      showToast('Erro na conexão com o servidor');
+      showToast('Erro na conexÃ£o com o servidor');
     } finally {
       setIsDeletingOrder(false);
     }
@@ -945,7 +945,7 @@ export function useAppLogic() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || 'Produção',
+          'x-user-role': currentUser?.role || 'ProduÃ§Ã£o',
           'x-user-name': currentUser?.name || 'Operador',
         }
       });
@@ -967,7 +967,7 @@ export function useAppLogic() {
   };
 
   const handleCancelOrder = async (orderId: number) => {
-    if (!window.confirm('⚠️ CANCELAR PEDIDO\n\nO pedido será marcado como cancelado e removido dos cálculos de capacidade. O histórico será mantido.\n\nDeseja continuar?')) return;
+    if (!window.confirm('âš ï¸ CANCELAR PEDIDO\n\nO pedido serÃ¡ marcado como cancelado e removido dos cÃ¡lculos de capacidade. O histÃ³rico serÃ¡ mantido.\n\nDeseja continuar?')) return;
 
     setIsCancellingOrder(true);
     try {
@@ -988,7 +988,7 @@ export function useAppLogic() {
         showToast(err.error || 'Erro ao cancelar pedido');
       }
     } catch (err) {
-      showToast('Erro na conexão com o servidor');
+      showToast('Erro na conexÃ£o com o servidor');
     } finally {
       setIsCancellingOrder(false);
     }
@@ -1029,7 +1029,7 @@ export function useAppLogic() {
       return;
     }
     if (!editOrderForm.num_colors || Number(editOrderForm.num_colors) < 1) {
-      showToast('Número de cores deve ser pelo menos 1.');
+      showToast('NÃºmero de cores deve ser pelo menos 1.');
       return;
     }
 
@@ -1037,7 +1037,7 @@ export function useAppLogic() {
     try {
       const extraHeaders: any = {};
       if (selectedOrder.status === 'Entregue') {
-        const confirmed = window.confirm('⚠️ PEDIDO JÁ ENTREGUE\n\nEste pedido já foi marcado como entregue. Editar pode afetar indicadores históricos.\n\nDeseja continuar?');
+        const confirmed = window.confirm('âš ï¸ PEDIDO JÃ ENTREGUE\n\nEste pedido jÃ¡ foi marcado como entregue. Editar pode afetar indicadores histÃ³ricos.\n\nDeseja continuar?');
         if (!confirmed) { setIsEditingOrder(false); return; }
         extraHeaders['x-confirm-finalized'] = 'true';
       }
@@ -1063,7 +1063,7 @@ export function useAppLogic() {
         showToast(err.error || err.message || 'Erro ao editar pedido');
       }
     } catch (err) {
-      showToast('Erro na conexão com o servidor');
+      showToast('Erro na conexÃ£o com o servidor');
     } finally {
       setIsEditingOrder(false);
     }
@@ -1082,7 +1082,7 @@ export function useAppLogic() {
     const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
     for (let i = 0; i < files.length; i++) {
       if (files[i].size > MAX_FILE_SIZE) {
-        showToast(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+        showToast(`O arquivo "${files[i].name}" Ã© muito grande. O limite mÃ¡ximo Ã© de 4MB por arquivo.`);
         return;
       }
     }
@@ -1125,7 +1125,7 @@ export function useAppLogic() {
   const handleStartStage = async (stageId: number) => {
     if (!selectedOrder) return;
     
-    // Confirmação ao iniciar tarefa
+    // ConfirmaÃ§Ã£o ao iniciar tarefa
     const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
     const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
     if (!confirmStart) return;
@@ -1219,7 +1219,7 @@ export function useAppLogic() {
     const { executionId, stageId } = executionActionModal;
     const type = actionType || executionActionModal.type;
 
-    // Validação do motivo se informou perdas
+    // ValidaÃ§Ã£o do motivo se informou perdas
     if (actionLossQuantityInput > 0) {
       if (!actionLossReasonInput) {
         showToast("Por favor, selecione o motivo da perda.");
@@ -1233,7 +1233,7 @@ export function useAppLogic() {
 
     setIsActionLoading(true);
     try {
-      // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
+      // 1. Se informou quantidade de peÃ§as boas > 0, registra o progresso primeiro
       if (actionQuantityInput > 0) {
         const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
           method: 'POST',
@@ -1254,7 +1254,7 @@ export function useAppLogic() {
         }
       }
 
-      // 2. Se informou peças perdidas > 0, registra a perda
+      // 2. Se informou peÃ§as perdidas > 0, registra a perda
       if (actionLossQuantityInput > 0) {
         const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
           method: 'POST',
@@ -1278,7 +1278,7 @@ export function useAppLogic() {
         }
       }
 
-      // 3. Executa a Pausa ou a Finalização
+      // 3. Executa a Pausa ou a FinalizaÃ§Ã£o
       if (type === 'pause') {
         await fetch(`/api/executions/${executionId}/pause`, {
           method: 'POST',
@@ -1311,7 +1311,7 @@ export function useAppLogic() {
           const err = await finishRes.json();
           if (err.canForce && !forceFinish) {
             const confirmForce = window.confirm(
-              `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
+              `${err.error}\n\nDeseja forÃ§ar a finalizaÃ§Ã£o desta etapa com saldo parcial?`
             );
             if (confirmForce) {
               await handleConfirmExecutionAction('finish', true);
@@ -1400,7 +1400,7 @@ export function useAppLogic() {
     });
     if (res.ok) {
       setIsLossModalOpen(false);
-      showToast("Perda registrada com sucesso! A pendência de reposição foi enviada para a etapa de reentrada.");
+      showToast("Perda registrada com sucesso! A pendÃªncia de reposiÃ§Ã£o foi enviada para a etapa de reentrada.");
       fetchData();
       fetchExecutions(selectedOrder.id);
       fetchActiveExecution();
@@ -1598,7 +1598,7 @@ export function useAppLogic() {
       observations: template.observations
     }));
 
-    // Fallback: Se o template não tiver etapas, carrega todas as ativas
+    // Fallback: Se o template nÃ£o tiver etapas, carrega todas as ativas
     if (template.required_stages && template.required_stages.length > 0) {
       setNewOrderRequiredStages(template.required_stages.filter(id => {
         const stage = stages.find(s => s.id === id);
@@ -1612,7 +1612,7 @@ export function useAppLogic() {
 
   const COLORS = React.useMemo(() => ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'], []);
 
-  // Memoriazação robusta dos dados de custo para evitar crash durante renderização
+  // MemoriazaÃ§Ã£o robusta dos dados de custo para evitar crash durante renderizaÃ§Ã£o
   const memoizedCostsByCollaborator = React.useMemo(() => {
     if (!reportData?.costsByCollaborator || !Array.isArray(reportData.costsByCollaborator)) return [];
     return [...reportData.costsByCollaborator].sort((a: any, b: any) => {
@@ -1720,6 +1720,9 @@ export function useAppLogic() {
     handleUpdateDeadline,
     handleUpdateDtfLocation,
     handleViewHistory,
+    applyTemplate,
+    getOrderRisk,
+    openEditOrderModal,
     infoModal,
     isActionLoading,
     isAuthLoading,
