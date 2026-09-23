@@ -1,4 +1,4 @@
-﻿import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache, CommittedQtyMap } from '../types';
+import type { OrderItem, Order, CorteDemandItem, OrderCorteDemand, CorteAllocationLog, CuttingAllocationResult, CorteGroupDemand, CorteModelBreakdown, TechnicalProductRegistry, StockCache, CommittedQtyMap } from '../types';
 import { getCachedRegistryItem } from './technicalRegistryUtils';
 
 /**
@@ -879,4 +879,5 @@ export function formatDemandForCutPlan(modelsBreakdown: CorteModelBreakdown[]): 
     tsv: tsvLines.join('\n')
   };
 }
+
 
