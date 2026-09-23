@@ -6460,4 +6460,203 @@ app.all("/api/*", (req: any, res: any) => {
     res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
 
+
+// ============================================================================
+// MÓDULO PCP - FASE 1
+// ============================================================================
+
+app.get('/api/pcp-phase1/dashboard', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+
+        // 1. Pedidos em producao (nao cancelados/entregues, com status != Entrada/Rascunho)
+        const { count: emProducao } = await supabase.from('orders')
+            .select('*', { count: 'exact', head: true })
+            .is('deleted_at', null)
+            .not('status', 'in', '("Cancelado","Entregue","Entrada","Rascunho")');
+
+        // 2. Pedidos para iniciar (Liberados, sem bloqueio, status Entrada)
+        const { count: paraIniciar } = await supabase.from('orders')
+            .select('*', { count: 'exact', head: true })
+            .is('deleted_at', null)
+            .eq('status', 'Entrada')
+            .eq('pcp_is_blocked', false);
+
+        // 3. Pedidos Bloqueados
+        const { count: bloqueados } = await supabase.from('orders')
+            .select('*', { count: 'exact', head: true })
+            .is('deleted_at', null)
+            .eq('pcp_is_blocked', true);
+
+        // 4. Pecas a produzir (Soma das necessidades liquidas)
+        const { data: necessidades } = await supabase.from('pcp_producao_necessidades')
+            .select('qty_necessaria')
+            .gt('qty_necessaria', 0);
+        const pecasAProduzir = (necessidades || []).reduce((acc: number, item: any) => acc + (item.qty_necessaria || 0), 0);
+
+        // 5. Pedidos Atrasados (deadline < today e nao entregues/cancelados)
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { count: atrasados } = await supabase.from('orders')
+            .select('*', { count: 'exact', head: true })
+            .is('deleted_at', null)
+            .not('status', 'in', '("Cancelado","Entregue")')
+            .lt('deadline', todayStr);
+
+        res.json({
+            emProducao: emProducao || 0,
+            paraIniciar: paraIniciar || 0,
+            bloqueados: bloqueados || 0,
+            pecasAProduzir: pecasAProduzir || 0,
+            atrasados: atrasados || 0
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pcp-phase1/necessidades', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { data, error } = await supabase.from('pcp_producao_necessidades')
+            .select('*, orders(order_number, client_name, deadline, status, pcp_priority, pcp_is_blocked)')
+            .order('qty_necessaria', { ascending: false });
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pcp-phase1/prioridades', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { data, error } = await supabase.from('orders')
+            .select('*')
+            .is('deleted_at', null)
+            .not('status', 'in', '("Cancelado","Entregue")')
+            .order('pcp_priority_score', { ascending: false })
+            .order('deadline', { ascending: true })
+            .limit(100);
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pcp-phase1/bloqueados', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { data, error } = await supabase.from('pcp_blocks')
+            .select('*, orders(*)')
+            .eq('is_active', true)
+            .order('data_bloqueio', { ascending: false });
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/pcp-phase1/ordens/:id/bloqueio', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const orderId = req.params.id;
+        const { motivo, observacao, usuario } = req.body;
+        
+        await supabase.from('pcp_blocks').insert({
+            order_id: orderId,
+            motivo,
+            observacao,
+            bloqueado_por: usuario,
+            is_active: true
+        });
+
+        await supabase.from('orders').update({
+            pcp_is_blocked: true,
+            pcp_status: 'BLOQUEADO'
+        }).eq('id', orderId);
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/pcp-phase1/ordens/:id/desbloqueio', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const orderId = req.params.id;
+        const { usuario } = req.body;
+        
+        await supabase.from('pcp_blocks').update({
+            is_active: false,
+            desbloqueado_por: usuario,
+            data_desbloqueio: new Date().toISOString()
+        }).eq('order_id', orderId).eq('is_active', true);
+
+        await supabase.from('orders').update({
+            pcp_is_blocked: false,
+            pcp_status: 'AGUARDANDO LIBERAÇÃO'
+        }).eq('id', orderId);
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/pcp-phase1/ordens/:id/prioridade_manual', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const orderId = req.params.id;
+        const { priority, score } = req.body;
+
+        await supabase.from('orders').update({
+            pcp_priority: priority,
+            pcp_priority_score: score
+        }).eq('id', orderId);
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pcp-phase1/config', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        );
+        const { data, error } = await supabase.from('pcp_settings').select('*').single();
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default app;
+
