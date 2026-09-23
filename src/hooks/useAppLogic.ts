@@ -1720,7 +1720,6 @@ export function useAppLogic() {
     handleUpdateDeadline,
     handleUpdateDtfLocation,
     handleViewHistory,
-    hh,
     infoModal,
     isActionLoading,
     isAuthLoading,
@@ -1922,6 +1921,7 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
 
 
