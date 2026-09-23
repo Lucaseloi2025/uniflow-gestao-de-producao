@@ -21,7 +21,7 @@ export const PcpBloqueados = ({ currentUser }: any) => {
 
   const handleDesbloquear = async (orderId: number) => {
     try {
-      await fetch(/api/pcp-phase1/ordens/ + orderId + /desbloqueio, {
+      await fetch('/api/pcp-phase1/ordens/' + orderId + '/desbloqueio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usuario: currentUser?.name })
@@ -76,3 +76,4 @@ export const PcpBloqueados = ({ currentUser }: any) => {
     </div>
   );
 };
+
