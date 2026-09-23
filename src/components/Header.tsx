@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import type { Stage, User, Order } from '../types';
 
 export const Header = ({
-  activeTab, currentUser, dateRange, draftOrders, fetchExecutions, handleSyncOlist, isSyncingOlist, orders, printTypeFilter, productTypeFilter, reportEndDate, reportPeriod, reportPrintType, reportStage, reportStartDate, reportUser, searchTerm, selectedStageFilter, selectedStageStatus, setActiveTab, setDateRange, setIsDraftsListModalOpen, setIsMobileMenuOpen, setIsPrintModalOpen, setNewOrderRequiredStages, setPrintTypeFilter, setProductTypeFilter, setReportEndDate, setReportPeriod, setReportPrintType, setReportStage, setReportStartDate, setReportUser, setSearchTerm, setSelectedOrder, setSelectedStageFilter, setSelectedStageStatus, setSelectedUserForEdit, setShowNewOrderModal, setShowUserModal, setUserSearchTerm, stages, users, userSearchTerm
+  activeTab, currentUser, dateRange, draftOrders, fetchExecutions, handleSyncOlist, isSyncingOlist, orders, printTypeFilter, productTypeFilter, reportEndDate, reportPeriod, reportPrintType, reportStage, reportStartDate, reportUser, searchTerm, selectedStageFilter, selectedStageStatus, setActiveTab, setDateRange, setIsDraftsListModalOpen, setIsMobileMenuOpen, setIsPrintModalOpen, setNewOrderRequiredStages, setPrintTypeFilter, setProductTypeFilter, setReportEndDate, setReportPeriod, setReportPrintType, setReportStage, setReportStartDate, setReportUser, setSearchTerm, setSelectedOrder, setSelectedStageFilter, setSelectedStageStatus, setSelectedUserForEdit, setShowNewOrderModal, setShowUserModal, setUserSearchTerm, stages, users, userSearchTerm, scanInputRef
 }: any) => {
   return (
     <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
@@ -405,4 +405,5 @@ export const Header = ({
         </header>
   );
 };
+
 

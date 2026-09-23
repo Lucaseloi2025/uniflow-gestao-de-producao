@@ -1656,6 +1656,7 @@ export function useAppLogic() {
     collaboratorGoals,
     COLORS,
     confirmTimeoutRef,
+    scanInputRef,
     confirmDraftForm,
     confirmingDtfOrderId,
     cortePendingBadgeCount,
@@ -1925,6 +1926,7 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
 
 
