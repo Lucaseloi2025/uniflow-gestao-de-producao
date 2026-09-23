@@ -1655,6 +1655,7 @@ export function useAppLogic() {
     autoPauseTimeWeekend,
     collaboratorGoals,
     COLORS,
+    confirmTimeoutRef,
     confirmDraftForm,
     confirmingDtfOrderId,
     cortePendingBadgeCount,
@@ -1924,6 +1925,7 @@ export function useAppLogic() {
     userSearchTerm
   };
 }
+
 
 
 
