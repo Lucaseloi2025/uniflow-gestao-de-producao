@@ -11,8 +11,8 @@ export const PcpPrioridades = () => {
 
   const fetchData = async () => {
     try {
-      const data = (await fetch('/api/pcp-phase1/prioridades')).json();
-      if (data) setOrders(data);
+      const res = await fetch('/api/pcp-phase1/prioridades'); const data = await res.json();
+      if (Array.isArray(data)) setOrders(data);
     } catch (e) {
       console.error(e);
     }
@@ -58,5 +58,7 @@ export const PcpPrioridades = () => {
     </div>
   );
 };
+
+
 
 

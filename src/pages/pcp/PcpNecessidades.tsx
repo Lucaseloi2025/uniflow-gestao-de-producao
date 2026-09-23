@@ -13,8 +13,8 @@ export const PcpNecessidades = () => {
 
   const fetchData = async () => {
     try {
-      const data = (await fetch('/api/pcp-phase1/necessidades')).json();
-      if (data) setItems(data);
+      const res = await fetch('/api/pcp-phase1/necessidades'); const data = await res.json();
+      if (Array.isArray(data)) setItems(data);
     } catch (e) {
       console.error(e);
     }
@@ -94,4 +94,6 @@ export const PcpNecessidades = () => {
     </div>
   );
 };
+
+
 

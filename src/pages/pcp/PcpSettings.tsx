@@ -11,7 +11,7 @@ export const PcpSettings = () => {
 
   const fetchData = async () => {
     try {
-      const data = (await fetch('/api/pcp-phase1/config')).json();
+      const res = await fetch('/api/pcp-phase1/config'); const data = await res.json();
       if (data) setConfig(data);
     } catch (e) {
       console.error(e);
@@ -53,4 +53,5 @@ export const PcpSettings = () => {
     </div>
   );
 };
+
 

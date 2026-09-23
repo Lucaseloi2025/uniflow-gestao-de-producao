@@ -11,8 +11,8 @@ export const PcpBloqueados = ({ currentUser }: any) => {
 
   const fetchData = async () => {
     try {
-      const data = (await fetch('/api/pcp-phase1/bloqueados')).json();
-      if (data) setBlocks(data);
+      const res = await fetch('/api/pcp-phase1/bloqueados'); const data = await res.json();
+      if (Array.isArray(data)) setBlocks(data);
     } catch (e) {
       console.error(e);
     }
@@ -75,5 +75,7 @@ export const PcpBloqueados = ({ currentUser }: any) => {
     </div>
   );
 };
+
+
 
 

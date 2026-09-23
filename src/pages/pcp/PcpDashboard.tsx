@@ -11,7 +11,7 @@ export const PcpDashboard = ({ currentUser }: any) => {
 
   const fetchData = async () => {
     try {
-      const result = (await fetch('/api/pcp-phase1/dashboard')).json();
+      const res = await fetch('/api/pcp-phase1/dashboard'); const result = await res.json();
       if (result) setData(result);
     } catch (e) {
       console.error(e);
@@ -93,5 +93,6 @@ export const PcpDashboard = ({ currentUser }: any) => {
     </div>
   );
 };
+
 
 
