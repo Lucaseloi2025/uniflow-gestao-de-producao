@@ -812,7 +812,23 @@ export function groupCuttingDemandByRawMaterial(demandItems: CorteDemandItem[]):
 
   const groupsList: CorteGroupDemand[] = Array.from(groupsMap.values());
 
-  for (const grp of groupsList) {
+    for (const grp of groupsList) {
+    const orderSet = new Set<number>();
+    const allWaitingMap = new Map<number, OrderCorteDemand>();
+
+    for (const item of grp.all_items) {
+      for (const w of item.pedidos_waiting) {
+        orderSet.add(w.order_id);
+        if (!allWaitingMap.has(w.order_id)) {
+            allWaitingMap.set(w.order_id, w);
+        } else {
+            const ext = allWaitingMap.get(w.order_id);
+            ext.qty_corte_pending += w.qty_corte_pending;
+        }
+      }
+    }
+    grp.pedidos_count = orderSet.size;
+    grp.pedidos_waiting = Array.from(allWaitingMap.values());
     const modelMap = new Map<string, { total: number; sizes: { [size: string]: number }; items: CorteDemandItem[] }>();
 
     for (const item of grp.all_items) {
