@@ -31,11 +31,11 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   };
 
   const handleSendSewing = async (plan: any) => {
-    const costureira = window.prompt(Enviar Plano  + plan.plan_number +  para qual costureira/facção?);
+    const costureira = window.prompt(`Enviar Plano ${plan.plan_number} para qual costureira/facção?`);
     if (!costureira) return;
     
     try {
-      await fetch('/api/cut-plans/' + plan.id + '/send-sewing', {
+      await fetch(`/api/cut-plans/${plan.id}/send-sewing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -52,7 +52,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
     if (!selectedPlan) return;
     setActionLoading(true);
     try {
-      await fetch('/api/cut-plans/' + selectedPlan.id + '/return-sewing', {
+      await fetch(`/api/cut-plans/${selectedPlan.id}/return-sewing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
