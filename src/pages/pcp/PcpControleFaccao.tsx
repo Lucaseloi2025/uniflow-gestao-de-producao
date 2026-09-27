@@ -211,14 +211,28 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
           </div>
           
           <div className="flex justify-between items-center text-xs text-slate-600">
-            <span className="font-medium"><b>{uniqueModels.length}</b> modelos</span>
-            <span className="font-medium text-slate-400">&bull;</span>
             <span className="font-bold text-slate-700"><b>{uniqueOps.length}</b> {uniqueOps.length === 1 ? 'pedido' : 'pedidos'}</span>
           </div>
         </div>
 
+        <div className="mt-3 space-y-1">
+          {Array.from(
+            (p.items || []).reduce((acc: Map<string, number>, it: any) => {
+              const name = ${it.product_type} - ;
+              const qty = type === 'aguardando' ? it.quantity_cut : type === 'emCostura' ? it.quantity_sewing : it.quantity_sewing_done;
+              acc.set(name, (acc.get(name) || 0) + Number(qty || 0));
+              return acc;
+            }, new Map<string, number>())
+          ).filter(([_, q]) => q > 0).map(([name, qty]) => (
+            <div key={name} className="flex justify-between items-center text-[11px] bg-slate-100/50 px-2 py-1 rounded">
+              <span className="font-bold text-slate-600">{name}</span>
+              <span className="font-black text-slate-800">{qty} un</span>
+            </div>
+          ))}
+        </div>
+
         {uniqueOps.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1">
+          <div className="mt-3 flex flex-wrap gap-1 border-t border-slate-100 pt-3">
             {uniqueOps.slice(0, 4).map((op: any) => (
               <span key={op as string} className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold border border-slate-200">
                 {op as string}

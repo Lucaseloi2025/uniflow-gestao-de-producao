@@ -6241,8 +6241,7 @@ app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
 
     await supabaseAdmin.from('cut_plans').update({
       status: 'IN_SEWING',
-      qty_sewing: qtySewing
-    }).eq('id', id);
+      qty_sewing: qtySewing, faccao_id: faccao_id || null }).eq('id', id);
 
     const qtyCutPlan = Number(plan.qty_cut) || 1;
     for (const it of (plan.items || [])) {
