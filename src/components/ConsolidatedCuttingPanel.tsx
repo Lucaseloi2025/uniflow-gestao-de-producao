@@ -18,7 +18,6 @@ import {
   UserCheck,
   Info,
   ExternalLink,
-  X,
   Ruler,
   Check,
   Printer,
@@ -159,7 +158,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     } else {
       setSyncNotification({ 
         type: 'error', 
-        message: `?? Sincroniza´┐¢´┐¢o conclu´┐¢da, mas nenhum dado foi encontrado no cache. Verifique se a tabela tiny_stock_cache existe no Supabase com as pol´┐¢ticas de permiss´┐¢o corretas.`
+        message: `?? Sincroniza��o conclu�da, mas nenhum dado foi encontrado no cache. Verifique se a tabela tiny_stock_cache existe no Supabase com as pol�ticas de permiss�o corretas.`
       });
     }
     setTimeout(() => setSyncNotification(null), 15000);
@@ -202,7 +201,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   };
   const handleConfirmFamily = async (fam: IncompleteFamilyGroup) => {
     if (!fam.suggested_fabric || !fam.suggested_color) {
-      alert('A fam´┐¢lia n´┐¢o possui tecido e cor sugeridos completos para confirma´┐¢´┐¢o autom´┐¢tica.');
+      alert('A fam�lia n�o possui tecido e cor sugeridos completos para confirma��o autom�tica.');
       return;
     }
     const success = await saveTechnicalRegistry({
@@ -218,7 +217,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     }
   };
 
-  // State for Central de Corte - Visualiza├º├úo do Plano (Optitex CutPlan)
+  // State for Central de Corte - Visualização do Plano (Optitex CutPlan)
   const [selectedGroupForPlanModal, setSelectedGroupForPlanModal] = useState<CorteGroupDemand | null>(null);
 
   // Modal State for registering cut
@@ -295,7 +294,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         setAllocationLogs(data || []);
       }
     } catch (e) {
-      console.warn('Erro ao carregar hist├│rico de aloca├º├Áes:', e);
+      console.warn('Erro ao carregar histórico de alocações:', e);
     } finally {
       setIsLoadingLogs(false);
     }
@@ -338,7 +337,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         customer_name: p.client_name,
         quantity: p.quantity
       })),
-      description: `${combinedModelName} ÔÇó ${grp.fabric} ÔÇó ${grp.color}`,
+      description: `${combinedModelName} • ${grp.fabric} • ${grp.color}`,
       tipo_tecido: grp.tipo_tecido,
       largura_util: grp.largura_util,
       models_breakdown: grp.models_breakdown
@@ -397,7 +396,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   // Action: release plan for cutting
   const handleReleasePlan = async (planId: number, planNumber: string) => {
-    if (!window.confirm(`Liberar plano ${planNumber} para corte? As quantidades ser├úo removidas da Central de Corte.`)) return;
+    if (!window.confirm(`Liberar plano ${planNumber} para corte? As quantidades serão removidas da Central de Corte.`)) return;
     setCutPlanActionLoading(`release-${planId}`);
     try {
       const res = await fetch(`/api/cut-plans/${planId}/release`, {
@@ -409,7 +408,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao liberar plano');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       onRefresh();
-      setNotification({ type: 'success', message: `Ô£à Plano ${planNumber} liberado para corte!` });
+      setNotification({ type: 'success', message: `✅ Plano ${planNumber} liberado para corte!` });
       setTimeout(() => setNotification(null), 6000);
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message });
@@ -419,13 +418,12 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     }
   };
 
-  // Action: complete cut
-  const executeCompleteCut = async (planId: number, qty: number, itemQuantities: any = null) => {
+  // Action: complete cut (executor)
+  const executeCompleteCut = async (planId: number, qty: number, itemQuantities: Record<string, number> | null) => {
     setCutPlanActionLoading(`cut-${planId}`);
     try {
       const body: any = { qty_cut_actual: qty, user_name: currentUser?.name || 'Operador' };
       if (itemQuantities) body.item_quantities = itemQuantities;
-
       const res = await fetch(`/api/cut-plans/${planId}/complete-cut`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -435,7 +433,10 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao registrar corte');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       onRefresh();
-      setNotification({ type: 'success', message: 'Corte registrado com sucesso.' });
+      const msg = data.qty_returned_to_pending > 0
+        ? `✅ Corte registrado: ${qty} peças. ${data.qty_returned_to_pending} retornaram para pendência.`
+        : `✅ Corte concluído: ${qty} peças.`;
+      setNotification({ type: 'success', message: msg });
       setTimeout(() => setNotification(null), 8000);
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message });
@@ -445,16 +446,16 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     }
   };
 
+  // Action: complete cut (entry — detects partial and opens modal)
   const handleCompleteCut = async (plan: any) => {
     const input = window.prompt(`Plano ${plan.plan_number}: Quantas peças foram cortadas? (Planejado: ${plan.qty_planned})`);
     if (input === null) return;
     const qty = parseInt(input, 10);
     if (isNaN(qty) || qty < 0 || qty > plan.qty_planned) { alert('Quantidade inválida ou maior que o planejado.'); return; }
-    
     if (qty < plan.qty_planned) {
       setPartialCutPlan(plan);
       const initial: Record<string, number> = {};
-      (plan.items || []).forEach((it: any) => initial[it.id] = it.quantity_planned);
+      (plan.items || []).forEach((it: any) => { initial[it.id] = it.quantity_planned; });
       setItemCuts(initial);
       setPartialCutModalOpen(true);
       return;
@@ -462,12 +463,14 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     executeCompleteCut(plan.id, qty, null);
   };
 
+  // Action: confirm partial cut from modal
   const handleConfirmPartialCut = () => {
     const totalCut = Object.values(itemCuts).reduce((sum, val) => sum + (val || 0), 0);
     executeCompleteCut(partialCutPlan.id, totalCut, itemCuts);
     setPartialCutModalOpen(false);
     setPartialCutPlan(null);
   };
+
   // Action: send to sewing
   const handleSendSewing = async (planId: number, planNumber: string) => {
     if (!window.confirm(`Enviar plano ${planNumber} para costura?`)) return;
@@ -481,7 +484,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao enviar para costura');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
-      setNotification({ type: 'success', message: `­ƒÜÇ Plano ${planNumber} enviado para costura!` });
+      setNotification({ type: 'success', message: `🚀 Plano ${planNumber} enviado para costura!` });
       setTimeout(() => setNotification(null), 6000);
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message });
@@ -493,10 +496,10 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   // Action: return from sewing
   const handleReturnSewing = async (planId: number, planNumber: string, qtyInSewing: number) => {
-    const input = window.prompt(`Plano ${planNumber}: Quantas pecas retornaram da costura? (Em costura: ${qtyInSewing})`);
+    const input = window.prompt(`Plano ${planNumber}: Quantas peças retornaram da costura? (Em costura: ${qtyInSewing})`);
     if (input === null) return;
     const qty = parseInt(input, 10);
-    if (isNaN(qty) || qty <= 0) { alert('Quantidade inv├ílida.'); return; }
+    if (isNaN(qty) || qty <= 0) { alert('Quantidade inválida.'); return; }
     setCutPlanActionLoading(`return-sewing-${planId}`);
     try {
       const res = await fetch(`/api/cut-plans/${planId}/return-sewing`, {
@@ -508,8 +511,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao registrar retorno');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       const msg = data.qty_still_in_sewing > 0
-        ? `­ƒÜÇ ${qty} pecas retornaram. ${data.qty_still_in_sewing} ainda em costura.`
-        : `­ƒÜÇ Costura conclu├¡da! ${qty} pecas retornaram.`;
+        ? `🚀 ${qty} peças retornaram. ${data.qty_still_in_sewing} ainda em costura.`
+        : `🚀 Costura concluída! ${qty} peças retornaram.`;
       setNotification({ type: 'success', message: msg });
       setTimeout(() => setNotification(null), 8000);
     } catch (e: any) {
@@ -555,7 +558,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao criar plano de corte');
 
-      setNotification({ type: 'success', message: `Ô£à Plano ${data.plan_number} gerado com sucesso no PCP!` });
+      setNotification({ type: 'success', message: `✅ Plano ${data.plan_number} gerado com sucesso no PCP!` });
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       setSelectedGroupForPlanModal(null);
       setActiveSubTab('approved_plans'); // Switch to the PCP tab to see it
@@ -581,7 +584,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao cancelar plano');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       onRefresh();
-      setNotification({ type: 'success', message: `Ô£à Plano ${planNumber} cancelado. ${data.qty_returned_to_pending} pecas retornaram para pend├¬ncia.` });
+      setNotification({ type: 'success', message: `✅ Plano ${planNumber} cancelado. ${data.qty_returned_to_pending} peças retornaram para pendência.` });
       setTimeout(() => setNotification(null), 8000);
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message });
@@ -689,7 +692,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (!selectedItemForCut) return;
     const cutQty = parseInt(cutQuantityInput, 10);
     if (isNaN(cutQty) || cutQty <= 0) {
-      setNotification({ type: 'error', message: 'Digite uma quantidade v├ílida maior que 0.' });
+      setNotification({ type: 'error', message: 'Digite uma quantidade válida maior que 0.' });
       return;
     }
 
@@ -713,14 +716,14 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setNotification({ type: 'error', message: data.error || 'Erro ao registrar produ├º├úo de corte.' });
+        setNotification({ type: 'error', message: data.error || 'Erro ao registrar produção de corte.' });
         setIsSubmitting(false);
         return;
       }
 
       setNotification({
         type: 'success',
-        message: `Sucesso! ${data.total_allocated} pecas de ${selectedItemForCut.item_key} alocadas entre ${data.affected_order_ids.length} pedido(s).`
+        message: `Sucesso! ${data.total_allocated} peças de ${selectedItemForCut.item_key} alocadas entre ${data.affected_order_ids.length} pedido(s).`
       });
 
       setTimeout(() => {
@@ -731,7 +734,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       }, 1200);
 
     } catch (err: any) {
-      setNotification({ type: 'error', message: 'Erro na comunica├º├úo com o servidor.' });
+      setNotification({ type: 'error', message: 'Erro na comunicação com o servidor.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -810,11 +813,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-blue-400 text-xs font-black tracking-widest uppercase mb-1">
-              <Scissors size={18} className="text-blue-400" /> COMFORTPRO ÔÇö CENTRAL DE CORTE
+              <Scissors size={18} className="text-blue-400" /> COMFORTPRO — CENTRAL DE CORTE
             </div>
             <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Central de Corte</h2>
             <p className="text-blue-200/90 text-sm mt-1 max-w-2xl">
-              Consolida├º├úo de demanda por mat├®ria-prima para direcionamento ao Optitex CutPlan.
+              Consolidação de demanda por matéria-prima para direcionamento ao Optitex CutPlan.
             </p>
           </div>
 
@@ -841,7 +844,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   : 'text-blue-200 hover:text-white hover:bg-white/10'
               }`}
             >
-              <Scissors size={14} /> Grupos de Mat├®ria-Prima
+              <Scissors size={14} /> Grupos de Matéria-Prima
             </button>
 
             <button
@@ -863,7 +866,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   : 'text-blue-200 hover:text-white hover:bg-white/10'
               }`}
             >
-              <History size={14} /> Hist├│rico de Aloca├º├Áes
+              <History size={14} /> Histórico de Alocações
             </button>
           </div>
             </div>
@@ -914,11 +917,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-slate-900/70 p-4 rounded-2xl border border-blue-900/60">
                 <p className="text-xs font-bold uppercase tracking-wider text-blue-300/90">Total Pendente de Corte</p>
-                <p className="text-3xl font-black font-mono mt-1 text-white">{totalPiecesNeeded} <span className="text-sm font-sans font-normal text-blue-200">pecas</span></p>
+                <p className="text-3xl font-black font-mono mt-1 text-white">{totalPiecesNeeded} <span className="text-sm font-sans font-normal text-blue-200">peças</span></p>
               </div>
 
               <div className="bg-slate-900/70 p-4 rounded-2xl border border-blue-900/60">
-                <p className="text-xs font-bold uppercase tracking-wider text-blue-300/90">Grupos de Mat├®ria-Prima</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-blue-300/90">Grupos de Matéria-Prima</p>
                 <p className="text-3xl font-black font-mono mt-1 text-white">{rawMaterialGroups.length} <span className="text-sm font-sans font-normal text-blue-200">grupos</span></p>
               </div>
 
@@ -958,7 +961,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             </div>
           </div>
 
-          {/* ALERTA DE DADOS INCOMPLETOS / N├âO CONFI├üVEIS */}
+          {/* ALERTA DE DADOS INCOMPLETOS / NÃO CONFIÁVEIS */}
           {incompleteFamilies && incompleteFamilies.length > 0 && (
             <div className="bg-amber-50/90 border-2 border-amber-300 rounded-2xl p-5 space-y-3 animate-in fade-in duration-150">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -966,7 +969,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
                   <div>
                     <h4 className="font-black text-amber-950 text-xs sm:text-sm uppercase tracking-wide">
-                      Dados insuficientes: Fam´┐¢lias de Produtos Pendentes
+                      Dados insuficientes: Fam�lias de Produtos Pendentes
                     </h4>
                     <p className="text-[11px] sm:text-xs text-amber-800 mt-0.5 font-medium">
                       Confirme os materiais sugeridos para agrupar automaticamente os tamanhos na mesa de corte.
@@ -974,7 +977,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   </div>
                 </div>
                 <span className="px-3 py-1 bg-amber-200 text-amber-950 font-mono font-black text-xs rounded-xl self-start sm:self-center shrink-0">
-                  {incompleteFamilies.length} fam´┐¢lias pendentes
+                  {incompleteFamilies.length} fam�lias pendentes
                 </span>
               </div>
 
@@ -1031,7 +1034,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                 <CheckCircle2 size={36} className="mx-auto text-slate-300" />
                 <h4 className="font-black text-slate-700 text-base">Nenhum grupo de corte pendente</h4>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  N├úo h├í demandas de corte pendentes para os filtros selecionados.
+                  Não há demandas de corte pendentes para os filtros selecionados.
                 </p>
               </div>
             ) : (
@@ -1047,7 +1050,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="px-2 py-0.5 bg-blue-900 text-white font-mono font-black text-[10px] rounded uppercase tracking-wider">
-                              MAT├ëRIA-PRIMA
+                              MATÉRIA-PRIMA
                             </span>
                             <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
                               group.tipo_tecido === 'TUBULAR'
@@ -1062,11 +1065,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                           </div>
 
                           <h4 className="font-black text-xl text-slate-900 leading-tight mt-2">
-                            {group.fabric} • <span className="text-blue-700">{group.color}</span>
+                            {group.fabric} · <span className="text-blue-700">{group.color}</span>
                           </h4>
                           {(group.lote || group.orientacao) && (
                             <p className="text-[11px] font-bold text-slate-400 font-mono mt-0.5">
-                              {[group.lote ? `Lote: ${group.lote}` : '', group.orientacao ? `Fio: ${group.orientacao}` : ''].filter(Boolean).join(' ÔÇó ')}
+                              {[group.lote ? `Lote: ${group.lote}` : '', group.orientacao ? `Fio: ${group.orientacao}` : ''].filter(Boolean).join(' • ')}
                             </p>
                           )}
                         </div>
@@ -1076,17 +1079,17 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                         </div>
                       </div>
 
-                      {/* M├®tricas Limpas do Card (Requisito 4: Central de Corte) */}
+                      {/* Métricas Limpas do Card (Requisito 4: Central de Corte) */}
                       <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2 text-xs">
                         <div className="flex items-baseline justify-between">
                           <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider">Demanda Total:</span>
                           <span className="text-lg font-black font-mono text-blue-700">
-                            {group.total_necessario} pecas pendentes
+                            {group.total_necessario} peças pendentes
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-slate-600 font-medium pt-1.5 border-t border-slate-200/60">
                           <span className="font-bold text-slate-800">{group.models_breakdown.length} {group.models_breakdown.length === 1 ? 'modelo' : 'modelos'}</span>
-                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-300">·</span>
                           <span className="font-bold text-slate-800">{group.pedidos_count} {group.pedidos_count === 1 ? 'pedido' : 'pedidos'}</span>
                         </div>
                         <div className="flex items-center justify-between text-slate-500 text-[11px] pt-1.5 border-t border-slate-200/60">
@@ -1098,7 +1101,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                       </div>
                     </div>
 
-                    {/* Bot├úo de A├º├úo: [ VER PLANO ] */}
+                    {/* Botão de Ação: [ VER PLANO ] */}
                     <div className="pt-2 border-t border-slate-100">
                       <button
                         type="button"
@@ -1118,7 +1121,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             {/* SUBTAB 2: PLANOS APROVADOS DE ENFESTO (NOVA ABA COMFORTPRO) */}
       {activeSubTab === 'approved_plans' && (
         <div className="space-y-6">
-          {/* SE├ç├âO DOS NOVOS PLANOS DE CORTE DO PCP */}
+          {/* SEÇÃO DOS NOVOS PLANOS DE CORTE DO PCP */}
 
           {isLoadingCutPlans ? (
             <div className="p-8 text-center text-slate-500 font-mono text-sm">Carregando planos...</div>
@@ -1159,7 +1162,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                               <span className="px-2 py-0.5 font-mono text-[10px] font-black rounded-lg uppercase bg-indigo-600 text-white">
                                 {plan.plan_number}
                               </span>
-                              <span className="text-[9px] text-slate-400 font-mono">{plan.qty_planned} p├ºs</span>
+                              <span className="text-[9px] text-slate-400 font-mono">{plan.qty_planned} pçs</span>
                             </div>
                             <p className="text-[10px] font-bold text-slate-700 uppercase leading-tight">
                               Tecido: {plan.fabric || '-'} <br/> Cor: {plan.color || '-'}
@@ -1235,7 +1238,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
               <CheckCircle2 size={36} className="mx-auto text-slate-300" />
               <h4 className="font-black text-slate-700 text-base">Nenhum plano de enfesto aprovado no momento</h4>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Acesse a aba <strong>Demanda de Corte</strong>, selecione um lote e clique em <strong>PLANEJAR ENFESTO</strong> para aprovar um plano exato ou com excedente estrat├®gico.
+                Acesse a aba <strong>Demanda de Corte</strong>, selecione um lote e clique em <strong>PLANEJAR ENFESTO</strong> para aprovar um plano exato ou com excedente estratégico.
               </p>
             </div>
           ) : (
@@ -1250,27 +1253,27 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                     <div>
                       <div className="flex items-center gap-2">
                         <span className={`px-3 py-1 font-mono text-xs font-black rounded-lg uppercase ${plan.planType === 'PLANO_OTIMIZADO' ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'}`}>
-                          {plan.planType === 'PLANO_OTIMIZADO' ? 'ÔÜí PLANO OTIMIZADO' : 'Ô£à PLANO EXATO'}
+                          {plan.planType === 'PLANO_OTIMIZADO' ? '⚡ PLANO OTIMIZADO' : '✅ PLANO EXATO'}
                         </span>
                         <h4 className="text-lg font-black text-slate-900">{plan.model}</h4>
                       </div>
                       <p className="text-xs font-bold text-blue-900 uppercase tracking-wide mt-1">
-                        Tecido: {plan.fabric} ÔÇó Cor: <span className="text-blue-950 font-black bg-blue-50 px-2 py-0.5 rounded border border-blue-200">{plan.color}</span> ÔÇó Tipo: {plan.tipoTecido}
+                        Tecido: {plan.fabric} • Cor: <span className="text-blue-950 font-black bg-blue-50 px-2 py-0.5 rounded border border-blue-200">{plan.color}</span> • Tipo: {plan.tipoTecido}
                       </p>
                       {plan.descricao_item ? (
                         <p className="text-[11px] font-medium text-slate-700 bg-blue-50/70 px-2.5 py-1.5 rounded-lg border border-blue-200 mt-1">
-                          ­ƒôï <strong>Detalhamento no Pedido:</strong> {plan.descricao_item}
+                          📋 <strong>Detalhamento no Pedido:</strong> {plan.descricao_item}
                         </p>
                       ) : (
                         <p className="text-[11px] font-medium text-slate-700 bg-blue-50/70 px-2.5 py-1.5 rounded-lg border border-blue-200 mt-1">
-                          ­ƒôï <strong>Detalhamento no Pedido:</strong> {plan.model} ÔÇó {plan.fabric} ÔÇó {plan.color}
+                          📋 <strong>Detalhamento no Pedido:</strong> {plan.model} • {plan.fabric} • {plan.color}
                         </p>
                       )}
                     </div>
 
                     <div className="flex items-center gap-3 font-mono text-xs text-slate-500">
                       <span>Operador: <strong>{plan.user_name}</strong></span>
-                      <span>ÔÇó</span>
+                      <span>•</span>
                       <span>Aprovado em: <strong>{formatDate(plan.created_at)}</strong></span>
                     </div>
                   </div>
@@ -1279,13 +1282,13 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   {plan.planType === 'PLANO_OTIMIZADO' && (
                     <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-2 text-xs text-emerald-950">
                       <div className="flex items-center justify-between">
-                        <span className="font-black text-emerald-900 uppercase">Benef├¡cio Operacional Identificado:</span>
+                        <span className="font-black text-emerald-900 uppercase">Benefício Operacional Identificado:</span>
                         <span className="font-mono font-bold text-emerald-800">{plan.beneficio_operacional}</span>
                       </div>
 
                       {plan.excedente_proposto && (
                         <div className="pt-2 border-t border-emerald-200/80 font-mono text-xs">
-                          <strong className="text-emerald-900 uppercase">pecas Excedentes Registradas em ESTOQUE: </strong>
+                          <strong className="text-emerald-900 uppercase">Peças Excedentes Registradas em ESTOQUE: </strong>
                           {Object.entries(plan.excedente_proposto).map(([sz, qty]) => (
                             <span key={sz} className="inline-block bg-white text-emerald-900 font-black px-2 py-0.5 rounded ml-1 border border-emerald-300">
                               {sz} = +{qty}
@@ -1313,12 +1316,12 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                           {/* Moldes no Risco (1 Camada do Encaixe) */}
                           <div className="space-y-1 font-mono text-xs">
                             <span className="text-[10px] font-black uppercase text-slate-500 block tracking-wider">
-                              ­ƒôÉ Grade do Risco (Moldes no Optitex por Camada):
+                              📐 Grade do Risco (Moldes no Optitex por Camada):
                             </span>
                             <div className="flex flex-wrap gap-1.5">
-                              {Object.entries(enf['pe\u00E7as_por_passada']).map(([sz, qty]) => (
+                              {Object.entries(enf.peças_por_passada).map(([sz, qty]) => (
                                 <span key={sz} className="px-2.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-950 rounded-md font-black">
-                                  {qty}x {sz}
+                                  {qty}× {sz}
                                 </span>
                               ))}
                             </div>
@@ -1327,7 +1330,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                           {/* Total Produzido neste enfesto */}
                           <div className="space-y-1 font-mono text-xs border-t border-slate-200/80 pt-2">
                             <span className="text-[10px] font-black uppercase text-slate-500 block tracking-wider">
-                              ­ƒôª Total Cortado ({enf.passadas} enfestos x moldes):
+                              📦 Total Cortado ({enf.passadas} enfestos × moldes):
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {Object.entries(enf.producao_por_tamanho).map(([sz, prod]) => (
@@ -1355,7 +1358,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                         <div className="flex flex-wrap gap-2 pt-1">
                           {pedidosList.map((ped, pIdx) => (
                             <span key={pIdx} className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 font-bold">
-                              {ped.order_number || `#${ped.order_id}`} ({ped.customer_name || 'Cliente'}) ÔÇö <strong className="text-blue-700">{ped.quantity} un</strong>
+                              {ped.order_number || `#${ped.order_id}`} ({ped.customer_name || 'Cliente'}) — <strong className="text-blue-700">{ped.quantity} un</strong>
                             </span>
                           ))}
                         </div>
@@ -1366,7 +1369,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                   {/* Summary Footer */}
                   <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
                     <div className="flex flex-wrap gap-4 text-slate-700">
-                      <span>Necess├írio: <strong>{plan.resumo.total_necessario} un</strong></span>
+                      <span>Necessário: <strong>{plan.resumo.total_necessario} un</strong></span>
                       <span>Planejado: <strong className="text-blue-700">{plan.resumo.total_planejado} un</strong></span>
                       <span>Total Enfestos: <strong>{plan.resumo.total_passadas}</strong></span>
                       <span>Metros: <strong className="text-blue-900">{plan.resumo.total_metros_previstos} m</strong></span>
@@ -1390,7 +1393,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                         onClick={() => setPrintingPlan(plan)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
                       >
-                        <Printer size={15} /> [ ­ƒû¿´©Å IMPRIMIR FICHA DE CORTE ]
+                        <Printer size={15} /> [ 🖨️ IMPRIMIR FICHA DE CORTE ]
                       </button>
 
                       <button
@@ -1414,15 +1417,15 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         </div>
       )}
 
-      {/* SUBTAB 3: HIST├ôRICO DE ALOCA├ç├òES */}
+      {/* SUBTAB 3: HISTÓRICO DE ALOCAÇÕES */}
       {activeSubTab === 'history' && (
         <div className="space-y-4">
           <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 flex items-center gap-2">
-            <History className="text-blue-600" size={20} /> HIST├ôRICO DE ALOCA├ç├òES DE CORTE & RASTREABILIDADE
+            <History className="text-blue-600" size={20} /> HISTÓRICO DE ALOCAÇÕES DE CORTE & RASTREABILIDADE
           </h3>
 
           {isLoadingLogs ? (
-            <div className="p-8 text-center text-slate-500 font-mono text-sm">Carregando hist├│rico...</div>
+            <div className="p-8 text-center text-slate-500 font-mono text-sm">Carregando histórico...</div>
           ) : (
             <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
               <div className="overflow-x-auto">
@@ -1475,16 +1478,16 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
           <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 my-6">
             <div className="p-6 bg-gradient-to-r from-blue-900 to-indigo-950 text-white flex items-center justify-between">
               <div>
-                <span className="text-[10px] font-black tracking-widest uppercase text-blue-300 block">REGISTRAR PRODU├ç├âO DE CORTE</span>
+                <span className="text-[10px] font-black tracking-widest uppercase text-blue-300 block">REGISTRAR PRODUÇÃO DE CORTE</span>
                 <h3 className="text-xl font-black mt-0.5">{selectedItemForCut.product_type}</h3>
-                <p className="text-xs text-blue-100 font-mono mt-0.5">Tamanho: {selectedItemForCut.size} | Total Necess├írio: {selectedItemForCut.total_necessario} un</p>
+                <p className="text-xs text-blue-100 font-mono mt-0.5">Tamanho: {selectedItemForCut.size} | Total Necessário: {selectedItemForCut.total_necessario} un</p>
               </div>
 
               <button
                 onClick={() => setSelectedItemForCut(null)}
                 className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all cursor-pointer"
               >
-                Ô£ò
+                ✕
               </button>
             </div>
 
@@ -1539,18 +1542,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         </div>
       )}
 
-      {/* PRINT MODAL */}
-      <PrintableEnfestoSheetModal
-        isOpen={!!printingPlan}
-        onClose={() => setPrintingPlan(null)}
-        plan={printingPlan}
-      />
-      <PrintableCutPlanSheetModal
-        isOpen={!!printingCutPlan}
-        onClose={() => setPrintingCutPlan(null)}
-        plan={printingCutPlan}
-      />
-    
+
       {partialCutModalOpen && partialCutPlan && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
           <div className="bg-white rounded-3xl p-8 max-w-xl w-full shadow-2xl animate-in zoom-in-95 duration-200">
@@ -1559,7 +1551,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 max-h-[50vh] overflow-y-auto mb-6">
               <div className="space-y-2">
-                {(partialCutPlan.items || []).map((it:any) => (
+                {(partialCutPlan.items || []).map((it: any) => (
                   <div key={it.id} className="grid grid-cols-12 gap-2 items-center bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
                     <div className="col-span-3">
                       <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">{it.order_number}</span>
@@ -1591,6 +1583,22 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
           </div>
         </div>
       )}
+
+      {/* PRINT MODAL */}
+      <PrintableEnfestoSheetModal
+        isOpen={!!printingPlan}
+        onClose={() => setPrintingPlan(null)}
+        plan={printingPlan}
+      />
+      <PrintableCutPlanSheetModal
+        isOpen={!!printingCutPlan}
+        onClose={() => setPrintingCutPlan(null)}
+        plan={printingCutPlan}
+      />
     </div>
   );
 };
+
+
+
+

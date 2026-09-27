@@ -6151,22 +6151,48 @@ app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
       completed_at: new Date().toISOString()
     }).eq('id', id);
 
+    const { item_quantities } = req.body;
     const items = plan.items || [];
     const movementsToInsert: any[] = [];
+    const newItemsToQueue: any[] = [];
 
     for (const it of items) {
       const itPlanned = Number(it.quantity_planned);
-      const ratio = qtyPlanned > 0 ? itPlanned / qtyPlanned : 0;
-      const itCut = Math.round(qtyCutActual * ratio);
-      const itReturn = itPlanned - itCut;
-
-      let newStatus = 'CUT_COMPLETED';
-      if (itCut <= 0) newStatus = 'PENDING_CUT';
+      let itCut = 0;
+      
+      if (item_quantities && typeof item_quantities[it.id] !== 'undefined') {
+          itCut = Number(item_quantities[it.id]) || 0;
+      } else {
+          const ratio = qtyPlanned > 0 ? itPlanned / qtyPlanned : 0;
+          itCut = Math.round(qtyCutActual * ratio);
+      }
+      
+      const itReturn = Math.max(0, itPlanned - itCut);
 
       await supabaseAdmin.from('cut_plan_items').update({
-        status: newStatus,
+        status: 'CUT_COMPLETED',
         quantity_cut: itCut
       }).eq('id', it.id);
+      
+      if (itReturn > 0) {
+          newItemsToQueue.push({
+              order_id: it.order_id,
+              order_number: it.order_number,
+              order_item_id: it.order_item_id,
+              sku: it.sku,
+              product_type: it.product_type,
+              size: it.size,
+              color: it.color,
+              fabric: it.fabric,
+              item_key: it.item_key,
+              quantity_planned: itReturn,
+              quantity_cut: 0,
+              quantity_sewing: 0,
+              quantity_sewing_done: 0,
+              status: 'PENDING_CUT',
+              plan_id: null
+          });
+      }
 
       movementsToInsert.push({
         plan_id: Number(id),
@@ -6182,32 +6208,14 @@ app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
         qty_before: itPlanned,
         qty_after: itCut,
         quantity: itCut,
-        notes: notes || (itReturn > 0 ? `${itReturn} pecas retornaram para pendencia` : 'Corte exato'),
-        user_name: user_name || 'Sistema'
+        user_name: user_name || 'Sistema',
+        notes: notes || `Corte concluído (planejado: ${itPlanned}, cortado: ${itCut})`
       });
-
-      if (itReturn > 0) {
-        movementsToInsert.push({
-          plan_id: Number(id),
-          plan_item_id: it.id,
-          order_id: it.order_id,
-          order_number: it.order_number,
-          plan_number: plan.plan_number,
-          movement_type: 'CUT_PARTIAL_RETURN',
-          sku: it.sku,
-          product_type: it.product_type,
-          size: it.size,
-          item_key: it.item_key,
-          qty_before: itPlanned,
-          qty_after: 0,
-          quantity: itReturn,
-          notes: `${itReturn} pecas retornaram para pendencia de corte`,
-          user_name: user_name || 'Sistema'
-        });
-      }
     }
 
+    if (newItemsToQueue.length > 0) { await supabaseAdmin.from('cut_plan_items').insert(newItemsToQueue); }
     await supabaseAdmin.from('production_movements').insert(movementsToInsert);
+
 
     return res.json({
       success: true,
