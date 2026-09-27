@@ -3,7 +3,7 @@ import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import crypto from "crypto";
-// â”€â”€ Inlined cutting utilities (avoid cross-dir import that crashes Vercel serverless) â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Inlined cutting utilities (avoid cross-dir import that crashes Vercel serverless) ├óÔÇØÔé¼├óÔÇØÔé¼
 function parseOrderItems(itemsRaw: any): any[] {
   if (!itemsRaw) return [];
   if (Array.isArray(itemsRaw)) return itemsRaw;
@@ -25,7 +25,7 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
   { name: 'Verde Militar', pattern: /\b(verde\s*militar)\b/i },
   { name: 'Verde Bandeira', pattern: /\b(verde\s*bandeira)\b/i },
   { name: 'Rosa Chiclete', pattern: /\b(rosa\s*chiclete)\b/i },
-  { name: 'Rosa BebÃª', pattern: /\b(rosa\s*beb[eÃª])\b/i },
+  { name: 'Rosa Beb├â┬¬', pattern: /\b(rosa\s*beb[e├â┬¬])\b/i },
   { name: 'Cinza Mescla', pattern: /\b(cinza\s*mescla|mescla)\b/i },
   { name: 'Cinza Chumbo', pattern: /\b(cinza\s*chumbo|chumbo)\b/i },
   { name: 'Off White', pattern: /\b(off\s*white|off-white)\b/i },
@@ -43,7 +43,7 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
   { name: 'Laranja', pattern: /\b(laranja|orange)\b/i },
   { name: 'Vinho', pattern: /\b(vinho|bordo|burgundy)\b/i },
   { name: 'Bege', pattern: /\b(bege|beige)\b/i },
-  { name: 'LilÃ¡s', pattern: /\b(lilas|lilÃ¡s)\b/i },
+  { name: 'Lil├â┬ís', pattern: /\b(lilas|lil├â┬ís)\b/i },
   { name: 'Nude', pattern: /\b(nude)\b/i },
   { name: 'Grafite', pattern: /\b(grafite)\b/i },
   { name: 'Coral', pattern: /\b(coral)\b/i },
@@ -52,13 +52,13 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
 ];
 
 function getItemDisplaySize(item: any): string {
-  if (!item) return 'Tamanho nÃ£o informado';
+  if (!item) return 'Tamanho n├â┬úo informado';
 
   const desc = (item.description || item.descricao || '').toString().trim();
   const sku = (item.sku || item.codigo || '').toString().trim();
   const text = `${desc} ${sku}`;
 
-  const adultMatch = text.match(/(?:^|[\s\-\â€“\/\|_,])(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G)(?:[\s\-\â€“\/\|_,]|$)/i);
+  const adultMatch = text.match(/(?:^|[\s\-\├óÔé¼ÔÇ£\/\|_,])(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G)(?:[\s\-\├óÔé¼ÔÇ£\/\|_,]|$)/i);
   if (adultMatch) {
     return adultMatch[1].toUpperCase();
   }
@@ -68,17 +68,17 @@ function getItemDisplaySize(item: any): string {
     return skuMatch[1].toUpperCase();
   }
 
-  const childExplicitMatch = text.match(/\b(?:tam|tamanho|inf|infantil|tam\.)\s*[:\-â€“]?\s*(16|14|12|10|8|6|4|2|1)\b/i);
+  const childExplicitMatch = text.match(/\b(?:tam|tamanho|inf|infantil|tam\.)\s*[:\-├óÔé¼ÔÇ£]?\s*(16|14|12|10|8|6|4|2|1)\b/i);
   if (childExplicitMatch) {
     return childExplicitMatch[1];
   }
 
-  const childEndMatch = text.match(/(?:â€“|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
+  const childEndMatch = text.match(/(?:├óÔé¼ÔÇ£|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
   if (childEndMatch) {
     return childEndMatch[1];
   }
 
-  if (/\b(?:infantil|inf|crianÃ§a|kids)\b/i.test(text)) {
+  if (/\b(?:infantil|inf|crian├â┬ºa|kids)\b/i.test(text)) {
     const childNumberMatch = text.match(/\b(16|14|12|10|8|6|4|2|1)\b/);
     if (childNumberMatch) {
       return childNumberMatch[1];
@@ -86,29 +86,29 @@ function getItemDisplaySize(item: any): string {
   }
 
   const rawSize = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
-  const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[aÃ£]o|camiseta|vestu[aÃ¡]rio/i.test(rawSize);
+  const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[a├â┬ú]o|camiseta|vestu[a├â┬í]rio/i.test(rawSize);
 
   if (rawSize && !isMaterialOrTrash) {
     const normRaw = rawSize.toUpperCase();
     if (ADULT_SIZES.includes(normRaw) || CHILD_SIZES.includes(normRaw)) {
       return normRaw;
     }
-    if (normRaw === 'ÃšNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ÃšNICO') {
-      return 'Ãšnico';
+    if (normRaw === '├â┼íNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ├â┼íNICO') {
+      return '├â┼ínico';
     }
-    if (normRaw !== 'TAMANHO NÃƒO INFORMADO') {
+    if (normRaw !== 'TAMANHO N├âãÆO INFORMADO') {
       return normRaw;
     }
   }
 
-  if (/\b(tamanho\s*Ãºnic[oa]|tamanho\s*unico|tam\.\s*Ãºnico|Ãºnico|unica|tu)\b/i.test(text)) {
-    return 'Ãšnico';
+  if (/\b(tamanho\s*├â┬║nic[oa]|tamanho\s*unico|tam\.\s*├â┬║nico|├â┬║nico|unica|tu)\b/i.test(text)) {
+    return '├â┼ínico';
   }
 
-  return 'Tamanho nÃ£o informado';
+  return 'Tamanho n├â┬úo informado';
 }
 
-function extractItemDetails(item: any, defaultProductType: string = 'VestuÃ¡rio'): {
+function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â┬írio'): {
   product_type: string;
   fabric: string;
   color: string;
@@ -125,13 +125,13 @@ function extractItemDetails(item: any, defaultProductType: string = 'VestuÃ¡ri
 } {
   if (!item || typeof item !== 'object') {
     return {
-      product_type: 'Modelo nÃ£o informado',
-      fabric: 'Tecido nÃ£o informado',
-      color: 'Cor nÃ£o informada',
-      size: 'Tamanho nÃ£o informado',
-      description: 'Item sem descriÃ§Ã£o',
+      product_type: 'Modelo n├â┬úo informado',
+      fabric: 'Tecido n├â┬úo informado',
+      color: 'Cor n├â┬úo informada',
+      size: 'Tamanho n├â┬úo informado',
+      description: 'Item sem descri├â┬º├â┬úo',
       sku: '',
-      item_key: 'Modelo nÃ£o informado | Tecido nÃ£o informado | Cor nÃ£o informada | Tamanho nÃ£o informado',
+      item_key: 'Modelo n├â┬úo informado | Tecido n├â┬úo informado | Cor n├â┬úo informada | Tamanho n├â┬úo informado',
       is_complete: false,
       tipo_tecido: 'RAMADO',
       largura_util: '1,60 m',
@@ -141,29 +141,29 @@ function extractItemDetails(item: any, defaultProductType: string = 'VestuÃ¡ri
   const rawDesc = (item.description || item.descricao || '').toString().trim();
   const rawSku = (item.sku || item.codigo || '').toString().trim();
 
-  // 1. ExtraÃ§Ã£o ESTRITA do TECIDO tÃ©cnico (sem adivinhar pelo texto se ausente)
+  // 1. Extra├â┬º├â┬úo ESTRITA do TECIDO t├â┬®cnico (sem adivinhar pelo texto se ausente)
   const rawFabric = (item.fabric || item.tecido || item.variacao?.tecido || item.grade?.tecido || item.atributos?.tecido || '').toString().trim();
-  let fabric = 'Tecido nÃ£o informado';
-  if (rawFabric && !/^(tecido\s+)?n[aÃ£]o\s+informad[ao]$/i.test(rawFabric)) {
+  let fabric = 'Tecido n├â┬úo informado';
+  if (rawFabric && !/^(tecido\s+)?n[a├â┬ú]o\s+informad[ao]$/i.test(rawFabric)) {
     if (/dry\s*comfort/i.test(rawFabric)) fabric = 'Dry Comfort';
     else if (/dry\s*fit/i.test(rawFabric)) fabric = 'Dry Fit';
     else if (/poliamida/i.test(rawFabric)) fabric = 'Poliamida';
-    else if (/algod[aÃ£]o/i.test(rawFabric)) fabric = 'AlgodÃ£o';
+    else if (/algod[a├â┬ú]o/i.test(rawFabric)) fabric = 'Algod├â┬úo';
     else if (/piquet|pique/i.test(rawFabric)) fabric = 'Piquet';
     else if (/pv\b/i.test(rawFabric)) fabric = 'PV';
     else fabric = rawFabric;
   }
 
-  // 2. ExtraÃ§Ã£o ESTRITA da COR tÃ©cnica (sem adivinhar pelo texto se ausente)
+  // 2. Extra├â┬º├â┬úo ESTRITA da COR t├â┬®cnica (sem adivinhar pelo texto se ausente)
   const rawColor = (item.color || item.cor || item.variacao?.cor || item.grade?.cor || item.atributos?.cor || '').toString().trim();
-  let color = 'Cor nÃ£o informada';
-  if (rawColor && !/^(cor\s+)?n[aÃ£]o\s+informad[ao]$/i.test(rawColor)) {
+  let color = 'Cor n├â┬úo informada';
+  if (rawColor && !/^(cor\s+)?n[a├â┬ú]o\s+informad[ao]$/i.test(rawColor)) {
     const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(rawColor));
     color = matchCat ? matchCat.name : rawColor;
   }
 
   let size = getItemDisplaySize(item);
-  if (!size) size = 'Tamanho nÃ£o informado';
+  if (!size) size = 'Tamanho n├â┬úo informado';
 
   let productType = item.product_type || item.modelo;
   if (!productType) {
@@ -180,20 +180,20 @@ function extractItemDetails(item: any, defaultProductType: string = 'VestuÃ¡ri
     else if (/top\s+nadador/i.test(rawDesc)) productType = 'Top Nadador';
     else if (/top/i.test(rawDesc)) productType = 'Top';
     else if (/legging/i.test(rawDesc)) productType = 'Legging';
-    else if (/b[aÃ¡]sica/i.test(rawDesc)) productType = 'Camiseta BÃ¡sica';
+    else if (/b[a├â┬í]sica/i.test(rawDesc)) productType = 'Camiseta B├â┬ísica';
     else if (rawDesc) {
       let clean = rawDesc
-        .replace(/(?:â€“|-|\/|\|)\s*(AZUL\s*MARINHO|VERDE\s*MENTA|CINZA\s*MESCLA|OFF\s*WHITE|PRETO|BRANCO|MARROM|AZUL|VERMELHO|VERDE|CINZA|ROSA|AMARELO|ROXO|LARANJA|VINHO|BEGE|GRAFITE)\b/gi, '')
-        .replace(/(?:â€“|-|\/|\|)\s*(G5|G4|G3|G2|G1|EXG|XXL|XGG|GG|G|M|P|PP|16|14|12|10|8|6|4|2|1)\b/gi, '')
-        .replace(/\b(?:tam|tamanho|infantil)\s*[:\-â€“]?\s*(16|14|12|10|8|6|4|2|1)\b/gi, '')
-        .replace(/(?:â€“|-|\/|\|)?\s*(DRY\s*FIT|DRY\s*COMFORT|POLIAMIDA|ALGOD[AÃƒ]O|PIQUET|PV)\b/gi, '')
+        .replace(/(?:├óÔé¼ÔÇ£|-|\/|\|)\s*(AZUL\s*MARINHO|VERDE\s*MENTA|CINZA\s*MESCLA|OFF\s*WHITE|PRETO|BRANCO|MARROM|AZUL|VERMELHO|VERDE|CINZA|ROSA|AMARELO|ROXO|LARANJA|VINHO|BEGE|GRAFITE)\b/gi, '')
+        .replace(/(?:├óÔé¼ÔÇ£|-|\/|\|)\s*(G5|G4|G3|G2|G1|EXG|XXL|XGG|GG|G|M|P|PP|16|14|12|10|8|6|4|2|1)\b/gi, '')
+        .replace(/\b(?:tam|tamanho|infantil)\s*[:\-├óÔé¼ÔÇ£]?\s*(16|14|12|10|8|6|4|2|1)\b/gi, '')
+        .replace(/(?:├óÔé¼ÔÇ£|-|\/|\|)?\s*(DRY\s*FIT|DRY\s*COMFORT|POLIAMIDA|ALGOD[A├âãÆ]O|PIQUET|PV)\b/gi, '')
         .replace(/\b(PRETO|BRANCO|MARROM|AZUL\s*MARINHO|AZUL|VERMELHO|VERDE|CINZA|ROSA|AMARELO|ROXO|LARANJA|VINHO)\b/gi, '')
-        .replace(/[\-\â€“\/,\|\s]+$/, '').trim();
-      productType = clean || defaultProductType || 'Modelo nÃ£o informado';
-    } else { productType = 'Modelo nÃ£o informado'; }
+        .replace(/[\-\├óÔé¼ÔÇ£\/,\|\s]+$/, '').trim();
+      productType = clean || defaultProductType || 'Modelo n├â┬úo informado';
+    } else { productType = 'Modelo n├â┬úo informado'; }
   }
 
-  // 5. CaracterÃ­sticas fÃ­sicas de corte (Tipo fÃ­sico e Largura Ãºtil)
+  // 5. Caracter├â┬¡sticas f├â┬¡sicas de corte (Tipo f├â┬¡sico e Largura ├â┬║til)
   let tipo_tecido: 'TUBULAR' | 'RAMADO' = 'RAMADO';
   const rawTipo = (item.tipo_tecido || item.tipoTecido || item.tipo_corte || '').toString().trim().toUpperCase();
   if (rawTipo.includes('TUBULAR') || rawTipo.includes('TUBOLAR')) {
@@ -211,12 +211,12 @@ function extractItemDetails(item: any, defaultProductType: string = 'VestuÃ¡ri
   const orientacao = (item.orientacao || item.sentido || '').toString().trim() || undefined;
 
   const missing_fields: string[] = [];
-  if (fabric === 'Tecido nÃ£o informado') missing_fields.push('Tecido');
-  if (color === 'Cor nÃ£o informada') missing_fields.push('Cor');
+  if (fabric === 'Tecido n├â┬úo informado') missing_fields.push('Tecido');
+  if (color === 'Cor n├â┬úo informada') missing_fields.push('Cor');
 
   const description = rawDesc || `${productType} ${fabric} ${color}`;
   const item_key = `${productType} | ${fabric} | ${color} | ${size}`;
-  const is_complete = productType !== 'Modelo nÃ£o informado' && fabric !== 'Tecido nÃ£o informado' && color !== 'Cor nÃ£o informada' && size !== 'Tamanho nÃ£o informado';
+  const is_complete = productType !== 'Modelo n├â┬úo informado' && fabric !== 'Tecido n├â┬úo informado' && color !== 'Cor n├â┬úo informada' && size !== 'Tamanho n├â┬úo informado';
   return { product_type: productType, fabric, color, size, description, sku: rawSku, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields };
 }
 
@@ -244,7 +244,7 @@ function getOrderCuttingNeeded(order: any): number {
       if (sumCorte > 0) return sumCorte;
     }
     if (order.observations) {
-      const match = order.observations.match(/âš ï¸\s*(\d+)\s*pÃ§s?\s*sem\s*estoque/i);
+      const match = order.observations.match(/├ó┼í┬á├»┬©┬Å\s*(\d+)\s*p├â┬ºs?\s*sem\s*estoque/i);
       if (match) return parseInt(match[1], 10) || 0;
     }
   } catch (err) { console.warn('[API] Error in getOrderCuttingNeeded:', err); }
@@ -288,7 +288,7 @@ function aggregateCuttingDemand(orders: any[]): any[] {
           const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated);
           if (qtyPending <= 0) continue;
           const { product_type, fabric, color, size, description, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields } = extractItemDetails(item, order.product_type);
-          if (item_key.toLowerCase().includes('dry fit Ãºnica | Ãºnico') || item_key.toLowerCase().includes('item | Ãºnico')) continue;
+          if (item_key.toLowerCase().includes('dry fit ├â┬║nica | ├â┬║nico') || item_key.toLowerCase().includes('item | ├â┬║nico')) continue;
           const orderDemand = { order_id: order.id, order_number: order.order_number || `PED-${order.id}`, client_name: order.client_name || 'Cliente', deadline: order.deadline || new Date().toISOString(), item_quantity: Number(item.quantity ?? item.quantidade ?? 1), qty_corte_needed: qtyCorteNeeded, qty_corte_allocated: qtyAllocated, qty_corte_pending: qtyPending };
           if (!demandMap.has(item_key)) { demandMap.set(item_key, { item_key, product_type, fabric, color, size, description, sku: item.sku || item.codigo, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields, total_necessario: 0, pedidos_count: 0, prazo_mais_proximo: order.deadline || new Date().toISOString(), pedidos_waiting: [] }); }
           const existing = demandMap.get(item_key)!;
@@ -357,7 +357,7 @@ function reallocateOnCancellation(cancelledOrderId: number, orders: any[], alloc
   const reallocatedLogs: any[] = [];
   for (const log of activeAllocations) {
     log.status = 'released';
-    const result = allocateCuttingPieces(orders, log.item_key, log.quantidade_alocada, `Sistema (RealocaÃ§Ã£o de PED-${cancelledOrderId})`, 1, allocationLogsStore);
+    const result = allocateCuttingPieces(orders, log.item_key, log.quantidade_alocada, `Sistema (Realoca├â┬º├â┬úo de PED-${cancelledOrderId})`, 1, allocationLogsStore);
     if (result.success && result.allocations.length > 0) {
       for (const newLog of result.allocations) { newLog.status = 'reallocated'; reallocatedLogs.push(newLog); }
     }
@@ -368,7 +368,7 @@ function reallocateOnCancellation(cancelledOrderId: number, orders: any[], alloc
 
 dotenv.config();
 
-// â”€â”€ Inline: lossStore â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: lossStore ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 // (Inlined to avoid cross-file .ts import issues on Vercel @vercel/node runtime)
 
 interface OrderStageProgress {
@@ -391,15 +391,15 @@ function _getDefaultLossReasons(stages: { id: number; name: string; sort_order?:
   const find = (name: string, fb: number) => stages.find(s => s.name.toLowerCase().trim() === name.toLowerCase().trim())?.id ?? fb;
   const sorted = [...stages].sort((a, b) => (a.sort_order||0)-(b.sort_order||0));
   const first = sorted[0]?.id ?? 1;
-  const corte = find('Corte', first); const estoque = find('SeparaÃ§Ã£o estoque', corte);
+  const corte = find('Corte', first); const estoque = find('Separa├â┬º├â┬úo estoque', corte);
   const dtf = find('DTF', corte); const costura = find('Costura', corte);
   return [
-    { motivo: 'Falta de matÃ©ria-prima/peÃ§a (estoque)', etapa_reentrada_id: estoque },
+    { motivo: 'Falta de mat├â┬®ria-prima/pe├â┬ºa (estoque)', etapa_reentrada_id: estoque },
     { motivo: 'Defeito de corte', etapa_reentrada_id: corte },
     { motivo: 'Falha na estampa/DTF', etapa_reentrada_id: dtf },
     { motivo: 'Defeito de costura', etapa_reentrada_id: costura },
     { motivo: 'Extravio', etapa_reentrada_id: first },
-    { motivo: 'Reprovado na conferÃªncia (qualidade)', etapa_reentrada_id: corte },
+    { motivo: 'Reprovado na confer├â┬¬ncia (qualidade)', etapa_reentrada_id: corte },
     { motivo: 'Outro', etapa_reentrada_id: first },
   ];
 }
@@ -437,7 +437,7 @@ async function _initLossStore(sb: any) {
   try { const { data } = await sb.from('loss_reason_settings').select('*'); if (data?.length) _lossReasonSettingsStore = data; } catch(e) {}
   if (_lossReasonSettingsStore.length === 0) {
     try { const { data } = await sb.from('stages').select('id, name, sort_order'); if (data) _lossReasonSettingsStore = _getDefaultLossReasons(data); }
-    catch(e) { _lossReasonSettingsStore = _getDefaultLossReasons([{id:1,name:'Ficha de aprovaÃ§Ã£o',sort_order:1},{id:2,name:'Corte',sort_order:2},{id:12,name:'SeparaÃ§Ã£o estoque',sort_order:4},{id:5,name:'DTF',sort_order:7},{id:7,name:'Costura',sort_order:12},{id:8,name:'ConferÃªncia',sort_order:13}]); }
+    catch(e) { _lossReasonSettingsStore = _getDefaultLossReasons([{id:1,name:'Ficha de aprova├â┬º├â┬úo',sort_order:1},{id:2,name:'Corte',sort_order:2},{id:12,name:'Separa├â┬º├â┬úo estoque',sort_order:4},{id:5,name:'DTF',sort_order:7},{id:7,name:'Costura',sort_order:12},{id:8,name:'Confer├â┬¬ncia',sort_order:13}]); }
   }
   try { const { data } = await sb.from('order_loss_logs').select('*'); if (data) _lossLogsStore = data; } catch(e) {}
   try { const { data } = await sb.from('order_progress_logs').select('*'); if (data) _progressLogsStore = data; } catch(e) {}
@@ -574,7 +574,7 @@ async function validateStageFinish(sb: any, orderId: number, stageId: number) {
   const prog = (await getStageProgressForOrder(sb, orderId)).find((p: any) => p.stage_id === stageId);
   if (!prog || prog.quantidade_boa >= prog.quantidade_pedido) return { canFinish: true };
   const remaining = prog.quantidade_pedido - prog.quantidade_boa;
-  return { canFinish: false, remaining, message: `NÃ£o Ã© possÃ­vel finalizar a etapa '${si?.name||stageId}': faltam ${remaining} peÃ§as boas para atingir o total de ${prog.quantidade_pedido} peÃ§as do pedido.` };
+  return { canFinish: false, remaining, message: `N├â┬úo ├â┬® poss├â┬¡vel finalizar a etapa '${si?.name||stageId}': faltam ${remaining} pe├â┬ºas boas para atingir o total de ${prog.quantidade_pedido} pe├â┬ºas do pedido.` };
 }
 async function getLossReportDataStore(sb: any, startDate?: string, endDate?: string) {
   await _initLossStore(sb);
@@ -587,7 +587,7 @@ async function getLossReportDataStore(sb: any, startDate?: string, endDate?: str
 }
 async function getProgressLogs(sb: any) { await _initLossStore(sb); return _progressLogsStore; }
 
-// â”€â”€ Inline: timerUtils â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: timerUtils ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 interface PauseRecord { id?: number; execution_id?: number; start_pause: string; end_pause?: string | null; duration_seconds?: number | null; }
 interface ExecutionRecord { id?: number; start_time: string; end_time?: string | null; status: 'Em andamento' | 'Pausado' | 'Finalizado'; total_time_seconds?: number; pauses?: PauseRecord[]; }
 interface CalculatedTimes { totalAccumulatedSeconds: number; currentSessionSeconds: number; isPaused: boolean; }
@@ -612,7 +612,7 @@ function calculateExecutionTimes(execution: ExecutionRecord, pauses: PauseRecord
     return { totalAccumulatedSeconds, currentSessionSeconds: Math.max(0, Math.floor((nowMs - currentSessionStartMs) / 1000)), isPaused: false };
 }
 
-// â”€â”€ Inline: goalsUtils â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: goalsUtils ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 interface ExecutionActivity { user_id: number; stage_id: number; end_time: string; quantity: number; }
 interface GoalConfig { stage_id: number; user_id?: number | null; meta_diaria: number | null; }
 const GOAL_THRESHOLDS = { GREEN: 1.0, YELLOW: 0.7 };
@@ -638,7 +638,7 @@ function resolveGoal(stageGoalDefault: number | null | undefined, collaboratorOv
     if (override && override.meta_diaria !== null && override.meta_diaria !== undefined) return override.meta_diaria;
     return stageGoalDefault !== undefined ? stageGoalDefault : null;
 }
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 
 const app = express();
 app.use(express.json());
@@ -681,7 +681,7 @@ const supabaseAdmin = createClient(
     supabaseServiceRoleKey || supabaseAnonKey
 );
 
-// Utilizando memÃ³ria ao invÃ©s de disco local
+// Utilizando mem├â┬│ria ao inv├â┬®s de disco local
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -698,7 +698,7 @@ function checkError(error: any, res: express.Response, msg = "Erro interno") {
 const isAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const role = req.headers['x-user-role'];
     if (role !== 'Admin') {
-        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem realizar esta aÃ§Ã£o." });
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem realizar esta a├â┬º├â┬úo." });
     }
     next();
 };
@@ -706,20 +706,20 @@ const isAdmin = (req: express.Request, res: express.Response, next: express.Next
 const isAdminOrComercial = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const role = req.headers['x-user-role'];
     if (role !== 'Admin' && role !== 'Comercial') {
-        return res.status(403).json({ error: "Acesso negado. AÃ§Ã£o permitida apenas para AdministraÃ§Ã£o ou Comercial." });
+        return res.status(403).json({ error: "Acesso negado. A├â┬º├â┬úo permitida apenas para Administra├â┬º├â┬úo ou Comercial." });
     }
     next();
 };
 
 const isAuthenticated = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const role = req.headers['x-user-role'];
-    if (role !== 'Admin' && role !== 'Comercial' && role !== 'ProduÃ§Ã£o') {
-        return res.status(403).json({ error: "Acesso negado. Login necessÃ¡rio." });
+    if (role !== 'Admin' && role !== 'Comercial' && role !== 'Produ├â┬º├â┬úo') {
+        return res.status(403).json({ error: "Acesso negado. Login necess├â┬írio." });
     }
     next();
 };
 
-// â”€â”€ Supabase status (health check) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Supabase status (health check) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/supabase/status", async (_req, res) => {
     const { data, error } = await supabase
         .from("users")
@@ -734,7 +734,7 @@ app.get("/api/supabase/status", async (_req, res) => {
     return res.json({ status: "success", message: "Supabase SDK funcionando!", sample_data: data });
 });
 
-// â”€â”€ Production Utils (Centralized Finished Pieces Calculation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Utils (Centralized Finished Pieces Calculation) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 interface StageInfo { id: number; name: string; sort_order: number; calculation_type: string; }
 
 function _getLastPorPecaStageId(orderRequiredStages: number[], allStages: StageInfo[]): number | null {
@@ -930,7 +930,7 @@ function _calculateFinishedPiecesByPeriod(
     return result;
 }
 
-// â”€â”€ Dashboard Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Dashboard Stats ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/dashboard/stats", async (req, res) => {
     const { startDate, endDate, product_type, print_type } = req.query;
     const { data, error } = await supabase.rpc("get_dashboard_stats_v2", {
@@ -962,14 +962,14 @@ app.get("/api/dashboard/stats", async (req, res) => {
             const todayCalc = _calculateFinishedPieces(orders, stages, execs, logs, todayStartIso, todayEndIso);
             data.metrics.todayFinalizedPieces = todayCalc.totalPieces;
         } catch (calcErr) {
-            console.error("Erro ao recalcular ProduÃ§Ã£o Hoje centralizada:", calcErr);
+            console.error("Erro ao recalcular Produ├â┬º├â┬úo Hoje centralizada:", calcErr);
         }
     }
 
     return res.json(data);
 });
 
-// â”€â”€ Production Config & Goals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config & Goals ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/config", async (req, res) => {
     const isAdminUser = req.headers["x-user-role"] === "Admin";
     const { data, error } = await supabase.from("config_producao").select("*").single();
@@ -1003,7 +1003,7 @@ app.patch("/api/config", isAdmin, async (req, res) => {
     return res.json(data);
 });
 
-// â”€â”€ Reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Reports ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/reports", async (req, res) => {
     const isAdminUser = req.headers["x-user-role"] === "Admin";
     const { period, user_id, stage_id, startDate, endDate, print_type } = req.query;
@@ -1016,11 +1016,11 @@ app.get("/api/reports", async (req, res) => {
         p_print_type: print_type || null
     });
 
-    if (checkError(error, res, "Erro nos relatÃ³rios")) return;
+    if (checkError(error, res, "Erro nos relat├â┬│rios")) return;
 
     if (data) {
-        // Calcular produÃ§Ã£o detalhada por etapa dentro do perÃ­odo selecionado (ajustado para timezone)
-        const tzOffset = req.query.tzOffset ? Number(req.query.tzOffset) : 180; // padrÃ£o 180 (BRT -03:00)
+        // Calcular produ├â┬º├â┬úo detalhada por etapa dentro do per├â┬¡odo selecionado (ajustado para timezone)
+        const tzOffset = req.query.tzOffset ? Number(req.query.tzOffset) : 180; // padr├â┬úo 180 (BRT -03:00)
 
         const getUtcRange = (dateStr: string, isEnd = false) => {
             const parts = dateStr.split('-');
@@ -1084,7 +1084,7 @@ app.get("/api/reports", async (req, res) => {
             }
             data.production_by_stage = Array.from(stageProductionMap.values());
 
-            // Enriquecer orders_list com as etapas concluÃ­das para cada pedido no perÃ­odo
+            // Enriquecer orders_list com as etapas conclu├â┬¡das para cada pedido no per├â┬¡odo
             if (Array.isArray(data.orders_list) && data.orders_list.length > 0) {
                 data.orders_list.forEach((ord: any) => {
                     const orderExecutions = periodExecutions ? periodExecutions.filter((ex: any) => ex.order_id === ord.order_id) : [];
@@ -1100,7 +1100,7 @@ app.get("/api/reports", async (req, res) => {
                 });
             }
 
-            // Recalcular volume centralizado e resumo sem duplicaÃ§Ã£o de etapas intermediÃ¡rias
+            // Recalcular volume centralizado e resumo sem duplica├â┬º├â┬úo de etapas intermedi├â┬írias
             const [allOrdersRes, allStagesRes, allExecsRes, allLogsRes] = await Promise.all([
                 supabaseAdmin.from("orders").select("id, quantity, required_stages, status, created_at, delivered_at, deleted_at"),
                 supabaseAdmin.from("stages").select("id, name, sort_order, calculation_type"),
@@ -1125,7 +1125,7 @@ app.get("/api/reports", async (req, res) => {
                 data.summary.total_orders = totalCalc.totalOrders;
             }
         } catch (err) {
-            console.error("Erro ao calcular produÃ§Ã£o por etapa no relatÃ³rio:", err);
+            console.error("Erro ao calcular produ├â┬º├â┬úo por etapa no relat├â┬│rio:", err);
             data.production_by_stage = [];
         }
 
@@ -1151,7 +1151,7 @@ app.get("/api/reports", async (req, res) => {
     return res.json(data);
 });
 
-// â”€â”€ Olist ERP Integration Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Olist ERP Integration Helpers ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 function _parseTinyXml(xmlString: string): { status: string; status_processamento: string; errors: string[]; pedidos: any[] } {
     const statusMatch = xmlString.match(/<status>(.*?)<\/status>/);
     const status = statusMatch ? statusMatch[1].trim() : '';
@@ -1246,9 +1246,9 @@ function _isApprovedOlistStatus(situacao: string): boolean {
     const approvedStatuses = [
         'aprovado', 'faturado', 'preparando envio', 'pronto para envio',
         'enviado', 'entregue', 'atendido', 'parcialmente atendido',
-        'em aberto', 'aberto', 'em andamento', 'em separaÃ§Ã£o',
-        'em producao', 'em produÃ§Ã£o', 'aguardando envio', 'completo',
-        'pago', 'venda agenciada', 'em digitaÃ§Ã£o'
+        'em aberto', 'aberto', 'em andamento', 'em separa├â┬º├â┬úo',
+        'em producao', 'em produ├â┬º├â┬úo', 'aguardando envio', 'completo',
+        'pago', 'venda agenciada', 'em digita├â┬º├â┬úo'
     ];
     return approvedStatuses.some(approved => s.includes(approved));
 }
@@ -1429,7 +1429,7 @@ async function _fetchOlistOrderDetail(token: string, olistOrderId: string): Prom
 
     const items = (raw.itens || []).map((itWrapper: any) => {
         const it = itWrapper.item || itWrapper;
-        const desc = it.descricao || it.description || 'Item sem descriÃ§Ã£o';
+        const desc = it.descricao || it.description || 'Item sem descri├â┬º├â┬úo';
         const cod = it.codigo || it.sku || '-';
         const qty = parseFloat(it.quantidade || it.quantity) || 1;
         const explicitSize = it.tamanho || it.size || it.variacao?.tamanho || it.grade?.tamanho || it.variacoes?.tamanho;
@@ -1514,10 +1514,10 @@ function _parseOrderDate(dateStr: string): Date | null {
     return isNaN(d.getTime()) ? null : d;
 }
 
-function _resolveProductType(itemDesc: string = '', itemProductType: string = ''): 'Dry Fit' | 'AlgodÃ£o' | 'Poliamida' {
+function _resolveProductType(itemDesc: string = '', itemProductType: string = ''): 'Dry Fit' | 'Algod├â┬úo' | 'Poliamida' {
     const text = `${itemDesc} ${itemProductType}`.toLowerCase();
-    if (text.includes('algodao') || text.includes('algodÃ£o')) {
-        return 'AlgodÃ£o';
+    if (text.includes('algodao') || text.includes('algod├â┬úo')) {
+        return 'Algod├â┬úo';
     }
     if (text.includes('poliamida')) {
         return 'Poliamida';
@@ -1528,14 +1528,14 @@ function _resolveProductType(itemDesc: string = '', itemProductType: string = ''
 async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
     const token = (tokenOverride || process.env.OLIST_API_TOKEN || "").trim();
     if (!token) {
-        throw new Error("Token de acesso do Olist ERP nÃ£o configurado ou expirado.");
+        throw new Error("Token de acesso do Olist ERP n├â┬úo configurado ou expirado.");
     }
 
     const rawOrders = await _fetchOlistOrders(token, daysLimit);
     console.log(`[OlistSync] Encontrados ${rawOrders.length} pedidos na API do Olist/Tiny.`);
 
     const approved = rawOrders.filter(o => _isApprovedOlistStatus(o.situacao));
-    console.log(`[OlistSync] Pedidos aprovados/pagos elegÃ­veis (total histÃ³rico): ${approved.length}`);
+    console.log(`[OlistSync] Pedidos aprovados/pagos eleg├â┬¡veis (total hist├â┬│rico): ${approved.length}`);
 
     // Filter to only import orders from today onwards (daysLimit=1 includes today & yesterday for safety)
     const cutoffDate = new Date();
@@ -1551,7 +1551,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
         return orderDate >= cutoffDate;
     });
 
-    console.log(`[OlistSync] Pedidos aprovados dos Ãºltimos ${daysLimit} dias (de hoje em diante): ${eligibleOrders.length}`);
+    console.log(`[OlistSync] Pedidos aprovados dos ├â┬║ltimos ${daysLimit} dias (de hoje em diante): ${eligibleOrders.length}`);
 
     const importedOrders: any[] = [];
     const skippedOrders: any[] = [];
@@ -1595,7 +1595,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
 
             const detail = await _fetchOlistOrderDetail(token, olistId);
             if (!detail) {
-                console.warn(`[OlistSync] Detalhes nÃ£o retornados para o pedido #${olistId}`);
+                console.warn(`[OlistSync] Detalhes n├â┬úo retornados para o pedido #${olistId}`);
                 continue;
             }
 
@@ -1603,7 +1603,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
             const clientName = detail.nome || 'Cliente Olist';
             const quantity = detail.total_quantidade || 1;
 
-            let productType: 'Dry Fit' | 'AlgodÃ£o' | 'Poliamida' = 'Dry Fit';
+            let productType: 'Dry Fit' | 'Algod├â┬úo' | 'Poliamida' = 'Dry Fit';
             if (detail.itens && detail.itens.length > 0) {
                 productType = _resolveProductType(detail.itens[0].descricao, detail.itens[0].productType);
             }
@@ -1646,7 +1646,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                     if (itemCorte > 0) {
                         corteDetails.push({
                             description: item.description || item.descricao || 'Produto',
-                            size: item.size || item.tamanho || 'Tamanho nÃ£o informado',
+                            size: item.size || item.tamanho || 'Tamanho n├â┬úo informado',
                             sku: item.sku || item.codigo || '-',
                             qty_pedida: itemQty,
                             qty_separacao: itemSeparacao,
@@ -1660,18 +1660,18 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
             }
 
             // Route stages:
-            // Stage 1: Ficha, Stage 12: SeparaÃ§Ã£o estoque, Stage 2: Corte, Stage 7: Costura, Stage 8: ConferÃªncia
+            // Stage 1: Ficha, Stage 12: Separa├â┬º├â┬úo estoque, Stage 2: Corte, Stage 7: Costura, Stage 8: Confer├â┬¬ncia
             let defaultRequiredStages = [1, 12, 7, 8];
             if (totalViaCorte > 0) {
                 defaultRequiredStages = [1, 12, 2, 7, 8];
             }
 
-            let obsText = `Importado do Olist ERP (ID: ${detail.id}, NÂº: ${detail.numero}) - Aguardando revisÃ£o de estampa`;
+            let obsText = `Importado do Olist ERP (ID: ${detail.id}, N├é┬║: ${detail.numero}) - Aguardando revis├â┬úo de estampa`;
             if (totalViaCorte > 0) {
-                obsText += ` | âš ï¸ ${totalViaCorte} pÃ§s sem estoque (precisam de Corte)`;
+                obsText += ` | ├ó┼í┬á├»┬©┬Å ${totalViaCorte} p├â┬ºs sem estoque (precisam de Corte)`;
             }
             if (stockCheckFailed) {
-                obsText += ` | âš ï¸ Consulta de estoque no Olist falhou (alocado 100% via SeparaÃ§Ã£o Estoque para revisÃ£o manual)`;
+                obsText += ` | ├ó┼í┬á├»┬©┬Å Consulta de estoque no Olist falhou (alocado 100% via Separa├â┬º├â┬úo Estoque para revis├â┬úo manual)`;
             }
 
             let deadlineIso = new Date().toISOString();
@@ -1689,8 +1689,8 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
             const insertPayload: any = {
                 order_number: orderNumber,
                 client_name: clientName,
-                product_type: productType, // Must satisfy orders_product_type_check ('Dry Fit' | 'AlgodÃ£o' | 'Poliamida')
-                print_type: 'DTF', // Must satisfy orders_print_type_check ('DTF' | 'Silk' | 'SublimaÃ§Ã£o' | 'Bordado')
+                product_type: productType, // Must satisfy orders_product_type_check ('Dry Fit' | 'Algod├â┬úo' | 'Poliamida')
+                print_type: 'DTF', // Must satisfy orders_print_type_check ('DTF' | 'Silk' | 'Sublima├â┬º├â┬úo' | 'Bordado')
                 quantity: quantity,
                 deadline: deadlineIso,
                 status: 'Rascunho',
@@ -1745,7 +1745,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                     if (totalViaSeparacao > 0 || totalViaCorte > 0) {
                         progEntries.push({
                             order_id: createdOrder.id,
-                            stage_id: 12, // SeparaÃ§Ã£o estoque
+                            stage_id: 12, // Separa├â┬º├â┬úo estoque
                             quantidade_pedido: totalViaSeparacao,
                             quantidade_boa: 0,
                             quantidade_perdida: 0,
@@ -1801,7 +1801,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
     };
 }
 
-// â”€â”€ Olist ERP Integration Endpoints (OAuth 2.0 & Token Sync) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Olist ERP Integration Endpoints (OAuth 2.0 & Token Sync) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 
 const OLIST_CLIENT_ID = process.env.OLIST_CLIENT_ID || "tiny-api-b69bd9b2e5c8fb27d88f3d7507bb6d82e9313f1f-1789606342";
 const OLIST_CLIENT_SECRET = process.env.OLIST_CLIENT_SECRET || "HI899WOykeSXkU7Z6ek4s9MnWR8EcUib";
@@ -1835,10 +1835,10 @@ app.use(async (req, res, next) => {
             const error = req.query.error;
 
             if (error) {
-                return res.status(400).send(`<h3>Erro na autorizaÃ§Ã£o do Olist ERP:</h3><pre>${error}</pre>`);
+                return res.status(400).send(`<h3>Erro na autoriza├â┬º├â┬úo do Olist ERP:</h3><pre>${error}</pre>`);
             }
             if (!code) {
-                return res.status(400).send(`<h3>CÃ³digo de autorizaÃ§Ã£o nÃ£o fornecido pelo Olist ERP.</h3>`);
+                return res.status(400).send(`<h3>C├â┬│digo de autoriza├â┬º├â┬úo n├â┬úo fornecido pelo Olist ERP.</h3>`);
             }
 
             const tokenUrl = "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token";
@@ -1888,9 +1888,9 @@ app.use(async (req, res, next) => {
                 </head>
                 <body>
                     <div class="card">
-                        <div class="badge">âœ“ AUTORIZADO COM SUCESSO</div>
-                        <h1>ConexÃ£o com Olist / Tiny ERP Ativa!</h1>
-                        <p>O aplicativo ComfortPro foi autorizado no Olist ERP com sucesso. Agora a sincronizaÃ§Ã£o automÃ¡tica de pedidos estÃ¡ conectada e pronta.</p>
+                        <div class="badge">├ó┼ôÔÇ£ AUTORIZADO COM SUCESSO</div>
+                        <h1>Conex├â┬úo com Olist / Tiny ERP Ativa!</h1>
+                        <p>O aplicativo ComfortPro foi autorizado no Olist ERP com sucesso. Agora a sincroniza├â┬º├â┬úo autom├â┬ítica de pedidos est├â┬í conectada e pronta.</p>
                         <button onclick="if(window.opener){window.opener.location.reload();} window.close();">Fechar e Voltar ao Sistema</button>
                     </div>
                 </body>
@@ -1908,7 +1908,7 @@ app.get("/api/integrations/olist/debug", async (_req, res) => {
     try {
         const token = await _getEffectiveOlistToken();
         if (!token) {
-            return res.json({ error: "Token do Olist ERP nÃ£o configurado ou expirado", oauth_configured: !!OLIST_CLIENT_ID });
+            return res.json({ error: "Token do Olist ERP n├â┬úo configurado ou expirado", oauth_configured: !!OLIST_CLIENT_ID });
         }
 
         const rawOrders = await _fetchOlistOrders(token);
@@ -1941,7 +1941,7 @@ app.post("/api/integrations/olist/sync", async (req, res) => {
         return res.json({ success: true, ...result });
     } catch (err: any) {
         console.error("[OlistSync API Error]:", err);
-        return res.json({ success: false, error: err.message || "Erro na sincronizaÃ§Ã£o com Olist ERP" });
+        return res.json({ success: false, error: err.message || "Erro na sincroniza├â┬º├â┬úo com Olist ERP" });
     }
 });
 
@@ -2018,7 +2018,7 @@ app.post("/api/integrations/olist/reprocess-normalization", async (_req, res) =>
                     await supabaseAdmin.from("order_history").insert({
                         order_id: order.id,
                         acao: "reprocessou_normalizacao",
-                        detalhes: "Reprocessamento automÃ¡tico da normalizaÃ§Ã£o de modelos, tecidos, cores e tamanhos",
+                        detalhes: "Reprocessamento autom├â┬ítico da normaliza├â┬º├â┬úo de modelos, tecidos, cores e tamanhos",
                         usuario: "Sistema (Reprocessamento Olist)",
                         antes: { items: itemsRaw },
                         depois: { items: updatedItems }
@@ -2034,11 +2034,11 @@ app.post("/api/integrations/olist/reprocess-normalization", async (_req, res) =>
             total_orders_analyzed: orders.length,
             reprocessed_count: reprocessedCount,
             updated_orders: detailsList,
-            message: `Reprocessamento concluÃ­do com sucesso. ${reprocessedCount} pedido(s) atualizado(s).`
+            message: `Reprocessamento conclu├â┬¡do com sucesso. ${reprocessedCount} pedido(s) atualizado(s).`
         });
     } catch (err: any) {
         console.error("[ReprocessNormalization API Error]:", err);
-        return res.status(500).json({ success: false, error: err.message || "Erro no reprocessamento da normalizaÃ§Ã£o" });
+        return res.status(500).json({ success: false, error: err.message || "Erro no reprocessamento da normaliza├â┬º├â┬úo" });
     }
 });
 
@@ -2072,7 +2072,7 @@ app.get("/api/orders/drafts", async (_req, res) => {
 app.delete("/api/orders/drafts/:id", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
-        const usuario = (req.headers["x-user-name"] as string) || "UsuÃ¡rio";
+        const usuario = (req.headers["x-user-name"] as string) || "Usu├â┬írio";
         const now = new Date().toISOString();
 
         const { error } = await supabaseAdmin
@@ -2082,7 +2082,7 @@ app.delete("/api/orders/drafts/:id", async (req, res) => {
             .eq("status", "Rascunho");
 
         if (checkError(error, res, "Erro ao excluir rascunho")) return;
-        return res.json({ success: true, message: "Rascunho excluÃ­do com sucesso" });
+        return res.json({ success: true, message: "Rascunho exclu├â┬¡do com sucesso" });
     } catch (err: any) {
         return res.status(500).json({ error: err.message });
     }
@@ -2090,7 +2090,7 @@ app.delete("/api/orders/drafts/:id", async (req, res) => {
 
 app.post("/api/orders/drafts/cleanup", async (req, res) => {
     try {
-        const usuario = (req.headers["x-user-name"] as string) || "UsuÃ¡rio";
+        const usuario = (req.headers["x-user-name"] as string) || "Usu├â┬írio";
         const now = new Date().toISOString();
         const forceAll = req.body?.all === true;
 
@@ -2121,7 +2121,7 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
         const { print_type, product_type, deadline, observations, required_stages, num_colors } = req.body;
 
         if (!print_type) {
-            return res.status(400).json({ error: "Ã‰ necessÃ¡rio selecionar o tipo de estampa (DTF, Silk, SublimaÃ§Ã£o, Bordado)" });
+            return res.status(400).json({ error: "├âÔÇ░ necess├â┬írio selecionar o tipo de estampa (DTF, Silk, Sublima├â┬º├â┬úo, Bordado)" });
         }
 
         const { data: currentOrder, error: fetchErr } = await supabaseAdmin
@@ -2131,7 +2131,7 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
             .single();
 
         if (fetchErr || !currentOrder) {
-            return res.status(404).json({ error: "Pedido rascunho nÃ£o encontrado" });
+            return res.status(404).json({ error: "Pedido rascunho n├â┬úo encontrado" });
         }
 
         const stagesArray = required_stages || currentOrder.required_stages || [1, 2, 7, 8];
@@ -2154,7 +2154,7 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
             .select()
             .single();
 
-        if (checkError(updateErr, res, "Erro ao liberar pedido para produÃ§Ã£o")) return;
+        if (checkError(updateErr, res, "Erro ao liberar pedido para produ├â┬º├â┬úo")) return;
 
         try {
             await supabaseAdmin.from("order_history").insert({
@@ -2173,7 +2173,7 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
     }
 });
 
-// â”€â”€ Order Templates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Order Templates ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/order-templates", async (_req, res) => {
     const { data, error } = await supabase
         .from("order_templates")
@@ -2226,7 +2226,7 @@ app.delete("/api/order-templates/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// â”€â”€ Delivery Forecast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Delivery Forecast ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/orders/delivery-forecast", async (_req, res) => {
     try {
         // 1. Active orders (not delivered, not cancelled, not deleted)
@@ -2259,18 +2259,18 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         // Minutes available per day per sector (shared pool)
         const dailyCapacityMinutes = config.jornada_horas * 60 * config.operadores_ativos * config.eficiencia_percentual;
 
-        // 4. Build lookup: stageId â†’ baseTimeSeconds (Ideal vs Real)
+        // 4. Build lookup: stageId ├óÔÇáÔÇÖ baseTimeSeconds (Ideal vs Real)
         const timeByStage: Record<number, number> = {};
 
         const stageDefaults: Record<string, number> = {
-            "Ficha de aprovaÃ§Ã£o": 1.5 * 60,
-            "SeparaÃ§Ã£o / Corte": 2 * 60,
-            "RevelaÃ§Ã£o de Tela": 2 * 60,
+            "Ficha de aprova├â┬º├â┬úo": 1.5 * 60,
+            "Separa├â┬º├â┬úo / Corte": 2 * 60,
+            "Revela├â┬º├â┬úo de Tela": 2 * 60,
             "Silk": 5 * 60,
             "DTF": 4 * 60,
-            "SublimaÃ§Ã£o": 3 * 60,
+            "Sublima├â┬º├â┬úo": 3 * 60,
             "Costura": 2.5 * 60,
-            "ConferÃªncia": 1 * 60,
+            "Confer├â┬¬ncia": 1 * 60,
             "Embalagem": 0.5 * 60,
         };
 
@@ -2286,12 +2286,12 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
             } else {
                 baseSecs = stageDefaults[stage.name] ?? 2 * 60;
             }
-            // Multiplicador default? NÃ£o, agora tempo_base equivale ao tempo total da etapa
+            // Multiplicador default? N├â┬úo, agora tempo_base equivale ao tempo total da etapa
             timeByStage[stage.id] = baseSecs;
             (timeByStage as any)[`${stage.id}_type`] = stage.calculation_type || 'por_peca';
         }
 
-        // 5. Simulate queue â€” orders already sorted by deadline (most urgent first)
+        // 5. Simulate queue ├óÔé¼ÔÇØ orders already sorted by deadline (most urgent first)
         // sectorAvailableAt: when can a sector next accept work (in ms)
         const now = new Date();
         now.setHours(0, 0, 0, 0);
@@ -2401,12 +2401,12 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
 
     } catch (err: any) {
         console.error("[Forecast] Error:", err);
-        return res.status(500).json({ error: "Erro no cÃ¡lculo de previsÃ£o" });
+        return res.status(500).json({ error: "Erro no c├â┬ílculo de previs├â┬úo" });
     }
 });
 
 
-// â”€â”€ Orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Orders ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/orders", async (req, res) => {
     const { search, stage_id, stage_status, product_type, print_type } = req.query;
     let data: any[] | null = null;
@@ -2690,7 +2690,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
     return res.json({ id: data.id, order_number, art_url: art_urls[0] || null, art_urls });
 });
 
-// Soft delete â€” mantÃ©m histÃ³rico de execuÃ§Ãµes intacto
+// Soft delete ├óÔé¼ÔÇØ mant├â┬®m hist├â┬│rico de execu├â┬º├â┬Áes intacto
 app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     const { id } = req.params;
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
@@ -2702,10 +2702,10 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
         .eq("id", Number(id))
         .single();
 
-    if (fetchErr || !order) return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
-    if (order.deleted_at) return res.status(400).json({ error: "Pedido jÃ¡ foi excluÃ­do" });
+    if (fetchErr || !order) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+    if (order.deleted_at) return res.status(400).json({ error: "Pedido j├â┬í foi exclu├â┬¡do" });
 
-    // 2. Soft delete â€” only update deleted_at and deleted_by
+    // 2. Soft delete ├óÔé¼ÔÇØ only update deleted_at and deleted_by
     const now = new Date().toISOString();
     const { error: updateErr } = await supabaseAdmin
         .from("orders")
@@ -2723,7 +2723,7 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
         depois: null,
     });
 
-    console.log(`[API] Pedido ${id} marcado como excluÃ­do (soft delete) por ${usuario}`);
+    console.log(`[API] Pedido ${id} marcado como exclu├â┬¡do (soft delete) por ${usuario}`);
     return res.json({ success: true });
 });
 
@@ -2743,7 +2743,7 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
         .single();
 
     if (fetchError || !order) {
-        return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+        return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
     }
 
     const current_urls = order.art_urls || [];
@@ -2828,7 +2828,7 @@ app.patch("/api/orders/:id/dtf", async (req, res) => {
         .eq("id", orderId)
         .single();
 
-    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
 
     // 2. Perform update
     const updates: any = {};
@@ -2900,12 +2900,12 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
 
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url, dtf_complete, dtf_location } = req.body;
 
-    // â”€â”€ Validations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ├óÔÇØÔé¼├óÔÇØÔé¼ Validations ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
     if (quantity !== undefined && Number(quantity) <= 0) {
         return res.status(400).json({ error: "Quantidade deve ser maior que zero" });
     }
     if (num_colors !== undefined && Number(num_colors) < 1) {
-        return res.status(400).json({ error: "NÃºmero de cores deve ser pelo menos 1" });
+        return res.status(400).json({ error: "N├â┬║mero de cores deve ser pelo menos 1" });
     }
 
     // 1. Fetch current order for audit log + finalized check
@@ -2915,10 +2915,10 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
         .eq("id", orderId)
         .single();
 
-    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
-    if (currentOrder.deleted_at) return res.status(400).json({ error: "NÃ£o Ã© possÃ­vel editar um pedido excluÃ­do" });
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+    if (currentOrder.deleted_at) return res.status(400).json({ error: "N├â┬úo ├â┬® poss├â┬¡vel editar um pedido exclu├â┬¡do" });
     if (currentOrder.status === "Entregue" && !confirmFinalized) {
-        return res.status(409).json({ error: "CONFIRM_FINALIZED", message: "Este pedido jÃ¡ foi entregue. Deseja mesmo editÃ¡-lo?" });
+        return res.status(409).json({ error: "CONFIRM_FINALIZED", message: "Este pedido j├â┬í foi entregue. Deseja mesmo edit├â┬í-lo?" });
     }
 
     // 2. Build update payload with only provided fields
@@ -2960,7 +2960,7 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     return res.json({ success: true });
 });
 
-// Cancel order â€” keeps history, removes from capacity calculations
+// Cancel order ├óÔé¼ÔÇØ keeps history, removes from capacity calculations
 app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
     const orderId = Number(req.params.id);
     const usuario = (req.headers["x-user-name"] as string) || "Admin";
@@ -2971,9 +2971,9 @@ app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
         .eq("id", orderId)
         .single();
 
-    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
-    if (currentOrder.deleted_at) return res.status(400).json({ error: "Pedido excluÃ­do nÃ£o pode ser cancelado" });
-    if (currentOrder.status === "Cancelado") return res.status(400).json({ error: "Pedido jÃ¡ estÃ¡ cancelado" });
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+    if (currentOrder.deleted_at) return res.status(400).json({ error: "Pedido exclu├â┬¡do n├â┬úo pode ser cancelado" });
+    if (currentOrder.status === "Cancelado") return res.status(400).json({ error: "Pedido j├â┬í est├â┬í cancelado" });
 
     const now = new Date().toISOString();
     const { error: updateErr } = await supabaseAdmin
@@ -2991,7 +2991,7 @@ app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
         depois: { ...currentOrder, status: "Cancelado", cancelled_at: now, cancelled_by: usuario },
     });
 
-    // RealocaÃ§Ã£o automÃ¡tica de peÃ§as cortadas liberadas pelo cancelamento
+    // Realoca├â┬º├â┬úo autom├â┬ítica de pe├â┬ºas cortadas liberadas pelo cancelamento
     try {
         await _initLossStore(supabaseAdmin);
         const { data: activeOrders } = await supabaseAdmin
@@ -3022,7 +3022,7 @@ app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
             }
         }
     } catch (reallocErr) {
-        console.warn("[API] Erro na realocaÃ§Ã£o de corte pÃ³s-cancelamento:", reallocErr);
+        console.warn("[API] Erro na realoca├â┬º├â┬úo de corte p├â┬│s-cancelamento:", reallocErr);
     }
 
     return res.json({ success: true });
@@ -3035,11 +3035,11 @@ app.get("/api/orders/:id/history", isAdminOrComercial, async (req, res) => {
         .select("*")
         .eq("order_id", Number(req.params.id))
         .order("created_at", { ascending: false });
-    if (checkError(error, res, "Erro ao buscar histÃ³rico")) return;
+    if (checkError(error, res, "Erro ao buscar hist├â┬│rico")) return;
     return res.json(data || []);
 });
 
-// â”€â”€ Consolidated Cutting Panel APIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Consolidated Cutting Panel APIs ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 
 // GET /api/cutting/consolidated-demand
 app.get("/api/cutting/consolidated-demand", async (_req, res) => {
@@ -3071,7 +3071,7 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
         const { item_key, quantidade_cortada, user_id, user_name } = req.body;
 
         if (!item_key) {
-            return res.status(400).json({ error: "Item a cortar Ã© obrigatÃ³rio." });
+            return res.status(400).json({ error: "Item a cortar ├â┬® obrigat├â┬│rio." });
         }
         const cutQty = Number(quantidade_cortada);
         if (!cutQty || cutQty <= 0) {
@@ -3085,7 +3085,7 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
             .not("status", "in", '("Entregue","Cancelado")');
 
         if (fetchErr || !activeOrders) {
-            return res.status(500).json({ error: "Erro ao carregar pedidos para alocaÃ§Ã£o" });
+            return res.status(500).json({ error: "Erro ao carregar pedidos para aloca├â┬º├â┬úo" });
         }
 
         const result = allocateCuttingPieces(
@@ -3098,7 +3098,7 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
         );
 
         if (!result.success) {
-            return res.status(400).json({ error: "NÃ£o hÃ¡ demanda pendente para o item especificado." });
+            return res.status(400).json({ error: "N├â┬úo h├â┬í demanda pendente para o item especificado." });
         }
 
         // Atualizar pedidos impactados (items JSONB & stages_status) no banco
@@ -3151,7 +3151,7 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
             }
         }
 
-        // Salvar novos registros de alocaÃ§Ã£o em corte_allocations
+        // Salvar novos registros de aloca├â┬º├â┬úo em corte_allocations
         if (result.allocations.length > 0) {
             try {
                 await supabaseAdmin.from("corte_allocations").insert(result.allocations);
@@ -3163,7 +3163,7 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
         return res.json(result);
     } catch (err: any) {
         console.error("[API] Erro ao registrar corte consolidado:", err);
-        return res.status(500).json({ error: "Erro ao registrar produÃ§Ã£o consolidada de corte" });
+        return res.status(500).json({ error: "Erro ao registrar produ├â┬º├â┬úo consolidada de corte" });
     }
 });
 
@@ -3196,7 +3196,7 @@ app.post("/api/cutting/optitex-risco", async (req, res) => {
     try {
         const record = req.body;
         if (!record || !record.model || !record.composicao) {
-            return res.status(400).json({ error: "Dados invÃ¡lidos de risco Optitex." });
+            return res.status(400).json({ error: "Dados inv├â┬ílidos de risco Optitex." });
         }
         record.id = record.id || `opt-${Date.now()}`;
         record.created_at = record.created_at || new Date().toISOString();
@@ -3209,7 +3209,7 @@ app.post("/api/cutting/optitex-risco", async (req, res) => {
 
         return res.json({ success: true, record });
     } catch (err: any) {
-        return res.status(500).json({ error: "Erro ao salvar validaÃ§Ã£o do Optitex." });
+        return res.status(500).json({ error: "Erro ao salvar valida├â┬º├â┬úo do Optitex." });
     }
 });
 
@@ -3236,7 +3236,7 @@ app.post("/api/cutting/approved-plans", async (req, res) => {
     try {
         const planRecord = req.body;
         if (!planRecord || !planRecord.id) {
-            return res.status(400).json({ error: "Plano invÃ¡lido." });
+            return res.status(400).json({ error: "Plano inv├â┬ílido." });
         }
         const existingIdx = _approvedPlansStore.findIndex(p => p.id === planRecord.id);
         if (existingIdx >= 0) {
@@ -3294,7 +3294,7 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
         } = req.body;
 
         if (!model || !decision) {
-            return res.status(400).json({ error: "Modelo e decisÃ£o sÃ£o obrigatÃ³rios." });
+            return res.status(400).json({ error: "Modelo e decis├â┬úo s├â┬úo obrigat├â┬│rios." });
         }
 
         const decisionRecord = {
@@ -3328,10 +3328,10 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
                 insertedDecision = data;
             }
         } catch (e) {
-            console.warn("[API] Aviso ao salvar ramado_decisions no Supabase (usando fallback em memÃ³ria):", e);
+            console.warn("[API] Aviso ao salvar ramado_decisions no Supabase (usando fallback em mem├â┬│ria):", e);
         }
 
-        // Se a decisÃ£o for APROVADO_OTIMIZADO e houver excedentes, salvar em producao_excedentes
+        // Se a decis├â┬úo for APROVADO_OTIMIZADO e houver excedentes, salvar em producao_excedentes
         const surplusItems: any[] = [];
         if (decision === 'APROVADO_OTIMIZADO' && excedente_proposto && typeof excedente_proposto === 'object') {
             for (const [sz, qty] of Object.entries(excedente_proposto)) {
@@ -3368,8 +3368,8 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
             excedentes_gerados: surplusItems
         });
     } catch (err: any) {
-        console.error("[API] Erro ao registrar decisÃ£o RAMADO:", err);
-        return res.status(500).json({ error: "Erro ao registrar decisÃ£o de excedente RAMADO" });
+        console.error("[API] Erro ao registrar decis├â┬úo RAMADO:", err);
+        return res.status(500).json({ error: "Erro ao registrar decis├â┬úo de excedente RAMADO" });
     }
 });
 
@@ -3408,7 +3408,7 @@ app.get("/api/cutting/producao-excedentes", async (_req, res) => {
 });
 
 
-// â”€â”€ Stages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Stages ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/stages", async (_req, res) => {
     const { data, error } = await supabase
         .from("stages")
@@ -3497,7 +3497,7 @@ app.delete("/api/stages/:id", async (req, res) => {
     return res.json({ success: true });
 });
 
-// â”€â”€ Loss Reasons & Re-entry Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Loss Reasons & Re-entry Configuration ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/loss-reasons", async (_req, res) => {
     try {
         const reasons = await getLossReasons(supabase);
@@ -3512,7 +3512,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
     try {
         const { reasons } = req.body;
         if (!Array.isArray(reasons)) {
-            return res.status(400).json({ error: "ParÃ¢metro 'reasons' deve ser um array." });
+            return res.status(400).json({ error: "Par├â┬ómetro 'reasons' deve ser um array." });
         }
         const updated = await updateLossReasons(supabase, reasons);
         return res.json({ success: true, reasons: updated });
@@ -3522,7 +3522,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
     }
 });
 
-// â”€â”€ Partial Progress & Loss Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Partial Progress & Loss Logging ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/orders/:id/stage-progress", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
@@ -3569,10 +3569,10 @@ app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
             return res.status(400).json({ error: "Quantidade perdida deve ser maior que 0." });
         }
         if (!motivo) {
-            return res.status(400).json({ error: "Motivo da perda Ã© obrigatÃ³rio." });
+            return res.status(400).json({ error: "Motivo da perda ├â┬® obrigat├â┬│rio." });
         }
         if (motivo === "Outro" && (!motivo_detalhe || !motivo_detalhe.trim())) {
-            return res.status(400).json({ error: "Campo livre obrigatÃ³rio para o motivo 'Outro'." });
+            return res.status(400).json({ error: "Campo livre obrigat├â┬│rio para o motivo 'Outro'." });
         }
 
         const result = await logLoss(
@@ -3594,19 +3594,19 @@ app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
     }
 });
 
-// â”€â”€ Loss & Rework Bottleneck Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Loss & Rework Bottleneck Report ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/reports/losses", async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const data = await getLossReportDataStore(supabase, startDate as string, endDate as string);
         return res.json(data);
     } catch (err: any) {
-        console.error("[API] Erro ao gerar relatÃ³rio de perdas:", err);
-        return res.status(500).json({ error: "Erro ao gerar relatÃ³rio de perdas" });
+        console.error("[API] Erro ao gerar relat├â┬│rio de perdas:", err);
+        return res.status(500).json({ error: "Erro ao gerar relat├â┬│rio de perdas" });
     }
 });
 
-// â”€â”€ Collaborator Stage Goals Overrides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Collaborator Stage Goals Overrides ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/collaborator-goals", async (_req, res) => {
     const { data, error } = await supabase
         .from("collaborator_stage_goals")
@@ -3752,7 +3752,7 @@ app.get("/api/executions/active/:userId", async (req, res) => {
     return res.json(formatted);
 });
 
-// â”€â”€ Executions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Executions ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/orders/:id/executions", async (req, res) => {
     const { data, error } = await supabase
         .from("stage_executions")
@@ -3851,15 +3851,15 @@ app.post("/api/executions/start", async (req, res) => {
         .limit(1);
 
     if (e1) {
-        return checkError(e1, res, "Erro ao verificar execuÃ§Ãµes existentes");
+        return checkError(e1, res, "Erro ao verificar execu├â┬º├â┬Áes existentes");
     }
 
     if (existing && existing.length > 0) {
-        return res.status(400).json({ error: "Esta etapa jÃ¡ estÃ¡ sendo executada para este pedido." });
+        return res.status(400).json({ error: "Esta etapa j├â┬í est├â┬í sendo executada para este pedido." });
     }
 
     if (Number(user_id) === 0) {
-        return res.status(400).json({ error: "UsuÃ¡rio nÃ£o identificado. Por favor, saia e entre novamente." });
+        return res.status(400).json({ error: "Usu├â┬írio n├â┬úo identificado. Por favor, saia e entre novamente." });
     }
 
     // No auto-pause anymore as per user requested multiple tasks support
@@ -3875,15 +3875,15 @@ app.post("/api/executions/start", async (req, res) => {
         .maybeSingle();
 
     if (error) {
-        console.error("[API] Erro ao iniciar execuÃ§Ã£o:", error);
-        return res.status(500).json({ error: `Erro ao iniciar execuÃ§Ã£o: ${error.message}` });
+        console.error("[API] Erro ao iniciar execu├â┬º├â┬úo:", error);
+        return res.status(500).json({ error: `Erro ao iniciar execu├â┬º├â┬úo: ${error.message}` });
     }
 
     if (!data) {
-        return res.status(500).json({ error: "Erro ao recuperar ID da nova execuÃ§Ã£o." });
+        return res.status(500).json({ error: "Erro ao recuperar ID da nova execu├â┬º├â┬úo." });
     }
 
-    // --- AUTOMAÃ‡ÃƒO CORTE VS SEPARAÃ‡ÃƒO ESTOQUE ---
+    // --- AUTOMA├âÔÇí├âãÆO CORTE VS SEPARA├âÔÇí├âãÆO ESTOQUE ---
     try {
         // Obter nome da etapa sendo iniciada
         const { data: stageData } = await supabaseAdmin
@@ -3892,9 +3892,9 @@ app.post("/api/executions/start", async (req, res) => {
             .eq("id", Number(stage_id))
             .single();
 
-        if (stageData && (stageData.name === "Corte" || stageData.name === "SeparaÃ§Ã£o estoque")) {
-            // Se for "Corte", a etapa oponente a remover Ã© "SeparaÃ§Ã£o estoque". E vice-versa.
-            const oppositeStageName = stageData.name === "Corte" ? "SeparaÃ§Ã£o estoque" : "Corte";
+        if (stageData && (stageData.name === "Corte" || stageData.name === "Separa├â┬º├â┬úo estoque")) {
+            // Se for "Corte", a etapa oponente a remover ├â┬® "Separa├â┬º├â┬úo estoque". E vice-versa.
+            const oppositeStageName = stageData.name === "Corte" ? "Separa├â┬º├â┬úo estoque" : "Corte";
 
             // Encontrar o ID da etapa oponente
             const { data: oppositeStageData } = await supabaseAdmin
@@ -3919,9 +3919,9 @@ app.post("/api/executions/start", async (req, res) => {
                      orderData.required_stages.map(String).includes("12"));
 
                 if (isParallelActive) {
-                    console.log(`[API] Ambas as etapas (Corte e SeparaÃ§Ã£o estoque) estÃ£o ativas em paralelo para o pedido ${order_id}. Mantendo ambas.`);
+                    console.log(`[API] Ambas as etapas (Corte e Separa├â┬º├â┬úo estoque) est├â┬úo ativas em paralelo para o pedido ${order_id}. Mantendo ambas.`);
                 } else if (orderData && Array.isArray(orderData.required_stages)) {
-                    // Remover a etapa oposta apenas se nÃ£o for execuÃ§Ã£o paralela
+                    // Remover a etapa oposta apenas se n├â┬úo for execu├â┬º├â┬úo paralela
                     const updatedStages = orderData.required_stages.filter(
                         (id) => String(id) !== String(oppositeStageId)
                     );
@@ -3931,20 +3931,20 @@ app.post("/api/executions/start", async (req, res) => {
                             .from("orders")
                             .update({ required_stages: updatedStages })
                             .eq("id", Number(order_id));
-                        console.log(`[API] AutomaÃ§Ã£o: EstÃ¡gio oponente '${oppositeStageName}' (${oppositeStageId}) removido do pedido ${order_id}.`);
+                        console.log(`[API] Automa├â┬º├â┬úo: Est├â┬ígio oponente '${oppositeStageName}' (${oppositeStageId}) removido do pedido ${order_id}.`);
                     }
                 }
             }
         }
     } catch (autoErr) {
-        console.error("[API] Erro na automaÃ§Ã£o de exclusividade Corte/SeparaÃ§Ã£o:", autoErr);
-        // NÃ£o retornar erro para o front, deixar a execuÃ§Ã£o seguir normalmente se a automaÃ§Ã£o falhar
+        console.error("[API] Erro na automa├â┬º├â┬úo de exclusividade Corte/Separa├â┬º├â┬úo:", autoErr);
+        // N├â┬úo retornar erro para o front, deixar a execu├â┬º├â┬úo seguir normalmente se a automa├â┬º├â┬úo falhar
     }
 
     return res.json({ id: data.id });
 });
 
-// â”€â”€ Pause-All: pausa todas as execuÃ§Ãµes ativas (fim de expediente) â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Pause-All: pausa todas as execu├â┬º├â┬Áes ativas (fim de expediente) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
     try {
         const now = new Date();
@@ -3954,7 +3954,7 @@ app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
             .select("id")
             .eq("status", "Em andamento");
 
-        if (fetchErr) return checkError(fetchErr, res, "Erro ao buscar execuÃ§Ãµes ativas");
+        if (fetchErr) return checkError(fetchErr, res, "Erro ao buscar execu├â┬º├â┬Áes ativas");
         if (!activeExecs || activeExecs.length === 0) {
             return res.json({ success: true, paused: 0 });
         }
@@ -3969,15 +3969,15 @@ app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
                 .insert({ execution_id: exec.id, start_pause: now.toISOString() });
         }
 
-        console.log(`[API] Pause-all: ${activeExecs.length} execuÃ§Ã£o(Ãµes) pausada(s) por comando direto.`);
+        console.log(`[API] Pause-all: ${activeExecs.length} execu├â┬º├â┬úo(├â┬Áes) pausada(s) por comando direto.`);
         return res.json({ success: true, paused: activeExecs.length });
     } catch (err: any) {
         console.error("[API] Erro no pause-all:", err);
-        return res.status(500).json({ error: "Erro ao pausar todas as execuÃ§Ãµes" });
+        return res.status(500).json({ error: "Erro ao pausar todas as execu├â┬º├â┬Áes" });
     }
 });
 
-// â”€â”€ Reset-Production: zera todos os relatÃ³rios e tempos mantendo os pedidos (OpÃ§Ã£o B) â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Reset-Production: zera todos os relat├â┬│rios e tempos mantendo os pedidos (Op├â┬º├â┬úo B) ├óÔÇØÔé¼├óÔÇØÔé¼
 app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
     try {
         console.log(`[API] Reset solicitado por ${req.headers["x-user-name"] || "Admin"}`);
@@ -3989,17 +3989,17 @@ app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
             .gt("id", 0);
         if (errPauses) {
             console.error("Erro ao deletar pausas:", errPauses);
-            return res.status(500).json({ error: "Erro ao limpar histÃ³rico de pausas: " + errPauses.message });
+            return res.status(500).json({ error: "Erro ao limpar hist├â┬│rico de pausas: " + errPauses.message });
         }
 
-        // 2. Apagar todas as execuÃ§Ãµes de etapas
+        // 2. Apagar todas as execu├â┬º├â┬Áes de etapas
         const { error: errExecutions } = await supabaseAdmin
             .from("stage_executions")
             .delete()
             .gt("id", 0);
         if (errExecutions) {
-            console.error("Erro ao deletar execuÃ§Ãµes:", errExecutions);
-            return res.status(500).json({ error: "Erro ao limpar histÃ³rico de execuÃ§Ãµes: " + errExecutions.message });
+            console.error("Erro ao deletar execu├â┬º├â┬Áes:", errExecutions);
+            return res.status(500).json({ error: "Erro ao limpar hist├â┬│rico de execu├â┬º├â┬Áes: " + errExecutions.message });
         }
 
         // 3. Resetar o tempo acumulado dos pedidos para 0
@@ -4012,25 +4012,25 @@ app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
             return res.status(500).json({ error: "Erro ao resetar tempos dos pedidos: " + errOrders.message });
         }
 
-        // 4. Resetar as mÃ©dias de tempo calculadas nos estÃ¡gios
+        // 4. Resetar as m├â┬®dias de tempo calculadas nos est├â┬ígios
         const { error: errStages } = await supabaseAdmin
             .from("stages")
             .update({ real_average_time: 0, execution_count: 0 })
             .gt("id", 0);
         if (errStages) {
-            console.error("Erro ao resetar mÃ©dias dos estÃ¡gios:", errStages);
-            return res.status(500).json({ error: "Erro ao resetar mÃ©dias dos estÃ¡gios: " + errStages.message });
+            console.error("Erro ao resetar m├â┬®dias dos est├â┬ígios:", errStages);
+            return res.status(500).json({ error: "Erro ao resetar m├â┬®dias dos est├â┬ígios: " + errStages.message });
         }
 
-        console.log("[API] Reset de produÃ§Ã£o concluÃ­do com sucesso!");
-        return res.json({ success: true, message: "HistÃ³rico de relatÃ³rios e tempos resetados com sucesso! Os pedidos foram preservados." });
+        console.log("[API] Reset de produ├â┬º├â┬úo conclu├â┬¡do com sucesso!");
+        return res.json({ success: true, message: "Hist├â┬│rico de relat├â┬│rios e tempos resetados com sucesso! Os pedidos foram preservados." });
     } catch (err: any) {
-        console.error("[API] Erro ao resetar produÃ§Ã£o:", err);
-        return res.status(500).json({ error: "Erro interno ao processar reset de produÃ§Ã£o" });
+        console.error("[API] Erro ao resetar produ├â┬º├â┬úo:", err);
+        return res.status(500).json({ error: "Erro interno ao processar reset de produ├â┬º├â┬úo" });
     }
 });
 
-// â”€â”€ Auto-Pause: pausa automÃ¡tica baseado no horÃ¡rio agendado â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Auto-Pause: pausa autom├â┬ítica baseado no hor├â┬írio agendado ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.post("/api/executions/auto-pause", async (req, res) => {
     try {
         const { data: config, error: configErr } = await supabaseAdmin.from("config_producao").select("*").eq("id", 1).single();
@@ -4041,13 +4041,13 @@ app.post("/api/executions/auto-pause", async (req, res) => {
         const spSpnow = new Date(spSpnowStr + "Z");
         
         const dayOfWeek = spSpnow.getUTCDay();
-        if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ success: true, message: "Fim de semana, pulando pausa automÃ¡tica." });
+        if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ success: true, message: "Fim de semana, pulando pausa autom├â┬ítica." });
 
         const checkTime = (target: string) => {
             if (!target) return false;
             const [hh, mm] = target.split(':').map(Number);
             
-            // Janela de Â±3 minutos para garantir que o trigger funcione mesmo com pequenas variaÃ§Ãµes de tempo/intervalo
+            // Janela de ├é┬▒3 minutos para garantir que o trigger funcione mesmo com pequenas varia├â┬º├â┬Áes de tempo/intervalo
             const targetMin = hh * 60 + mm;
             const currentMin = spSpnow.getUTCHours() * 60 + spSpnow.getUTCMinutes();
             return Math.abs(currentMin - targetMin) <= 3;
@@ -4057,7 +4057,7 @@ app.post("/api/executions/auto-pause", async (req, res) => {
         const isEndOfDay = checkTime(dayOfWeek === 5 ? config.auto_pause_time_friday : config.auto_pause_time_weekday);
 
         if (!isLunch && !isEndOfDay) {
-            return res.json({ success: true, message: "Fora do horÃ¡rio de pausa automÃ¡tica.", current_time: now.toLocaleTimeString('pt-BR') });
+            return res.json({ success: true, message: "Fora do hor├â┬írio de pausa autom├â┬ítica.", current_time: now.toLocaleTimeString('pt-BR') });
         }
 
         const { data: activeExecs, error: fetchErr } = await supabaseAdmin
@@ -4075,8 +4075,8 @@ app.post("/api/executions/auto-pause", async (req, res) => {
             await supabaseAdmin.from("pauses").insert({ execution_id: exec.id, start_pause: now.toISOString() });
         }
 
-        console.log(`[AutoPause] ${activeExecs.length} execuÃ§Ã£o(Ãµes) pausadas automaticamente por ${isLunch ? 'almoÃ§o' : 'fim de expediente'}.`);
-        return res.json({ success: true, paused: activeExecs.length, reason: isLunch ? 'almoÃ§o' : 'fim de expediente' });
+        console.log(`[AutoPause] ${activeExecs.length} execu├â┬º├â┬úo(├â┬Áes) pausadas automaticamente por ${isLunch ? 'almo├â┬ºo' : 'fim de expediente'}.`);
+        return res.json({ success: true, paused: activeExecs.length, reason: isLunch ? 'almo├â┬ºo' : 'fim de expediente' });
     } catch (err: any) {
         console.error("[AutoPause] Erro:", err);
         return res.status(500).json({ error: "Erro interno no auto-pause" });
@@ -4097,7 +4097,7 @@ app.post("/api/executions/:id/pause", async (req, res) => {
         .from("stage_executions")
         .update({ status: "Pausado" })
         .eq("id", execution_id);
-    if (checkError(e1, res, "Erro ao pausar execuÃ§Ã£o")) return;
+    if (checkError(e1, res, "Erro ao pausar execu├â┬º├â┬úo")) return;
 
     const { error: e2 } = await supabaseAdmin
         .from("pauses")
@@ -4113,7 +4113,7 @@ app.post("/api/executions/:id/pause", async (req, res) => {
                 observation
             });
         } catch (e) {
-            console.error("Erro ao salvar observaÃ§Ã£o da etapa na pausa:", e);
+            console.error("Erro ao salvar observa├â┬º├â┬úo da etapa na pausa:", e);
         }
     }
 
@@ -4152,7 +4152,7 @@ app.post("/api/executions/:id/resume", async (req, res) => {
         .from("stage_executions")
         .update({ status: "Em andamento" })
         .eq("id", execution_id);
-    if (checkError(e1, res, "Erro ao retomar execuÃ§Ã£o")) return;
+    if (checkError(e1, res, "Erro ao retomar execu├â┬º├â┬úo")) return;
 
     return res.json({ success: true });
 });
@@ -4170,7 +4170,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .eq("id", execution_id)
         .single();
 
-    if (checkError(e1, res, "ExecuÃ§Ã£o nÃ£o encontrada") || !execution) return;
+    if (checkError(e1, res, "Execu├â┬º├â┬úo n├â┬úo encontrada") || !execution) return;
 
     // 1.5 Validate if stage can be finished (for por_peca, quantidade_boa >= quantidade_pedido)
     if (!force) {
@@ -4223,7 +4223,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         })
         .eq("id", execution_id);
 
-    if (checkError(e2, res, "Erro ao finalizar execuÃ§Ã£o")) return;
+    if (checkError(e2, res, "Erro ao finalizar execu├â┬º├â┬úo")) return;
 
     if (observation && execution) {
         try {
@@ -4234,7 +4234,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 observation
             });
         } catch (e) {
-            console.error("Erro ao salvar observaÃ§Ã£o da etapa na finalizaÃ§Ã£o:", e);
+            console.error("Erro ao salvar observa├â┬º├â┬úo da etapa na finaliza├â┬º├â┬úo:", e);
         }
     }
 
@@ -4254,15 +4254,15 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .eq("id", execution.order_id);
 
     // 7. Update order status if specific stage finished
-    if (execution.stages?.name === "Aguardando ficha de aprovaÃ§Ã£o") {
+    if (execution.stages?.name === "Aguardando ficha de aprova├â┬º├â┬úo") {
         await supabaseAdmin
             .from("orders")
-            .update({ status: "Em ProduÃ§Ã£o" })
+            .update({ status: "Em Produ├â┬º├â┬úo" })
             .eq("id", execution.order_id)
             .eq("status", "Entrada");
     }
 
-    if (execution.stages?.name === "ConferÃªncia" || execution.stages?.name === "Conferencia") {
+    if (execution.stages?.name === "Confer├â┬¬ncia" || execution.stages?.name === "Conferencia") {
         await supabaseAdmin
             .from("orders")
             .update({ 
@@ -4270,7 +4270,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 delivered_at: nowISO
             })
             .eq("id", execution.order_id);
-        console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar ConferÃªncia.`);
+        console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Confer├â┬¬ncia.`);
     }
 
     // 8. Update real average time for the stage
@@ -4319,14 +4319,14 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 .eq("id", execution.stage_id);
         }
     } catch (metricError) {
-        console.error("[API] Erro ao recalcular mÃ©tricas de tempo da etapa:", metricError);
-        // NÃ£o falha a requisiÃ§Ã£o se falhar ao atualizar a mÃ©trica
+        console.error("[API] Erro ao recalcular m├â┬®tricas de tempo da etapa:", metricError);
+        // N├â┬úo falha a requisi├â┬º├â┬úo se falhar ao atualizar a m├â┬®trica
     }
 
     return res.json({ success: true, total_time: totalExecutionSeconds });
 });
 
-// â”€â”€ Production Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/config/producao", async (_req, res) => {
     const { data, error } = await supabase
         .from("config_producao")
@@ -4347,7 +4347,7 @@ app.patch("/api/config/producao", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Users ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/users", async (req, res) => {
     const isAdminUser = req.headers["x-user-role"] === "Admin";
     const { search } = req.query;
@@ -4374,29 +4374,29 @@ app.post("/api/users", isAdmin, async (req, res) => {
     const { name, email, password, role, hourly_cost } = req.body;
 
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        return res.status(500).json({ error: "VariÃ¡vel SUPABASE_SERVICE_ROLE_KEY nÃ£o configurada no backend." });
+        return res.status(500).json({ error: "Vari├â┬ível SUPABASE_SERVICE_ROLE_KEY n├â┬úo configurada no backend." });
     }
 
-    // 1. Criar o usuÃ¡rio no Supabase Auth primeiro
+    // 1. Criar o usu├â┬írio no Supabase Auth primeiro
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password: password || "123456",
-        email_confirm: true, // Ignorar verificaÃ§Ã£o de email forÃ§adamente
+        email_confirm: true, // Ignorar verifica├â┬º├â┬úo de email for├â┬ºadamente
         user_metadata: { name }
     });
 
     if (authError) {
-        console.error("Erro ao criar usuÃ¡rio no Supabase Auth:", authError);
+        console.error("Erro ao criar usu├â┬írio no Supabase Auth:", authError);
         return res.status(400).json({ error: authError.message });
     }
 
-    // 2. Inserir os dados na tabela pÃºblica 'users'
+    // 2. Inserir os dados na tabela p├â┬║blica 'users'
     const { data, error } = await supabaseAdmin
         .from("users")
         .insert({
             name,
             email,
-            password: "-", // A senha verdadeira fica apenas no Auth por seguranÃ§a
+            password: "-", // A senha verdadeira fica apenas no Auth por seguran├â┬ºa
             role,
             hourly_cost: hourly_cost || 0,
             active: 1
@@ -4405,11 +4405,11 @@ app.post("/api/users", isAdmin, async (req, res) => {
         .single();
 
     if (error) {
-        // Se falhou a inserÃ§Ã£o na tabela pÃºblica, desfazemos a criaÃ§Ã£o no Auth
+        // Se falhou a inser├â┬º├â┬úo na tabela p├â┬║blica, desfazemos a cria├â┬º├â┬úo no Auth
         if (authData?.user?.id) {
             await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
         }
-        return checkError(error, res, "Erro ao criar perfil de usuÃ¡rio na tabela.") ? undefined : undefined;
+        return checkError(error, res, "Erro ao criar perfil de usu├â┬írio na tabela.") ? undefined : undefined;
     }
 
     return res.json({ id: data.id });
@@ -4425,7 +4425,7 @@ app.patch("/api/users/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// â”€â”€ Clients â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Clients ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/clients", async (req, res) => {
     const { search } = req.query;
     let query = supabase.from("clients").select("*").order("name");
@@ -4448,7 +4448,7 @@ app.post("/api/clients", async (req, res) => {
     return res.json({ id: data.id });
 });
 
-// â”€â”€ Delivery & Delays Reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Delivery & Delays Reports ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/reports/delays", async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
     const today = new Date().toISOString().split("T")[0];
@@ -4601,12 +4601,12 @@ app.get("/api/reports/delivery", async (req, res) => {
     });
 });
 
-// â”€â”€ Operational Report (Drill-Down) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Operational Report (Drill-Down) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/reports/operational", async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
 
     if (!startDate || !endDate) {
-        return res.status(400).json({ error: "ParÃ¢metros startDate e endDate sÃ£o obrigatÃ³rios" });
+        return res.status(400).json({ error: "Par├â┬ómetros startDate e endDate s├â┬úo obrigat├â┬│rios" });
     }
 
     const rpcParams: any = {
@@ -4617,11 +4617,11 @@ app.get("/api/reports/operational", async (req, res) => {
 
     const { data, error } = await supabase.rpc("get_operational_report", rpcParams);
 
-    if (checkError(error, res, "Erro ao buscar relatÃ³rio operacional")) return;
+    if (checkError(error, res, "Erro ao buscar relat├â┬│rio operacional")) return;
     return res.json(data);
 });
 
-// â”€â”€ Production Profile Report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Profile Report ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/reports/profiles", async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
 
@@ -4686,7 +4686,7 @@ app.get("/api/reports/profiles", async (req, res) => {
     return res.json(profiles);
 });
 
-// â”€â”€ Goals & Productivity Report (Day, Week, Month) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Goals & Productivity Report (Day, Week, Month) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/reports/goals-productivity", async (req, res) => {
     // Current time in Brazil (UTC-3)
     const now = new Date();
@@ -4939,7 +4939,7 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
     }
 });
 
-// â”€â”€ GeraÃ§Ã£o de Token & Acompanhamento PÃºblico de Pedido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ Gera├â┬º├â┬úo de Token & Acompanhamento P├â┬║blico de Pedido ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.post("/api/orders/:id/tracking-token", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
@@ -4953,15 +4953,15 @@ app.post("/api/orders/:id/tracking-token", async (req, res) => {
             .single();
 
         if (fetchErr || !order) {
-            return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
         }
 
-        // 2. Se jÃ¡ tiver token, retorna
+        // 2. Se j├â┬í tiver token, retorna
         if (order.tracking_token) {
             return res.json({ tracking_token: order.tracking_token });
         }
 
-        // 3. Gerar novo token Ãºnico (UUID)
+        // 3. Gerar novo token ├â┬║nico (UUID)
         const newToken = crypto.randomUUID();
 
         // 4. Salvar token no banco
@@ -4983,7 +4983,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
     try {
         const { token } = req.params;
         if (!token || typeof token !== "string" || token.length < 12) {
-            return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
         }
 
         // 1. Buscar pedido por token
@@ -4995,7 +4995,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
             .maybeSingle();
 
         if (fetchErr || !order) {
-            return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
         }
 
         // 2. Chamar a RPC get_orders_with_stages com o order_number do pedido
@@ -5008,18 +5008,18 @@ app.get("/api/public/orders/:token", async (req, res) => {
         });
 
         if (rpcError || !rpcOrders || rpcOrders.length === 0) {
-            return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
         }
 
         const rpcOrder = rpcOrders.find((o: any) => o.id === order.id);
         if (!rpcOrder) {
-            return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
         }
 
-        // Sincronizar progresso de perdas/quantidade boa com o store local temporÃ¡rio
+        // Sincronizar progresso de perdas/quantidade boa com o store local tempor├â┬írio
         enrichOrdersWithProgressSync([rpcOrder]);
 
-        // Buscar execuÃ§Ãµes reais e progresso gravados no banco para este pedido
+        // Buscar execu├â┬º├â┬Áes reais e progresso gravados no banco para este pedido
         const [{ data: dbExecs }, { data: dbProg }] = await Promise.all([
             supabaseAdmin
                 .from("stage_executions")
@@ -5074,7 +5074,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
             };
         });
 
-        // 3. Buscar a Ãºltima execuÃ§Ã£o para obter a data de atualizaÃ§Ã£o
+        // 3. Buscar a ├â┬║ltima execu├â┬º├â┬úo para obter a data de atualiza├â┬º├â┬úo
         const { data: lastExec } = await supabaseAdmin
             .from("stage_executions")
             .select("start_time, end_time, status, stages(name)")
@@ -5084,25 +5084,25 @@ app.get("/api/public/orders/:token", async (req, res) => {
             .maybeSingle();
 
         let lastUpdatedAt = order.created_at || null;
-        let lastUpdateMessage = "Pedido recebido e na fila de produÃ§Ã£o.";
+        let lastUpdateMessage = "Pedido recebido e na fila de produ├â┬º├â┬úo.";
 
         if (isEntregue) {
-            lastUpdateMessage = "Pedido concluÃ­do e entregue ao cliente.";
+            lastUpdateMessage = "Pedido conclu├â┬¡do e entregue ao cliente.";
         } else if (lastExec) {
             const time = lastExec.end_time || lastExec.start_time;
             if (time) lastUpdatedAt = time;
 
             const stagesRel: any = lastExec.stages;
             const stageName = Array.isArray(stagesRel)
-                ? (stagesRel[0]?.name || 'produÃ§Ã£o')
-                : (stagesRel?.name || 'produÃ§Ã£o');
+                ? (stagesRel[0]?.name || 'produ├â┬º├â┬úo')
+                : (stagesRel?.name || 'produ├â┬º├â┬úo');
 
             if (lastExec.status === 'Em andamento') {
-                lastUpdateMessage = `ProduÃ§Ã£o ativa na etapa de: ${stageName}.`;
+                lastUpdateMessage = `Produ├â┬º├â┬úo ativa na etapa de: ${stageName}.`;
             } else if (lastExec.status === 'Pausado') {
                 lastUpdateMessage = `Trabalho pausado temporariamente na etapa de: ${stageName}.`;
             } else if (lastExec.status === 'Finalizado') {
-                lastUpdateMessage = `Etapa concluÃ­da: ${stageName}.`;
+                lastUpdateMessage = `Etapa conclu├â┬¡da: ${stageName}.`;
             }
         }
 
@@ -5131,14 +5131,14 @@ app.get("/api/public/orders/:token", async (req, res) => {
 
         return res.json(publicData);
     } catch (err: any) {
-        console.error("[API Public] Erro ao buscar pedido pÃºblico por token:", err);
-        return res.status(404).json({ error: "Pedido nÃ£o encontrado" });
+        console.error("[API Public] Erro ao buscar pedido p├â┬║blico por token:", err);
+        return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
     }
 });
 
 
-// â”€â”€ PCP â€” Planejamento e Controle da ProduÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// FASE 1: Necessidades de ProduÃ§Ã£o + Planos de Corte + Ordens de ProduÃ§Ã£o
+// ├óÔÇØÔé¼├óÔÇØÔé¼ PCP ├óÔé¼ÔÇØ Planejamento e Controle da Produ├â┬º├â┬úo ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// FASE 1: Necessidades de Produ├â┬º├â┬úo + Planos de Corte + Ordens de Produ├â┬º├â┬úo
 
 /**
  * Calculates production necessity for a single order item.
@@ -5224,7 +5224,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
             for (const item of itemsList) {
                 if (!item || typeof item !== 'object') continue;
 
-                const details = extractItemDetails(item, order.product_type || 'VestuÃ¡rio');
+                const details = extractItemDetails(item, order.product_type || 'Vestu├â┬írio');
                 const qtyPedida = Number(item.quantity ?? item.quantidade ?? 1);
                 const qtyCorteNeeded = (() => {
                     let cQty = item.qty_corte ?? item.total_via_corte;
@@ -5246,7 +5246,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
                 const opData = opMap.get(opKey) || { qty_total: 0, qty_comprometida: 0 };
                 const qtyOpLivre = Math.max(0, opData.qty_total - opData.qty_comprometida);
 
-                // Estoque disponÃ­vel: usamos stock_available do item se presente, senÃ£o 0
+                // Estoque dispon├â┬¡vel: usamos stock_available do item se presente, sen├â┬úo 0
                 const qtyEstoqueDisp = Math.max(0, Number(item.stock_available ?? 0));
 
                 const { qty_necessaria, status } = _calcNecessidade(qtyPending, qtyEstoqueDisp, qtyOpLivre);
@@ -5266,8 +5266,8 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
                     deadline: order.deadline,
                     sku: details.sku || item.sku || item.codigo || null,
                     product_type: details.product_type,
-                    fabric: details.fabric !== 'Tecido nÃ£o informado' ? details.fabric : null,
-                    color: details.color !== 'Cor nÃ£o informada' ? details.color : null,
+                    fabric: details.fabric !== 'Tecido n├â┬úo informado' ? details.fabric : null,
+                    color: details.color !== 'Cor n├â┬úo informada' ? details.color : null,
                     size: details.size,
                     qty_pedida: qtyPending,
                     qty_reservada: qtyAllocated,
@@ -5315,7 +5315,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
         return res.json({ necessidades, summary });
     } catch (err: any) {
         console.error('[PCP] Erro ao buscar necessidades:', err);
-        return res.status(500).json({ error: 'Erro ao calcular necessidades de produÃ§Ã£o', details: err.message });
+        return res.status(500).json({ error: 'Erro ao calcular necessidades de produ├â┬º├â┬úo', details: err.message });
     }
 });
 
@@ -5373,7 +5373,7 @@ app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
             for (const item of itemsList) {
                 if (!item || typeof item !== 'object') continue;
 
-                const details = extractItemDetails(item, order.product_type || 'VestuÃ¡rio');
+                const details = extractItemDetails(item, order.product_type || 'Vestu├â┬írio');
                 const qtyPedida = Number(item.quantity ?? item.quantidade ?? 1);
                 let qtyCorteNeeded = Number(item.qty_corte ?? item.total_via_corte ?? 0);
                 if (qtyCorteNeeded <= 0 && item.stock_available !== undefined) {
@@ -5418,8 +5418,8 @@ app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
                     order_number: order.order_number,
                     sku,
                     product_type: details.product_type,
-                    fabric: details.fabric !== 'Tecido nÃ£o informado' ? details.fabric : null,
-                    color: details.color !== 'Cor nÃ£o informada' ? details.color : null,
+                    fabric: details.fabric !== 'Tecido n├â┬úo informado' ? details.fabric : null,
+                    color: details.color !== 'Cor n├â┬úo informada' ? details.color : null,
                     size: details.size,
                     qty_pedida: qtyPending,
                     qty_reservada: qtyAllocated,
@@ -5582,7 +5582,7 @@ app.post('/api/pcp/planos/:id/aprovar', async (req: any, res: any) => {
         const { aprovado_por, qty_aprovada, idempotency_key } = req.body;
 
         if (!idempotency_key) {
-            return res.status(400).json({ error: 'idempotency_key Ã© obrigatÃ³rio para aprovaÃ§Ã£o' });
+            return res.status(400).json({ error: 'idempotency_key ├â┬® obrigat├â┬│rio para aprova├â┬º├â┬úo' });
         }
 
         // Check for existing approval with same key (anti-duplicate)
@@ -5592,12 +5592,12 @@ app.post('/api/pcp/planos/:id/aprovar', async (req: any, res: any) => {
             .eq('id', planoId)
             .single();
 
-        if (!existing) return res.status(404).json({ error: 'Plano nÃ£o encontrado' });
+        if (!existing) return res.status(404).json({ error: 'Plano n├â┬úo encontrado' });
         if (existing.status === 'APROVADO') {
-            return res.status(409).json({ error: 'Plano jÃ¡ foi aprovado anteriormente', plano: existing });
+            return res.status(409).json({ error: 'Plano j├â┬í foi aprovado anteriormente', plano: existing });
         }
         if (!['RASCUNHO', 'AGUARDANDO_APROVACAO'].includes(existing.status)) {
-            return res.status(409).json({ error: `Plano nÃ£o pode ser aprovado no status atual: ${existing.status}` });
+            return res.status(409).json({ error: `Plano n├â┬úo pode ser aprovado no status atual: ${existing.status}` });
         }
 
         const now = new Date().toISOString();
@@ -5684,10 +5684,10 @@ app.post('/api/pcp/ops', async (req: any, res: any) => {
         const { plano_corte_id, product_type, fabric, color, size, sku, qty_total, observacao, created_by } = req.body;
 
         if (!product_type || !qty_total) {
-            return res.status(400).json({ error: 'product_type e qty_total sÃ£o obrigatÃ³rios' });
+            return res.status(400).json({ error: 'product_type e qty_total s├â┬úo obrigat├â┬│rios' });
         }
 
-        // Try Tiny API to create OP (Fase 5 â€” may not be available)
+        // Try Tiny API to create OP (Fase 5 ├óÔé¼ÔÇØ may not be available)
         let tinyResult: { tiny_op_id?: string; tiny_op_numero?: string } = {};
         let tinyAttempted = false;
         try {
@@ -5716,7 +5716,7 @@ app.post('/api/pcp/ops', async (req: any, res: any) => {
                 }
             }
         } catch (_) {
-            // Tiny OP creation not available â€” use manual fallback
+            // Tiny OP creation not available ├óÔé¼ÔÇØ use manual fallback
         }
 
         const opStatus = tinyResult.tiny_op_id ? 'ABERTA' : 'PENDENTE_CADASTRO_TINY';
@@ -5791,7 +5791,7 @@ app.post('/api/pcp/ops/:id/registrar-tiny', async (req: any, res: any) => {
         const { tiny_op_numero, tiny_op_id, usuario } = req.body;
 
         if (!tiny_op_numero) {
-            return res.status(400).json({ error: 'tiny_op_numero Ã© obrigatÃ³rio' });
+            return res.status(400).json({ error: 'tiny_op_numero ├â┬® obrigat├â┬│rio' });
         }
 
         const { data, error } = await supabase
@@ -5856,7 +5856,7 @@ app.get('/api/pcp/summary', async (req: any, res: any) => {
     }
 });
 
-// â”€â”€ 404 for API routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ├óÔÇØÔé¼├óÔÇØÔé¼ 404 for API routes ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 
 /**
  * POST /api/stock/sync
@@ -5873,7 +5873,7 @@ app.post('/api/stock/sync', async (req: any, res: any) => {
       token = await _getEffectiveOlistToken();
     }
     
-    if (!token) return res.status(400).json({ success: false, error: 'Token nï¿½o configurado. Faï¿½a autenticaï¿½ï¿½o OAuth com o Tiny.' });
+    if (!token) return res.status(400).json({ success: false, error: 'Token n├»┬┐┬¢o configurado. Fa├»┬┐┬¢a autentica├»┬┐┬¢├»┬┐┬¢o OAuth com o Tiny.' });
     if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ success: false, error: 'Nenhum produto informado.' });
     }
@@ -5935,10 +5935,10 @@ app.post('/api/stock/sync', async (req: any, res: any) => {
 
 
 // ============================================================================
-// CUT PLANS Ã¢â‚¬â€ Controle Real do Chao de Fabrica
+// CUT PLANS ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø Controle Real do Chao de Fabrica
 // ============================================================================
 
-// GET /api/cut-plans Ã¢â‚¬â€ lista todos os planos com itens e movimentacoes
+// GET /api/cut-plans ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø lista todos os planos com itens e movimentacoes
 app.get('/api/cut-plans', async (req: any, res: any) => {
   try {
     const { data: plans, error } = await supabaseAdmin
@@ -5952,8 +5952,7 @@ app.get('/api/cut-plans', async (req: any, res: any) => {
   }
 });
 
-// GET /api/cut-plans/:id Ã¢â‚¬â€ plano especifico com itens e movimentacoes
-// GET /api/cut-plans/committed-quantities Ã¢â‚¬â€ quantidades comprometidas para a Central de Corte
+// GET /api/cut-plans/committed-quantities ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø quantidades comprometidas para a Central de Corte
 app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -5962,6 +5961,18 @@ app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
       .in('status', ['PENDING_CUT', 'CUT_RELEASED', 'CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED', 'IN_CUSTOMIZATION', 'COMPLETED']);
     if (error) return res.status(500).json({ error: error.message });
 
+    const result: Record<string, number> = {};
+    for (const row of (data || [])) {
+      const key = `${row.order_id}::${row.item_key}`;
+      result[key] = (result[key] || 0) + (row.quantity_planned || 0);
+    }
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cut-plans/:id ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø plano especifico com itens e movimentacoes
 app.get('/api/cut-plans/:id', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -5977,7 +5988,7 @@ app.get('/api/cut-plans/:id', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans Ã¢â‚¬â€ cria um novo plano de corte (snapshot + itens por pedido)
+// POST /api/cut-plans ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø cria um novo plano de corte (snapshot + itens por pedido)
 app.post('/api/cut-plans', async (req: any, res: any) => {
   try {
     const { fabric, color, tipo_tecido, largura_util, items, created_by, notes } = req.body;
@@ -6061,7 +6072,7 @@ app.post('/api/cut-plans', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans/:id/release Ã¢â‚¬â€ LIBERAR PARA CORTE
+// POST /api/cut-plans/:id/release ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø LIBERAR PARA CORTE
 app.post('/api/cut-plans/:id/release', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6110,7 +6121,7 @@ app.post('/api/cut-plans/:id/release', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans/:id/complete-cut Ã¢â‚¬â€ CORTE CONCLUIDO
+// POST /api/cut-plans/:id/complete-cut ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø CORTE CONCLUIDO
 app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6210,7 +6221,7 @@ app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans/:id/send-sewing Ã¢â‚¬â€ ENVIAR PARA COSTURA
+// POST /api/cut-plans/:id/send-sewing ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø ENVIAR PARA COSTURA
 app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6266,7 +6277,7 @@ app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans/:id/return-sewing Ã¢â‚¬â€ RETORNOU DA COSTURA (parcial ou total)
+// POST /api/cut-plans/:id/return-sewing ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø RETORNOU DA COSTURA (parcial ou total)
 app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6331,7 +6342,7 @@ app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans/:id/cancel Ã¢â‚¬â€ CANCELAR LIBERACAO / REABRIR PARA CORTE
+// POST /api/cut-plans/:id/cancel ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø CANCELAR LIBERACAO / REABRIR PARA CORTE
 app.post('/api/cut-plans/:id/cancel', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6366,7 +6377,7 @@ app.post('/api/cut-plans/:id/cancel', async (req: any, res: any) => {
       qty_before: it.quantity_planned,
       qty_after: 0,
       quantity: it.quantity_planned,
-      notes: reason || 'Liberacao cancelada Ã¢â‚¬â€ quantidades retornam para pendencia de corte',
+      notes: reason || 'Liberacao cancelada ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø quantidades retornam para pendencia de corte',
       user_name: user_name || 'Sistema'
     }));
     await supabaseAdmin.from('production_movements').insert(movements);
@@ -6382,7 +6393,7 @@ app.post('/api/cut-plans/:id/cancel', async (req: any, res: any) => {
   }
 });
 
-// GET /api/cut-plans/:id/movements Ã¢â‚¬â€ historico de movimentacoes
+// GET /api/cut-plans/:id/movements ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø historico de movimentacoes
 app.get('/api/cut-plans/:id/movements', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6398,7 +6409,7 @@ app.get('/api/cut-plans/:id/movements', async (req: any, res: any) => {
   }
 });
 
-// GET /api/orders/:id/production-status Ã¢â‚¬â€ andamento produtivo por item do pedido
+// GET /api/orders/:id/production-status ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø andamento produtivo por item do pedido
 app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
   try {
     const orderId = Number(req.params.id);
@@ -6446,25 +6457,13 @@ app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
 });
 
 
-
-    const result: Record<string, number> = {};
-    for (const row of (data || [])) {
-      const key = `${row.order_id}::${row.item_key}`;
-      result[key] = (result[key] || 0) + (row.quantity_planned || 0);
-    }
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 app.all("/api/*", (req: any, res: any) => {
     res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
 
 
 // ============================================================================
-// MÓDULO PCP - FASE 1
+// M├ôDULO PCP - FASE 1
 // ============================================================================
 
 app.get('/api/pcp-phase1/dashboard', async (req: any, res: any) => {
@@ -6617,7 +6616,7 @@ app.post('/api/pcp-phase1/ordens/:id/desbloqueio', async (req: any, res: any) =>
 
         await supabase.from('orders').update({
             pcp_is_blocked: false,
-            pcp_status: 'AGUARDANDO LIBERAÇÃO'
+            pcp_status: 'AGUARDANDO LIBERA├ç├âO'
         }).eq('id', orderId);
 
         res.json({ success: true });
@@ -6660,127 +6659,5 @@ app.get('/api/pcp-phase1/config', async (req: any, res: any) => {
     }
 });
 
-
-// ============================================================================
-// MÓDULO PCP - FASE 2 (CHÃO DE FÁBRICA)
-// ============================================================================
-
-app.post('/api/pcp-phase2/cut-plans', async (req: any, res: any) => {
-    try {
-        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
-        const { fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids, is_manual, created_by } = req.body;
-        
-        const plano_numero = PC- + new Date().getFullYear() + - + Date.now().toString().slice(-6);
-
-        const { data, error } = await supabase.from('pcp_cut_plans').insert({
-            plano_numero,
-            fabric,
-            color,
-            tipo_tecido,
-            largura_util,
-            qty_planejada,
-            enfesto_data,
-            pedidos_ids,
-            is_manual: is_manual || false,
-            created_by
-        }).select().single();
-
-        if (error) throw error;
-        res.json(data);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/api/pcp-phase2/cut-plans', async (req: any, res: any) => {
-    try {
-        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
-        const { data, error } = await supabase.from('pcp_cut_plans').select('*').order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json(data);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/pcp-phase2/cut-plans/:id/dispatch', async (req: any, res: any) => {
-    try {
-        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
-        const planId = req.params.id;
-        const { costureira_nome, qty_enviada, data_previsao_retorno, created_by } = req.body;
-
-        const lote_numero = LT- + Date.now().toString().slice(-6);
-
-        // Cria o lote de costura
-        const { data, error } = await supabase.from('pcp_sewing_batches').insert({
-            cut_plan_id: planId,
-            lote_numero,
-            costureira_nome,
-            qty_enviada,
-            data_previsao_retorno,
-            created_by
-        }).select().single();
-
-        if (error) throw error;
-
-        // Atualiza o plano de corte
-        await supabase.from('pcp_cut_plans').update({ status: 'ENVIADO_COSTURA' }).eq('id', planId);
-
-        res.json(data);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/api/pcp-phase2/sewing-batches', async (req: any, res: any) => {
-    try {
-        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
-        const { data, error } = await supabase.from('pcp_sewing_batches').select('*, pcp_cut_plans(*)').order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json(data);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/pcp-phase2/sewing-batches/:id/receive', async (req: any, res: any) => {
-    try {
-        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
-        const batchId = req.params.id;
-        const { qty_retornada_boa, qty_retornada_defeito, allocacoes, updated_by } = req.body;
-
-        // 1. Atualiza o lote
-        const { error: batchErr } = await supabase.from('pcp_sewing_batches').update({
-            status: 'CONCLUIDO',
-            qty_retornada_boa,
-            qty_retornada_defeito,
-            data_retorno_real: new Date().toISOString()
-        }).eq('id', batchId);
-        
-        if (batchErr) throw batchErr;
-
-        // 2. Registra alocações
-        if (allocacoes && allocacoes.length > 0) {
-            const inserts = allocacoes.map((a: any) => ({
-                order_id: a.order_id,
-                sewing_batch_id: batchId,
-                sku: a.sku,
-                size: a.size,
-                qty_allocated: a.qty_allocated,
-                allocated_by: updated_by
-            }));
-            await supabase.from('pcp_stock_allocations').insert(inserts);
-            
-            // Aqui poderíamos avançar o status dos pedidos se eles estivessem totalmente supridos.
-            // Para garantir, vamos apenas atualizar a necessity ou adicionar historico no order_observations.
-        }
-
-        res.json({ success: true });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
 export default app;
-
 
