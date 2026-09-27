@@ -1183,15 +1183,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                                 </button>
                               </>
                             )}
-                            {plan.status === 'CUT_COMPLETED' && (
-                              <button
-                                onClick={() => handleSendSewing(plan.id, plan.plan_number)}
-                                disabled={cutPlanActionLoading !== null}
-                                className="px-2.5 py-1.5 bg-purple-600 text-white font-bold text-[9px] rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex-1"
-                              >
-                                {cutPlanActionLoading === `sewing-${plan.id}` ? '...' : 'Enviar p/ Costura'}
-                              </button>
-                            )}
+                            
                             {plan.status === 'IN_SEWING' && (
                               <button
                                 onClick={() => handleReturnSewing(plan.id, plan.plan_number, plan.qty_sewing)}

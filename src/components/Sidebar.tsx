@@ -43,7 +43,7 @@ export const Sidebar = ({
   cortePendingBadgeCount = 0 
 }: any) => {
   return (
-    <div className={`fixed inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 z-[150] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+    <div className={`absolute lg:static inset-y-0 left-0 w-64 h-full shrink-0 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 z-[150] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
       <div className="h-16 flex items-center px-6 border-b border-slate-100">
         <div className="flex items-center gap-2 text-indigo-950">
           <div className="bg-indigo-600 p-1.5 rounded-lg">
