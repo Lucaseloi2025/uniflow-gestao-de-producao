@@ -1109,11 +1109,11 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
               {[
                 { id: 'PENDING_CUT', label: 'Pendente Corte', badgeClass: 'bg-amber-100 text-amber-900 border-amber-200', textClass: 'text-amber-800', headerClass: 'bg-amber-50 border-amber-200' },
                 { id: 'CUT_RELEASED', label: 'Liberado Corte', badgeClass: 'bg-blue-100 text-blue-900 border-blue-200', textClass: 'text-blue-800', headerClass: 'bg-blue-50 border-blue-200' },
-                { id: 'CUT_COMPLETED', label: 'Corte Concluído', badgeClass: 'bg-indigo-100 text-indigo-900 border-indigo-200', textClass: 'text-indigo-800', headerClass: 'bg-indigo-50 border-indigo-200' },
+                
                 
                 
               ].map(col => {
-                const columnPlans = cutPlans.filter((p: any) => p.status === col.id);
+                const columnPlans = cutPlans.filter((p: any) => p.status === col.id).sort((a: any, b: any) => a.id - b.id);
 
                 return (
                   <div key={col.id} className={`min-w-[340px] max-w-[340px] rounded-3xl p-3 flex flex-col gap-3 snap-center shrink-0 border ${col.headerClass}`}>

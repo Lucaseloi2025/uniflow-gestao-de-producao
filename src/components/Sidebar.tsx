@@ -85,18 +85,25 @@ export const Sidebar = ({
           onClick={() => { setActiveTab('costura'); setIsMobileMenuOpen(false); }}
         />
         
+                <SidebarItem
+          icon={PackageCheck}
+          label="4. Conferência (Separação)"
+          active={activeTab === 'conferencia'}
+          onClick={() => { setActiveTab('conferencia'); setIsMobileMenuOpen(false); }}
+        />
+
         <SidebarItem
           icon={PackageCheck}
-          label="4. Estamparia"
+          label="5. Estamparia e Expedição"
           active={activeTab === 'estamparia'}
           onClick={() => { setActiveTab('estamparia'); setIsMobileMenuOpen(false); }}
         />
 
         <SidebarItem
           icon={PackageCheck}
-          label="5. Conferência Final"
-          active={activeTab === 'conferencia'}
-          onClick={() => { setActiveTab('conferencia'); setIsMobileMenuOpen(false); }}
+          label="5. Estamparia e Expedição"
+          active={activeTab === 'estamparia'}
+          onClick={() => { setActiveTab('estamparia'); setIsMobileMenuOpen(false); }}
         />
 
         <div className="mt-8 mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">GERENCIAL</div>
