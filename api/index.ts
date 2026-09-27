@@ -6225,7 +6225,7 @@ app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
 app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { qty_sewing, user_name, notes } = req.body;
+    const { qty_sewing, user_name, notes, faccao_id } = req.body;
 
     const { data: plan, error: fetchErr } = await supabaseAdmin
       .from('cut_plans')
