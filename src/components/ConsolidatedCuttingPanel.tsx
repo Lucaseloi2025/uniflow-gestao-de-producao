@@ -1592,3 +1592,5 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         </div>
       )}
     </div>
+  );
+};
