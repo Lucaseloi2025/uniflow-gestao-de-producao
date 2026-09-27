@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Search, Scissors, CheckCircle, Package, Shirt, Users, Building, Plus, X, Edit, Trash2, DollarSign } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const PcpControleFaccao = ({ currentUser }: any) => {
   const [activeTab, setActiveTab] = useState<'lotes' | 'faccoes'>('lotes');
