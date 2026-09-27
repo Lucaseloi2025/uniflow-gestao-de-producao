@@ -5953,6 +5953,15 @@ app.get('/api/cut-plans', async (req: any, res: any) => {
 });
 
 // GET /api/cut-plans/:id Ã¢â‚¬â€ plano especifico com itens e movimentacoes
+// GET /api/cut-plans/committed-quantities Ã¢â‚¬â€ quantidades comprometidas para a Central de Corte
+app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('cut_plan_items')
+      .select('order_id, item_key, quantity_planned')
+      .in('status', ['PENDING_CUT', 'CUT_RELEASED', 'CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED', 'IN_CUSTOMIZATION', 'COMPLETED']);
+    if (error) return res.status(500).json({ error: error.message });
+
 app.get('/api/cut-plans/:id', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6436,14 +6445,7 @@ app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
   }
 });
 
-// GET /api/cut-plans/committed-quantities Ã¢â‚¬â€ quantidades comprometidas para a Central de Corte
-app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('cut_plan_items')
-      .select('order_id, item_key, quantity_planned')
-      .in('status', ['PENDING_CUT', 'CUT_RELEASED', 'CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED', 'IN_CUSTOMIZATION', 'COMPLETED']);
-    if (error) return res.status(500).json({ error: error.message });
+
 
     const result: Record<string, number> = {};
     for (const row of (data || [])) {
@@ -6658,5 +6660,127 @@ app.get('/api/pcp-phase1/config', async (req: any, res: any) => {
     }
 });
 
+
+// ============================================================================
+// MÓDULO PCP - FASE 2 (CHÃO DE FÁBRICA)
+// ============================================================================
+
+app.post('/api/pcp-phase2/cut-plans', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
+        const { fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids, is_manual, created_by } = req.body;
+        
+        const plano_numero = PC- + new Date().getFullYear() + - + Date.now().toString().slice(-6);
+
+        const { data, error } = await supabase.from('pcp_cut_plans').insert({
+            plano_numero,
+            fabric,
+            color,
+            tipo_tecido,
+            largura_util,
+            qty_planejada,
+            enfesto_data,
+            pedidos_ids,
+            is_manual: is_manual || false,
+            created_by
+        }).select().single();
+
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pcp-phase2/cut-plans', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
+        const { data, error } = await supabase.from('pcp_cut_plans').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/pcp-phase2/cut-plans/:id/dispatch', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
+        const planId = req.params.id;
+        const { costureira_nome, qty_enviada, data_previsao_retorno, created_by } = req.body;
+
+        const lote_numero = LT- + Date.now().toString().slice(-6);
+
+        // Cria o lote de costura
+        const { data, error } = await supabase.from('pcp_sewing_batches').insert({
+            cut_plan_id: planId,
+            lote_numero,
+            costureira_nome,
+            qty_enviada,
+            data_previsao_retorno,
+            created_by
+        }).select().single();
+
+        if (error) throw error;
+
+        // Atualiza o plano de corte
+        await supabase.from('pcp_cut_plans').update({ status: 'ENVIADO_COSTURA' }).eq('id', planId);
+
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/pcp-phase2/sewing-batches', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
+        const { data, error } = await supabase.from('pcp_sewing_batches').select('*, pcp_cut_plans(*)').order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/pcp-phase2/sewing-batches/:id/receive', async (req: any, res: any) => {
+    try {
+        const supabase = createClient(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '');
+        const batchId = req.params.id;
+        const { qty_retornada_boa, qty_retornada_defeito, allocacoes, updated_by } = req.body;
+
+        // 1. Atualiza o lote
+        const { error: batchErr } = await supabase.from('pcp_sewing_batches').update({
+            status: 'CONCLUIDO',
+            qty_retornada_boa,
+            qty_retornada_defeito,
+            data_retorno_real: new Date().toISOString()
+        }).eq('id', batchId);
+        
+        if (batchErr) throw batchErr;
+
+        // 2. Registra alocações
+        if (allocacoes && allocacoes.length > 0) {
+            const inserts = allocacoes.map((a: any) => ({
+                order_id: a.order_id,
+                sewing_batch_id: batchId,
+                sku: a.sku,
+                size: a.size,
+                qty_allocated: a.qty_allocated,
+                allocated_by: updated_by
+            }));
+            await supabase.from('pcp_stock_allocations').insert(inserts);
+            
+            // Aqui poderíamos avançar o status dos pedidos se eles estivessem totalmente supridos.
+            // Para garantir, vamos apenas atualizar a necessity ou adicionar historico no order_observations.
+        }
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 export default app;
+
 
