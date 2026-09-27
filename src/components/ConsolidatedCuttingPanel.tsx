@@ -493,7 +493,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   // Action: return from sewing
   const handleReturnSewing = async (planId: number, planNumber: string, qtyInSewing: number) => {
-    const input = window.prompt(`Plano ${planNumber}: Quantas pe├ºas retornaram da costura? (Em costura: ${qtyInSewing})`);
+    const input = window.prompt(`Plano ${planNumber}: Quantas pecas retornaram da costura? (Em costura: ${qtyInSewing})`);
     if (input === null) return;
     const qty = parseInt(input, 10);
     if (isNaN(qty) || qty <= 0) { alert('Quantidade inv├ílida.'); return; }
@@ -508,8 +508,8 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao registrar retorno');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       const msg = data.qty_still_in_sewing > 0
-        ? `­ƒÜÇ ${qty} pe├ºas retornaram. ${data.qty_still_in_sewing} ainda em costura.`
-        : `­ƒÜÇ Costura conclu├¡da! ${qty} pe├ºas retornaram.`;
+        ? `­ƒÜÇ ${qty} pecas retornaram. ${data.qty_still_in_sewing} ainda em costura.`
+        : `­ƒÜÇ Costura conclu├¡da! ${qty} pecas retornaram.`;
       setNotification({ type: 'success', message: msg });
       setTimeout(() => setNotification(null), 8000);
     } catch (e: any) {
@@ -581,7 +581,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       if (!res.ok) throw new Error(data.error || 'Erro ao cancelar plano');
       await Promise.all([fetchCutPlans(), fetchCommittedQtys()]);
       onRefresh();
-      setNotification({ type: 'success', message: `Ô£à Plano ${planNumber} cancelado. ${data.qty_returned_to_pending} pe├ºas retornaram para pend├¬ncia.` });
+      setNotification({ type: 'success', message: `Ô£à Plano ${planNumber} cancelado. ${data.qty_returned_to_pending} pecas retornaram para pend├¬ncia.` });
       setTimeout(() => setNotification(null), 8000);
     } catch (e: any) {
       setNotification({ type: 'error', message: e.message });
@@ -720,7 +720,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
       setNotification({
         type: 'success',
-        message: `Sucesso! ${data.total_allocated} pe├ºas de ${selectedItemForCut.item_key} alocadas entre ${data.affected_order_ids.length} pedido(s).`
+        message: `Sucesso! ${data.total_allocated} pecas de ${selectedItemForCut.item_key} alocadas entre ${data.affected_order_ids.length} pedido(s).`
       });
 
       setTimeout(() => {
@@ -914,7 +914,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-slate-900/70 p-4 rounded-2xl border border-blue-900/60">
                 <p className="text-xs font-bold uppercase tracking-wider text-blue-300/90">Total Pendente de Corte</p>
-                <p className="text-3xl font-black font-mono mt-1 text-white">{totalPiecesNeeded} <span className="text-sm font-sans font-normal text-blue-200">pe├ºas</span></p>
+                <p className="text-3xl font-black font-mono mt-1 text-white">{totalPiecesNeeded} <span className="text-sm font-sans font-normal text-blue-200">pecas</span></p>
               </div>
 
               <div className="bg-slate-900/70 p-4 rounded-2xl border border-blue-900/60">
@@ -1081,7 +1081,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                         <div className="flex items-baseline justify-between">
                           <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider">Demanda Total:</span>
                           <span className="text-lg font-black font-mono text-blue-700">
-                            {group.total_necessario} pe├ºas pendentes
+                            {group.total_necessario} pecas pendentes
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-slate-600 font-medium pt-1.5 border-t border-slate-200/60">
@@ -1285,7 +1285,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
                       {plan.excedente_proposto && (
                         <div className="pt-2 border-t border-emerald-200/80 font-mono text-xs">
-                          <strong className="text-emerald-900 uppercase">Pe├ºas Excedentes Registradas em ESTOQUE: </strong>
+                          <strong className="text-emerald-900 uppercase">pecas Excedentes Registradas em ESTOQUE: </strong>
                           {Object.entries(plan.excedente_proposto).map(([sz, qty]) => (
                             <span key={sz} className="inline-block bg-white text-emerald-900 font-black px-2 py-0.5 rounded ml-1 border border-emerald-300">
                               {sz} = +{qty}
@@ -1316,9 +1316,9 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                               ­ƒôÉ Grade do Risco (Moldes no Optitex por Camada):
                             </span>
                             <div className="flex flex-wrap gap-1.5">
-                              {Object.entries(enf.pe├ºas_por_passada).map(([sz, qty]) => (
+                              {Object.entries(enf['pe\u00E7as_por_passada']).map(([sz, qty]) => (
                                 <span key={sz} className="px-2.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-950 rounded-md font-black">
-                                  {qty}├ù {sz}
+                                  {qty}x {sz}
                                 </span>
                               ))}
                             </div>
@@ -1327,7 +1327,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                           {/* Total Produzido neste enfesto */}
                           <div className="space-y-1 font-mono text-xs border-t border-slate-200/80 pt-2">
                             <span className="text-[10px] font-black uppercase text-slate-500 block tracking-wider">
-                              ­ƒôª Total Cortado ({enf.passadas} enfestos ├ù moldes):
+                              ­ƒôª Total Cortado ({enf.passadas} enfestos x moldes):
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {Object.entries(enf.producao_por_tamanho).map(([sz, prod]) => (
