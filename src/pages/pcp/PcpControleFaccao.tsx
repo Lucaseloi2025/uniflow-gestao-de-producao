@@ -35,6 +35,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
 
   useEffect(() => {
     fetchData();
+    fetchAllPrices();
     fetchFaccoes();
   }, []);
 
@@ -53,6 +54,8 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
     }
   };
 
+  const fetchAllPrices = async () => { try { const {data} = await supabase.from('faccao_prices').select('*'); setAllPrices(data||[]); } catch(e){} };
+
   const fetchFaccoes = async () => {
     try {
       const { data } = await supabase.from('faccoes').select('*').order('name');
