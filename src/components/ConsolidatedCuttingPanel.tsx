@@ -1062,7 +1062,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                           </div>
 
                           <h4 className="font-black text-xl text-slate-900 leading-tight mt-2">
-                            {group.fabric} ┬À <span className="text-blue-700">{group.color}</span>
+                            {group.fabric} • <span className="text-blue-700">{group.color}</span>
                           </h4>
                           {(group.lote || group.orientacao) && (
                             <p className="text-[11px] font-bold text-slate-400 font-mono mt-0.5">
@@ -1086,7 +1086,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
                         </div>
                         <div className="flex items-center justify-between text-slate-600 font-medium pt-1.5 border-t border-slate-200/60">
                           <span className="font-bold text-slate-800">{group.models_breakdown.length} {group.models_breakdown.length === 1 ? 'modelo' : 'modelos'}</span>
-                          <span className="text-slate-300">┬À</span>
+                          <span className="text-slate-300">•</span>
                           <span className="font-bold text-slate-800">{group.pedidos_count} {group.pedidos_count === 1 ? 'pedido' : 'pedidos'}</span>
                         </div>
                         <div className="flex items-center justify-between text-slate-500 text-[11px] pt-1.5 border-t border-slate-200/60">

@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Eye, EyeOff, Search, Clock, FileText, CheckCircle, Circle, Check, Archive, Plus, Scissors, Timer, X, Edit2 } from 'lucide-react';
@@ -46,7 +46,7 @@ export const Orders = ({
               <Card className="flex-grow p-4 bg-zinc-50 border-zinc-200">
                 <div className="flex items-center gap-3 text-zinc-500 text-xs italic">
                   <Search size={14} />
-                  Use a barra de busca no topo para localizar OPs por nÃºmero ou nome do cliente.
+                  Use a barra de busca no topo para localizar OPs por número ou nome do cliente.
                 </div>
               </Card>
 
@@ -74,7 +74,7 @@ export const Orders = ({
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Gaveteiro</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Prazo</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Etapa Atual</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">ObservaÃ§Ã£o da Etapa</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Observação da Etapa</th>
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 text-right">Tempo</th>
                 </tr>
               </thead>
@@ -299,7 +299,7 @@ export const Orders = ({
                               setEditingDtfValue(order.dtf_location || '');
                             }}
                             className="group flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-lg text-xs font-bold text-amber-900 shadow-sm transition-all cursor-pointer"
-                            title="Clique para alterar a localizaÃ§Ã£o do gaveteiro"
+                            title="Clique para alterar a localização do gaveteiro"
                           >
                             <Archive size={12} className="text-amber-600 shrink-0" />
                             <span>{order.dtf_location}</span>
@@ -313,7 +313,7 @@ export const Orders = ({
                               setEditingDtfValue('');
                             }}
                             className="flex items-center gap-1 px-2.5 py-1 bg-zinc-50 hover:bg-zinc-100 border border-dashed border-zinc-300 hover:border-zinc-400 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-700 transition-all cursor-pointer"
-                            title="Clique para definir a gaveta / observaÃ§Ã£o"
+                            title="Clique para definir a gaveta / observação"
                           >
                             <Plus size={11} className="text-zinc-400" />
                             <span>Gaveteiro</span>
@@ -375,7 +375,7 @@ export const Orders = ({
                               </div>
                               {active.pendencia_reposicao > 0 && (
                                 <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1 flex items-center gap-1 w-max animate-pulse">
-                                  âš ï¸ ReposiÃ§Ã£o: +{active.pendencia_reposicao} pc
+                                  âš ï¸ Reposição: +{active.pendencia_reposicao} pc
                                 </span>
                               )}
                               {isFinishedToday && (

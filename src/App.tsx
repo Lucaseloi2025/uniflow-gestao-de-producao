@@ -203,7 +203,7 @@ export default function App() {
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
-                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                placeholder="••••••••"
                 required
               />
             </div>
@@ -282,7 +282,7 @@ export default function App() {
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
               <span className="text-sm font-bold text-emerald-900">Operador Ativo: {currentUser?.name || '---'}</span>
-              <span className="hidden sm:inline text-emerald-300">â€¢</span>
+              <span className="hidden sm:inline text-emerald-300">•</span>
               <span className="text-xs font-medium text-emerald-700">Setor: {currentUser?.role || '---'}</span>
             </div>
           </div>
@@ -532,7 +532,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto pb-12">
             <div className="mb-6">
               <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
-              <p className="text-zinc-500">Acompanhamento em tempo real da produÃ§Ã£o e tempos de execuÃ§Ã£o</p>
+              <p className="text-zinc-500">Acompanhamento em tempo real da produção e tempos de execução</p>
             </div>
             <TaskMonitor onShowInfo={(t, d) => setInfoModal({ title: t, description: d })} />
           </div>
@@ -733,7 +733,7 @@ export default function App() {
           users={users}
         />
 
-        {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de ProduÃ§Ã£o e Perdas */}
+        {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de Produção e Perdas */}
         <ExecutionActionModal
           executionActionModal={executionActionModal}
           setExecutionActionModal={setExecutionActionModal}
