@@ -442,7 +442,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'cutting' && (
+                {activeTab === 'cutting' && (
           <ConsolidatedCuttingPanel
             orders={orders}
             users={users}
@@ -453,6 +453,14 @@ export default function App() {
             }}
           />
         )}
+
+        <ErrorBoundary>
+          <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando módulo...</div>}>
+            {activeTab === 'costura' && <PcpControleFaccao currentUser={currentUser} />}
+            {activeTab === 'estamparia' && <div className="p-8 text-center text-xl font-bold">Estamparia (Em desenvolvimento)</div>}
+            {activeTab === 'conferencia' && <div className="p-8 text-center text-xl font-bold">Conferência Final (Em desenvolvimento)</div>}
+          </Suspense>
+        </ErrorBoundary>
 
         {activeTab === 'collaborators' && (
           <Collaborators
