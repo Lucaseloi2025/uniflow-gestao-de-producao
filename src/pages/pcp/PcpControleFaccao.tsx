@@ -27,7 +27,9 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   // Faccao Prices State
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
   const [selectedFaccaoForPrices, setSelectedFaccaoForPrices] = useState<any>(null);
-  const [faccaoPrices, setFaccaoPrices] = useState<any[]>([]);
+  const [faccaoPrices, setFaccaoPrices] = useState<any[]>([]);
+  const [allPrices, setAllPrices] = useState<any[]>([]);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [newPriceModel, setNewPriceModel] = useState('');
   const [newPriceValue, setNewPriceValue] = useState('');
 
@@ -181,7 +183,21 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   const emCostura = plans.filter(p => p.status === 'IN_SEWING');
   const concluidos = plans.filter(p => p.status === 'SEWING_COMPLETED');
 
-  const renderCard = (p: any, type: 'aguardando' | 'emCostura' | 'concluidos') => {
+  const renderCard = (p: any, type: 'aguardando' | 'emCostura' | 'concluidos') => {
+    const isExpanded = !!expandedCards[p.id];
+    const toggleExpand = () => setExpandedCards(prev => ({...prev, [p.id]: !prev[p.id]}));
+
+    // Calculate total value for this plan if concluded
+    let planValue = 0;
+    if (type === 'concluidos' && p.faccao_id) {
+      const fPrices = allPrices.filter(pr => pr.faccao_id === p.faccao_id);
+      (p.items || []).forEach((it: any) => {
+        if (it.quantity_sewing_done > 0) {
+          const priceObj = fPrices.find(pr => pr.product_type === it.product_type);
+          if (priceObj) planValue += (it.quantity_sewing_done * Number(priceObj.price));
+        }
+      });
+    }
     const uniqueOps = Array.from(new Set((p.items || []).map((it: any) => it.order_number))).filter(Boolean);
     const uniqueModels = Array.from(new Set((p.items || []).map((it: any) => it.product_type))).filter(Boolean);
     
@@ -215,7 +231,18 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
           </div>
         </div>
 
-        <div className="mt-3 space-y-1">
+                {type === 'concluidos' && planValue > 0 && (
+           <div className="mt-3 bg-emerald-50 text-emerald-800 p-2 rounded-lg flex justify-between items-center border border-emerald-100">
+             <span className="text-xs font-bold uppercase">Valor a Pagar:</span>
+             <span className="text-sm font-black">R$ {planValue.toFixed(2).replace('.', ',')}</span>
+           </div>
+        )}
+
+        <button onClick={toggleExpand} className="w-full mt-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-50 rounded-lg border border-slate-200">
+          {isExpanded ? 'Ocultar Detalhes' : 'Ver Detalhes'}
+        </button>
+
+        {isExpanded && (<div className="mt-3 space-y-1">
           {Array.from(
             (p.items || []).reduce((acc: Map<string, number>, it: any) => {
                 const name = `${it.product_type} - ${it.size}`;
@@ -231,6 +258,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
           ))}
         </div>
 
+        )}
         {uniqueOps.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1 border-t border-slate-100 pt-3">
             {uniqueOps.slice(0, 4).map((op: any) => (
