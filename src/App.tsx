@@ -120,6 +120,7 @@ const PcpNecessidades = lazy(() => import('./pages/pcp/PcpNecessidades').then(m 
 const PcpPrioridades = lazy(() => import('./pages/pcp/PcpPrioridades').then(m => ({ default: m.PcpPrioridades })));
 const PcpBloqueados = lazy(() => import('./pages/pcp/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
 const PcpSettings = lazy(() => import('./pages/pcp/PcpSettings').then(m => ({ default: m.PcpSettings })));
+const PcpControleFaccao = lazy(() => import('./pages/pcp/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao })));
 const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
@@ -577,11 +578,7 @@ export default function App() {
             moveStage={moveStage}
           />
         )}
-                {activeTab === 'pcp-dashboard' && <PcpDashboard currentUser={currentUser} />}
-        {activeTab === 'pcp-necessidades' && <PcpNecessidades />}
-        {activeTab === 'pcp-prioridades' && <PcpPrioridades />}
-        {activeTab === 'pcp-bloqueados' && <PcpBloqueados currentUser={currentUser} />}
-        {activeTab === 'pcp-settings' && <PcpSettings />}
+                
           </Suspense>
               </ErrorBoundary>
       </main>
@@ -824,6 +821,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 

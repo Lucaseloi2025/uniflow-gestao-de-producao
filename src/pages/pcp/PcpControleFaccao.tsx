@@ -79,8 +79,8 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
     <div className="max-w-7xl mx-auto pb-12 space-y-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-black text-zinc-900 tracking-tight">Costura e Conferência</h2>
-          <p className="text-zinc-500 mt-1">Visão das Costureiras: envio e baixa dos lotes cortados</p>
+          <h2 className="text-2xl font-black text-zinc-900 tracking-tight">Costura (Facção)</h2>
+          <p className="text-zinc-500 mt-1">Controle de envio para costureiras e registro de retorno</p>
         </div>
       </div>
 
