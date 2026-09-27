@@ -54,9 +54,16 @@ export const Sidebar = ({
                 active={activeTab === 'pcp-bloqueados'}
                 onClick={() => { setActiveTab('pcp-bloqueados'); setIsMobileMenuOpen(false); }}
               />
-              <SidebarItem
-                icon={Settings}
-                label="Config PCP"
+                            
+                              <SidebarItem
+                  icon={Scissors}
+                  label="Costura & Conferência"
+                  active={activeTab === 'pcp-faccao'}
+                  onClick={() => { setActiveTab('pcp-faccao'); setIsMobileMenuOpen(false); }}
+                />
+                <SidebarItem
+                  icon={Settings}
+                  label="Config PCP"
                 active={activeTab === 'pcp-settings'}
                 onClick={() => { setActiveTab('pcp-settings'); setIsMobileMenuOpen(false); }}
               />
@@ -119,8 +126,9 @@ export const Sidebar = ({
             />
           )}
           {currentUser?.role === 'Admin' && (
-            <SidebarItem
-              icon={Settings}
+                          
+              <SidebarItem
+                icon={Settings}
               label="Configurações"
               active={activeTab === 'settings'}
               onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
@@ -147,6 +155,9 @@ export const Sidebar = ({
     </>
   );
 };
+
+
+
 
 
 
