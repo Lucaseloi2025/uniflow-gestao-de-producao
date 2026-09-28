@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Eye, EyeOff, Search, Clock, FileText, CheckCircle, Circle, Check, Archive, Plus, Scissors, Timer, X, Edit2 } from 'lucide-react';
@@ -372,14 +372,14 @@ export const Orders = ({
                                   </span>
                                 )}
                               </div>
-                              {active.pendencia_Reposição > 0 && (
+                              {active.pendencia_reposicao > 0 && (
                                 <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1 flex items-center gap-1 w-max animate-pulse">
-                                  Ã¢Å¡Â Ã¯Â¸Â Reposição} pc
+                                  ⚠️ Reposição} pc
                                 </span>
                               )}
                               {isFinishedToday && (
                                 <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5 mt-1 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
-                                  Ã¢Å“â€œ {latestFinished.stage_name} hoje
+                                  ✅ {latestFinished.stage_name} hoje
                                 </span>
                               )}
                             </div>
@@ -387,9 +387,9 @@ export const Orders = ({
                         })()}
                       </td>
                       <td className="px-6 py-4 text-sm text-zinc-600">
-                        {order.active_stage_observaçãon ? (
+                        {order.active_stage_observation ? (
                           <span className="italic text-zinc-700">
-                            Ã°Å¸â€œÂ "{order.active_stage_observaçãon}"
+                            Ã°Å¸â€œÂ "{order.active_stage_observation}"
                           </span>
                         ) : (
                           <span className="text-zinc-400 italic font-light">-</span>
