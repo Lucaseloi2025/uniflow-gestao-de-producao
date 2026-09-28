@@ -60,7 +60,14 @@ export const Conferencia: React.FC<ConferenciaProps> = ({ orders, currentUser, s
     
     // Initialize checked states based on items
     const rawItems = order.items as any;
-    const items = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+      const items = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+      if (items.length === 0 && order.quantity > 0) {
+        items.push({
+          sku: 'N/A',
+          produto: order.product_type || 'Produto Genérico',
+          quantidade: order.quantity
+        });
+      }
     
     const initialChecked: Record<string, number> = {};
     items.forEach((it: any) => {
@@ -73,7 +80,15 @@ export const Conferencia: React.FC<ConferenciaProps> = ({ orders, currentUser, s
   const currentItems = useMemo(() => {
     if (!selectedOrder) return [];
     const rawItems = selectedOrder.items as any;
-    return typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+      const items = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+      if (items.length === 0 && selectedOrder.quantity > 0) {
+        items.push({
+          sku: 'N/A',
+          produto: selectedOrder.product_type || 'Produto Genérico',
+          quantidade: selectedOrder.quantity
+        });
+      }
+      return items;
   }, [selectedOrder]);
 
   const handleAdjustCheck = (sku: string, delta: number, max: number) => {
