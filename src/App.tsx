@@ -365,7 +365,7 @@ export default function App() {
           userSearchTerm={userSearchTerm}
         />
 
-        <ErrorBoundary fallback={<div className="p-8 text-center"><p className="text-red-500 font-bold mb-4">Ocorreu um erro ao carregar esta página.</p><button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Recarregar</button></div>}>
+        <ErrorBoundary>
               <Suspense fallback={<FallbackLoading />}>
         {activeTab === 'dashboard' && (
           <DashboardTab
