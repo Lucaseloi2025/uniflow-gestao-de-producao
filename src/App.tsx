@@ -120,7 +120,8 @@ const PcpNecessidades = lazy(() => import('./pages/pcp/PcpNecessidades').then(m 
 const PcpPrioridades = lazy(() => import('./pages/pcp/PcpPrioridades').then(m => ({ default: m.PcpPrioridades })));
 const PcpBloqueados = lazy(() => import('./pages/pcp/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
 const PcpSettings = lazy(() => import('./pages/pcp/PcpSettings').then(m => ({ default: m.PcpSettings })));
-const PcpControleFaccao = lazy(() => import('./pages/pcp/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao })));
+const PcpControleFaccao = lazy(() => import('./pages/pcp/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao }))); 
+const Conferencia = lazy(() => import('./pages/PCP/Conferencia').then(m => ({ default: m.Conferencia })));
 const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
@@ -203,7 +204,7 @@ export default function App() {
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                 required
               />
             </div>
@@ -282,7 +283,7 @@ export default function App() {
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
               <span className="text-sm font-bold text-emerald-900">Operador Ativo: {currentUser?.name || '---'}</span>
-              <span className="hidden sm:inline text-emerald-300">•</span>
+              <span className="hidden sm:inline text-emerald-300">â€¢</span>
               <span className="text-xs font-medium text-emerald-700">Setor: {currentUser?.role || '---'}</span>
             </div>
           </div>
@@ -455,10 +456,10 @@ export default function App() {
         )}
 
         <ErrorBoundary>
-          <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando módulo...</div>}>
+          <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando mÃ³dulo...</div>}>
             {activeTab === 'costura' && <PcpControleFaccao currentUser={currentUser} />}
             {activeTab === 'estamparia' && <div className="p-8 text-center text-xl font-bold">Estamparia (Em desenvolvimento)</div>}
-            {activeTab === 'conferencia' && <div className="p-8 text-center text-xl font-bold">Conferência Final (Em desenvolvimento)</div>}
+            {activeTab === 'conferencia' && <Conferencia orders={orders} currentUser={currentUser} stages={stages} fetchOrders={fetchOrders} />}
           </Suspense>
         </ErrorBoundary>
 
@@ -532,7 +533,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto pb-12">
             <div className="mb-6">
               <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
-              <p className="text-zinc-500">Acompanhamento em tempo real da produção e tempos de execução</p>
+              <p className="text-zinc-500">Acompanhamento em tempo real da produÃ§Ã£o e tempos de execuÃ§Ã£o</p>
             </div>
             <TaskMonitor onShowInfo={(t, d) => setInfoModal({ title: t, description: d })} />
           </div>
@@ -705,7 +706,7 @@ export default function App() {
           setSelectedFullImage={setSelectedFullImage}
         />
 
-        {/* ðŸ“¦ Edit Order Modal ðŸ“¦ */}
+        {/* Ã°Å¸â€œÂ¦ Edit Order Modal Ã°Å¸â€œÂ¦ */}
         <EditOrderModal
           showEditOrderModal={showEditOrderModal}
           setShowEditOrderModal={setShowEditOrderModal}
@@ -723,7 +724,7 @@ export default function App() {
           fetchData={fetchData}
         />
 
-        {/* ðŸ•’ Order History Modal ðŸ•’ */}
+        {/* Ã°Å¸â€¢â€™ Order History Modal Ã°Å¸â€¢â€™ */}
         <OrderHistoryModal
           showHistoryModal={showHistoryModal}
           setShowHistoryModal={setShowHistoryModal}
@@ -733,7 +734,7 @@ export default function App() {
           users={users}
         />
 
-        {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de Produção e Perdas */}
+        {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de ProduÃ§Ã£o e Perdas */}
         <ExecutionActionModal
           executionActionModal={executionActionModal}
           setExecutionActionModal={setExecutionActionModal}
