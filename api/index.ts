@@ -3987,39 +3987,50 @@ app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
             .from("pauses")
             .delete()
             .gt("id", 0);
-        if (errPauses) {
-            console.error("Erro ao deletar pausas:", errPauses);
-            return res.status(500).json({ error: "Erro ao limpar hist├â┬│rico de pausas: " + errPauses.message });
-        }
+        
+        // 2. Apagar todas as execuções de etapas
+        await supabaseAdmin.from("stage_executions").delete().gt("id", 0);
+        
+        // 3. Apagar progresso e perdas (ordem importa por causa das chaves)
+        await supabaseAdmin.from("order_progress_logs").delete().gt("id", 0);
+        await supabaseAdmin.from("order_loss_logs").delete().gt("id", 0);
+        
+        // order_stage_progress usa composite key
+        await supabaseAdmin.from("order_stage_progress").delete().not("order_id", "is", null);
 
-        // 2. Apagar todas as execu├â┬º├â┬Áes de etapas
-        const { error: errExecutions } = await supabaseAdmin
-            .from("stage_executions")
-            .delete()
-            .gt("id", 0);
-        if (errExecutions) {
-            console.error("Erro ao deletar execu├â┬º├â┬Áes:", errExecutions);
-            return res.status(500).json({ error: "Erro ao limpar hist├â┬│rico de execu├â┬º├â┬Áes: " + errExecutions.message });
-        }
+        // 4. Apagar Planos de Corte e dependências
+        await supabaseAdmin.from("production_movements").delete().gt("id", 0);
+        await supabaseAdmin.from("cut_plan_items").delete().gt("id", 0);
+        await supabaseAdmin.from("cut_plans").delete().gt("id", 0);
+        await supabaseAdmin.from("corte_allocations").delete().gt("id", 0);
 
-        // 3. Resetar o tempo acumulado dos pedidos para 0
-        const { error: errOrders } = await supabaseAdmin
-            .from("orders")
-            .update({ total_time_seconds: 0 })
-            .gt("id", 0);
-        if (errOrders) {
-            console.error("Erro ao resetar tempos dos pedidos:", errOrders);
-            return res.status(500).json({ error: "Erro ao resetar tempos dos pedidos: " + errOrders.message });
-        }
+        // 5. Resetar estoques de excedentes
+        await supabaseAdmin.from("producao_excedentes").delete().gt("id", 0);
 
-        // 4. Resetar as m├â┬®dias de tempo calculadas nos est├â┬ígios
-        const { error: errStages } = await supabaseAdmin
-            .from("stages")
-            .update({ real_average_time: 0, execution_count: 0 })
-            .gt("id", 0);
-        if (errStages) {
-            console.error("Erro ao resetar m├â┬®dias dos est├â┬ígios:", errStages);
-            return res.status(500).json({ error: "Erro ao resetar m├â┬®dias dos est├â┬ígios: " + errStages.message });
+        // 6. Limpar memórias locais do backend
+        _lossStageProgressStore.clear();
+        _progressLogsStore.length = 0;
+        _corteAllocationsStore.length = 0;
+
+        // 7. Resetar o tempo acumulado dos pedidos para 0
+        await supabaseAdmin.from("orders").update({ total_time_seconds: 0 }).gt("id", 0);
+
+        // 8. Resetar as médias de tempo calculadas nos estágios
+        await supabaseAdmin.from("stages").update({ real_average_time: 0, execution_count: 0 }).gt("id", 0);
+
+        // 9. Resetar o array stages_status dos pedidos para 'finished: false' e 'in_progress: false'
+        const { data: orders } = await supabaseAdmin.from("orders").select("id, stages_status");
+        if (orders) {
+            for (const o of orders) {
+                if (o.stages_status && Array.isArray(o.stages_status)) {
+                    const newStatus = o.stages_status.map((st: any) => ({
+                        ...st,
+                        finished: false,
+                        in_progress: false
+                    }));
+                    await supabaseAdmin.from("orders").update({ stages_status: newStatus }).eq("id", o.id);
+                }
+            }
         }
 
         console.log("[API] Reset de produ├â┬º├â┬úo conclu├â┬¡do com sucesso!");
