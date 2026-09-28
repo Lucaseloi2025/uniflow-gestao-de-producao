@@ -216,7 +216,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
 
     setActionLoading(true);
     try {
-      const pendingPlans = plans.filter(p => p.faccao_id === billingFaccao.id && p.status === 'SEWING_COMPLETED' && !p.sewing_paid);
+      const pendingPlans = plans.filter(p => p.faccao_id === billingFaccao.id && (p.status === 'SEWING_COMPLETED' || p.status === 'IN_SEWING') && p.qty_sewing_done > 0 && !p.sewing_paid);
       for (const p of pendingPlans) {
         await supabase.from('cut_plans').update({ sewing_paid: true, sewing_paid_at: new Date().toISOString() }).eq('id', p.id);
       }
@@ -431,7 +431,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {faccoes.map(fac => {
               // Calculate pending billing for this faccao
-              const pendingPlans = plans.filter(p => p.faccao_id === fac.id && p.status === 'SEWING_COMPLETED' && !p.sewing_paid);
+              const pendingPlans = plans.filter(p => p.faccao_id === fac.id && (p.status === 'SEWING_COMPLETED' || p.status === 'IN_SEWING') && p.qty_sewing_done > 0 && !p.sewing_paid);
               const pendingValue = pendingPlans.reduce((sum, p) => sum + calculatePlanValue(p), 0);
 
               return (
@@ -485,16 +485,46 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
             </div>
 
             <div className="max-h-[50vh] overflow-y-auto pr-2 space-y-3 mb-6">
-              {plans.filter(p => p.faccao_id === billingFaccao.id && p.status === 'SEWING_COMPLETED' && !p.sewing_paid).map(p => {
+              {plans.filter(p => p.faccao_id === billingFaccao.id && (p.status === 'SEWING_COMPLETED' || p.status === 'IN_SEWING') && p.qty_sewing_done > 0 && !p.sewing_paid).map(p => {
                 const val = calculatePlanValue(p);
+                const fPrices = allPrices.filter(pr => pr.faccao_id === p.faccao_id);
                 return (
-                  <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center">
-                    <div>
-                      <div className="text-xs font-black text-slate-500">{p.plan_number}</div>
-                      <div className="text-sm font-bold text-slate-800">{p.qty_sewing_done} peças retornadas</div>
+                  <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="text-xs font-black text-slate-500">{p.plan_number}</div>
+                        <div className="text-sm font-bold text-slate-800">{p.qty_sewing_done} peças retornadas</div>
+                      </div>
+                      <div className="text-emerald-700 font-black">
+                        R$ {val.toFixed(2).replace('.', ',')}
+                      </div>
                     </div>
-                    <div className="text-emerald-700 font-black">
-                      R$ {val.toFixed(2).replace('.', ',')}
+                    
+                    <div className="space-y-1 mt-2 pt-2 border-t border-slate-200/60">
+                      {Array.from(
+                        (p.items || []).filter((it: any) => it.quantity_sewing_done > 0).reduce((acc: Map<string, any>, it: any) => {
+                          const name = `${it.product_type} - ${it.size}`;
+                          const qty = Number(it.quantity_sewing_done);
+                          if (!acc.has(name)) {
+                            acc.set(name, { product_type: it.product_type, name, qty: 0 });
+                          }
+                          acc.get(name).qty += qty;
+                          return acc;
+                        }, new Map<string, any>())
+                      ).map(([_, itemData]: any) => {
+                        const priceObj = fPrices.find(pr => pr.product_type === itemData.product_type);
+                        const unitPrice = priceObj ? Number(priceObj.price) : 0;
+                        const itemTotal = unitPrice * itemData.qty;
+                        return (
+                          <div key={itemData.name} className="flex justify-between items-center text-[11px] bg-white px-2 py-1.5 rounded border border-slate-100">
+                            <div>
+                              <span className="font-bold text-slate-600">{itemData.name}</span>
+                              <span className="ml-2 text-slate-400">({itemData.qty} un × R$ {unitPrice.toFixed(2).replace('.', ',')})</span>
+                            </div>
+                            <span className="font-black text-slate-800">R$ {itemTotal.toFixed(2).replace('.', ',')}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )
@@ -504,7 +534,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex justify-between items-center mb-6">
               <span className="text-sm font-bold text-emerald-800 uppercase">Total a Pagar</span>
               <span className="text-2xl font-black text-emerald-700">
-                R$ {plans.filter(p => p.faccao_id === billingFaccao.id && p.status === 'SEWING_COMPLETED' && !p.sewing_paid).reduce((sum, p) => sum + calculatePlanValue(p), 0).toFixed(2).replace('.', ',')}
+                R$ {plans.filter(p => p.faccao_id === billingFaccao.id && (p.status === 'SEWING_COMPLETED' || p.status === 'IN_SEWING') && p.qty_sewing_done > 0 && !p.sewing_paid).reduce((sum, p) => sum + calculatePlanValue(p), 0).toFixed(2).replace('.', ',')}
               </span>
             </div>
 
