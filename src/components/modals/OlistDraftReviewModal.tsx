@@ -1,5 +1,5 @@
-﻿import React from 'react';
-import { motion } from 'motion/react';
+import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn, safeFormat } from '../../lib/utils';
 import { getItemDisplaySize } from '../../lib/cuttingUtils';
 import { X, RefreshCw, Trash2, Package, Scissors, AlertTriangle, CheckCircle2, Check } from 'lucide-react';
