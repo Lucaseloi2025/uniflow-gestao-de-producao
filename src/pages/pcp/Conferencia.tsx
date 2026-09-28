@@ -28,8 +28,14 @@ export const Conferencia: React.FC<ConferenciaProps> = ({ orders, currentUser, s
     if (!conferenciaStage) return [];
     
     return orders.filter(o => {
-      const activeStageIds = o.active_stages?.map(st => st.id) || [];
-      const hasConferStage = activeStageIds.includes(conferenciaStage.id);
+      
+      let activeStageId = null;
+      if (o.stages_status && o.stages_status.length > 0) {
+        const activeStage = o.stages_status.find((st, i) => !st.finished && (i === 0 || o.stages_status[i - 1].finished));
+        if (activeStage) activeStageId = activeStage.id;
+      }
+      const hasConferStage = activeStageId === conferenciaStage.id;
+
       
       const searchMatch = (o.client_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (o.order_number || '').toLowerCase().includes(searchTerm.toLowerCase());
