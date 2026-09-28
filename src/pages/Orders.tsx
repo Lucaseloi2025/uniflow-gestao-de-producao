@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Eye, EyeOff, Search, Clock, FileText, CheckCircle, Circle, Check, Archive, Plus, Scissors, Timer, X, Edit2 } from 'lucide-react';
-import { cn, formatSeconds, safeFormat, isImage, isPdf } from '../lib/utils';
+import { cn, formatSeconds, safeFormat, isImage, isPdf, getOrderCuttingQty } from '../lib/utils';
 import { Badge } from '../components/Badge';
 
 const Card = ({ children, className, ...props }: any) => (
