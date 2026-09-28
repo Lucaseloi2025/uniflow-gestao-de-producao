@@ -6381,6 +6381,42 @@ app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
 
     await supabaseAdmin.from('production_movements').insert(movements);
 
+    // Avançar status das ordens se os itens foram 100% retornados
+    const fullyReturnedOrderIds = [...new Set((plan.items || [])
+      .filter((it) => {
+        let itRet = 0;
+        if (item_quantities && typeof item_quantities[it.id] !== 'undefined') {
+          itRet = Number(item_quantities[it.id]) || 0;
+        } else {
+          const ratio = Number(it.quantity_sewing) / qtyInSewingPlan;
+          itRet = Math.round(qtyReturned * ratio);
+        }
+        const stillSewing = Math.max(0, Number(it.quantity_sewing) - itRet);
+        return stillSewing <= 0;
+      })
+      .map((it) => it.order_id)
+      .filter((id) => id)
+    )];
+
+    for (const oId of fullyReturnedOrderIds) {
+      const { data: orderData } = await supabaseAdmin.from('orders').select('stages_status').eq('id', oId).single();
+      if (orderData && orderData.stages_status) {
+        let modified = false;
+        const newStages = orderData.stages_status.map((st) => {
+          const stName = (st.name || '').toLowerCase();
+          if (stName.includes('corte') || stName.includes('costura') || stName.includes('confeccao')) {
+            if (!st.finished) modified = true;
+            return { ...st, finished: true, in_progress: false };
+          }
+          return st;
+        });
+        if (modified) {
+          await supabaseAdmin.from('orders').update({ stages_status: newStages }).eq('id', oId);
+        }
+      }
+    }
+
+
     return res.json({ success: true, qty_returned: qtyReturned, qty_still_in_sewing: qtyStillInSewing, status: newStatus });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
