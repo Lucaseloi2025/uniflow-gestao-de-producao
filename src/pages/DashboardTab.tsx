@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card } from '../components/ui/Card';
-import { Package, Trash2, CheckCircle2, Clock, AlertTriangle, Activity, Shirt, Scissors, Edit2, Target } from 'lucide-react';
+import { Package, Layers, Trash2, CheckCircle2, Clock, AlertTriangle, Activity, Shirt, Scissors, Edit2, Target } from 'lucide-react';
 import { ProductionProgressPanel } from '../components/ProductionProgressPanel';
 import { cn, safeFormat, getOrderCuttingQty } from '../lib/utils';
 import {
