@@ -6288,7 +6288,7 @@ app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
 app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { qty_returned, user_name, notes } = req.body;
+    const { qty_returned, item_quantities, user_name, notes } = req.body;
 
     const { data: plan, error: fetchErr } = await supabaseAdmin
       .from('cut_plans')
@@ -6313,19 +6313,10 @@ app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
     }).eq('id', id);
 
     const qtyInSewingPlan = Number(plan.qty_sewing) || 1;
-    for (const it of (plan.items || [])) {
-      if (it.status !== 'IN_SEWING') continue;
-      const itRatio = Number(it.quantity_sewing) / qtyInSewingPlan;
-      const itReturned = Math.round(qtyReturned * itRatio);
-      const itStillSewing = Math.max(0, Number(it.quantity_sewing) - itReturned);
-      await supabaseAdmin.from('cut_plan_items').update({
-        status: itStillSewing <= 0 ? 'SEWING_COMPLETED' : 'IN_SEWING',
-        quantity_sewing_done: (Number(it.quantity_sewing_done) || 0) + itReturned,
-        quantity_sewing: itStillSewing
-      }).eq('id', it.id);
-    }
-
-    const movements = [{
+    const movements: any[] = [];
+    
+    // First, plan-level movement
+    movements.push({
       plan_id: Number(id),
       order_id: null,
       plan_number: plan.plan_number,
@@ -6335,19 +6326,57 @@ app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
       quantity: qtyReturned,
       notes: notes || (qtyStillInSewing > 0 ? `${qtyStillInSewing} ainda em costura` : 'Costura concluida'),
       user_name: user_name || 'Sistema'
-    }];
+    });
+
+    for (const it of (plan.items || [])) {
+      if (it.status !== 'IN_SEWING') continue;
+      
+      let itReturned = 0;
+      if (item_quantities && typeof item_quantities[it.id] !== 'undefined') {
+        itReturned = Number(item_quantities[it.id]) || 0;
+      } else {
+        const itRatio = Number(it.quantity_sewing) / qtyInSewingPlan;
+        itReturned = Math.round(qtyReturned * itRatio);
+      }
+      
+      const itStillSewing = Math.max(0, Number(it.quantity_sewing) - itReturned);
+      
+      await supabaseAdmin.from('cut_plan_items').update({
+        status: itStillSewing <= 0 ? 'SEWING_COMPLETED' : 'IN_SEWING',
+        quantity_sewing_done: (Number(it.quantity_sewing_done) || 0) + itReturned,
+        quantity_sewing: itStillSewing
+      }).eq('id', it.id);
+      
+      if (itReturned > 0) {
+        movements.push({
+          plan_id: Number(id),
+          plan_item_id: it.id,
+          order_id: it.order_id,
+          order_number: it.order_number,
+          plan_number: plan.plan_number,
+          movement_type: 'SEWING_RETURNED',
+          sku: it.sku,
+          product_type: it.product_type,
+          size: it.size,
+          item_key: it.item_key,
+          qty_before: Number(it.quantity_sewing),
+          qty_after: itStillSewing,
+          quantity: itReturned,
+          notes: notes || `Retornou ${itReturned} pecas`,
+          user_name: user_name || 'Sistema'
+        });
+      }
+    }
+
     await supabaseAdmin.from('production_movements').insert(movements);
 
-    return res.json({
-      success: true,
-      qty_returned: qtyReturned,
-      qty_still_in_sewing: qtyStillInSewing,
-      status: newStatus
-    });
+    return res.json({ success: true, qty_returned: qtyReturned, qty_still_in_sewing: qtyStillInSewing, status: newStatus });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
+
+
 
 // POST /api/cut-plans/:id/cancel ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø CANCELAR LIBERACAO / REABRIR PARA CORTE
 app.post('/api/cut-plans/:id/cancel', async (req: any, res: any) => {
