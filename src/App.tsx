@@ -459,7 +459,7 @@ export default function App() {
           <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando mÃ³dulo...</div>}>
             {activeTab === 'costura' && <PcpControleFaccao currentUser={currentUser} />}
             {activeTab === 'estamparia' && <div className="p-8 text-center text-xl font-bold">Estamparia (Em desenvolvimento)</div>}
-            {activeTab === 'conferencia' && <Conferencia orders={orders} currentUser={currentUser} stages={stages} fetchOrders={fetchOrders} />}
+            {activeTab === 'conferencia' && <Conferencia orders={orders} currentUser={currentUser} stages={stages} fetchOrders={fetchData} />}
           </Suspense>
         </ErrorBoundary>
 
