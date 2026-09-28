@@ -121,7 +121,7 @@ const PcpPrioridades = lazy(() => import('./pages/pcp/PcpPrioridades').then(m =>
 const PcpBloqueados = lazy(() => import('./pages/pcp/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
 const PcpSettings = lazy(() => import('./pages/pcp/PcpSettings').then(m => ({ default: m.PcpSettings })));
 const PcpControleFaccao = lazy(() => import('./pages/pcp/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao }))); 
-const Conferencia = lazy(() => import('./pages/PCP/Conferencia').then(m => ({ default: m.Conferencia })));
+const Conferencia = lazy(() => import('./pages/pcp/Conferencia').then(m => ({ default: m.Conferencia })));
 const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
