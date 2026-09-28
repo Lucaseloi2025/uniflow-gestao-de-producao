@@ -374,7 +374,7 @@ export const Orders = ({
                               </div>
                               {active.pendencia_reposicao > 0 && (
                                 <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 mt-1 flex items-center gap-1 w-max animate-pulse">
-                                  ⚠️ Reposição} pc
+                                  ⚠️ {active.pendencia_reposicao} pc
                                 </span>
                               )}
                               {isFinishedToday && (
