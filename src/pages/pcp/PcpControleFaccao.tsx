@@ -528,12 +528,6 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
                     </div>
                   </div>
                 )
-              })}              </div>
-                    <div className="text-emerald-700 font-black">
-                      R$ {val.toFixed(2).replace('.', ',')}
-                    </div>
-                  </div>
-                )
               })}
             </div>
 
