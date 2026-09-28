@@ -31,8 +31,18 @@ export const Conferencia: React.FC<ConferenciaProps> = ({ orders, currentUser, s
       
       let activeStageId = null;
       if (o.stages_status && o.stages_status.length > 0) {
-        const activeStage = o.stages_status.find((st, i) => !st.finished && (i === 0 || o.stages_status[i - 1].finished));
-        if (activeStage) activeStageId = activeStage.id;
+        
+          let lastFinishedIndex = -1;
+          for (let i = o.stages_status.length - 1; i >= 0; i--) {
+            if (o.stages_status[i].finished) {
+              lastFinishedIndex = i;
+              break;
+            }
+          }
+          if (lastFinishedIndex < o.stages_status.length - 1) {
+            activeStageId = o.stages_status[lastFinishedIndex + 1].id;
+          }
+
       }
       const hasConferStage = activeStageId === conferenciaStage.id;
 
