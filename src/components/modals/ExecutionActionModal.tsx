@@ -260,12 +260,12 @@ export const ExecutionActionModal = ({
                   )}
                 </button>
                 {(() => {
-                  const canFinish = (currentGood + actionQuantityInput) >= totalReq;
+                  const canFinish = true;
                   return (
                     <button
                       type="button"
                       onClick={() => handleConfirmExecutionAction('finish')}
-                      disabled={isActionLoading || !canFinish}
+                      disabled={isActionLoading}
                       title={!canFinish ? `Faltam ${remaining - actionQuantityInput} peças para finalizar. Preencha a quantidade restante.` : 'Finalizar etapa'}
                       className={cn(
                         "flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5",

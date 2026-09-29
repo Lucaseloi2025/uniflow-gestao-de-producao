@@ -1210,8 +1210,28 @@ export function useAppLogic() {
     handleOpenActionModal('pause', executionId, stageId);
   };
 
-  const handleFinishStage = (executionId: number, stageId: number) => {
-    handleOpenActionModal('finish', executionId, stageId);
+  const handleFinishStage = async (executionId: number, stageId: number) => {
+    if (!selectedOrder) return;
+    setIsActionLoading(true);
+    try {
+      const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        },
+        body: JSON.stringify({ force: true, observation: '' })
+      });
+      if (finishRes.ok) {
+        fetchExecutions(selectedOrder.id);
+        fetchData();
+        fetchActiveExecution();
+      } else {
+        showToast("Erro ao finalizar etapa");
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleConfirmExecutionAction = async (actionType?: 'pause' | 'finish', forceFinish = false) => {
@@ -1299,7 +1319,7 @@ export function useAppLogic() {
             'Content-Type': 'application/json',
             'x-user-role': currentUser?.role || ''
           },
-          body: JSON.stringify({ force: forceFinish, observation: actionObservationInput })
+          body: JSON.stringify({ force: true, observation: actionObservationInput })
         });
 
         if (finishRes.ok) {
