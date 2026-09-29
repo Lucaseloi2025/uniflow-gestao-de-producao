@@ -15,7 +15,7 @@ export const OlistDraftListModal = ({
   return (
     <AnimatePresence>
             {isDraftsListModalOpen && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+        <div className="fixed inset-0 z-[265] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
             <div className="bg-indigo-900 text-white p-6 relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>

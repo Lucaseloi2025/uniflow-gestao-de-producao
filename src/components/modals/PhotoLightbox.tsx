@@ -9,7 +9,7 @@ export const PhotoLightbox = ({
   return (
     <AnimatePresence>
       {selectedFullImage && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4" onClick={() => setSelectedFullImage(null)}>
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 p-4" onClick={() => setSelectedFullImage(null)}>
           <button 
             className="absolute top-4 right-4 text-white hover:text-zinc-300 transition-colors"
             onClick={(e) => {
