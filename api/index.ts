@@ -4271,15 +4271,17 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .eq("id", execution.order_id);
 
     // 7. Update order status if specific stage finished
-    if (execution.stages?.name === "Aguardando ficha de aprova├â┬º├â┬úo") {
+    const stageName = execution.stages?.name?.toLowerCase() || '';
+    if (stageName.includes('ficha') && stageName.includes('aprova')) {
         await supabaseAdmin
             .from("orders")
-            .update({ status: "Em Produ├â┬º├â┬úo" })
+            .update({ status: "Em Produção" })
             .eq("id", execution.order_id)
             .eq("status", "Entrada");
     }
 
-    if (execution.stages?.name === "Confer├â┬¬ncia" || execution.stages?.name === "Conferencia") {
+    // ALWAYS mark as Entregue if Conferencia is finished, because users often skip subsequent optional stages
+    if (stageName.includes('confer')) {
         await supabaseAdmin
             .from("orders")
             .update({ 
@@ -4287,7 +4289,36 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 delivered_at: nowISO
             })
             .eq("id", execution.order_id);
-        console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Confer├â┬¬ncia.`);
+        console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Conferência.`);
+    } else {
+        // Check if all required stages for this order are completed
+        const { data: orderData } = await supabaseAdmin
+            .from("orders")
+            .select("required_stages")
+            .eq("id", execution.order_id)
+            .single();
+
+        if (orderData && orderData.required_stages && orderData.required_stages.length > 0) {
+            const { data: completedExecs } = await supabaseAdmin
+                .from("stage_executions")
+                .select("stage_id")
+                .eq("order_id", execution.order_id)
+                .eq("status", "Finalizado");
+            
+            const completedStageIds = new Set((completedExecs || []).map((e: any) => e.stage_id));
+            const allCompleted = orderData.required_stages.every((id: number) => completedStageIds.has(id));
+
+            if (allCompleted) {
+                await supabaseAdmin
+                    .from("orders")
+                    .update({ 
+                        status: "Entregue",
+                        delivered_at: nowISO
+                    })
+                    .eq("id", execution.order_id);
+                console.log(`[API] Pedido ${execution.order_id} marcado como Entregue pois todas as etapas obrigatorias foram finalizadas.`);
+            }
+        }
     }
 
     // 8. Update real average time for the stage
