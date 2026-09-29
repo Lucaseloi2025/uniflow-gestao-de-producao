@@ -42,7 +42,8 @@ export const OrderDetailsDrawer = ({
   handlePauseStage,
   handleResumeStage,
   handleFinishStage,
-  setSelectedStageId,
+    isActionLoading,
+    setSelectedStageId,
   selectedStageId
 }: any) => {
   const confirmTimeoutRef = useRef<NodeJS.Timeout>();
@@ -568,11 +569,11 @@ export const OrderDetailsDrawer = ({
                                                   PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
                                                 </button>
                                                 <button
-                                                  onClick={() => handleFinishStage(execution.id, stage.id)}
-                                                  className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+    onClick={() => handleFinishStage(execution.id, stage.id)}
+    disabled={execution?.status !== 'Em andamento' || isActionLoading}
+    className="flex-1 flex disabled:opacity-50  items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
                                                 >
-                                                  <CheckCircle size={12} />
-                                                  FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd>
+                                                  {isActionLoading ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div> FINALIZANDO...</> : <><CheckCircle size={12} /> FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd></>}
                                                 </button>
                                               </>
                                             )}

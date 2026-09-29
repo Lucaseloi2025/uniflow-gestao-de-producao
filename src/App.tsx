@@ -651,6 +651,7 @@ export default function App() {
           handlePauseStage={handlePauseStage}
           handleResumeStage={handleResumeStage}
           handleFinishStage={handleFinishStage}
+            isActionLoading={isActionLoading}
           setSelectedStageId={setSelectedStageId}
           selectedStageId={selectedStageId}
         />
