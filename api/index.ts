@@ -486,22 +486,33 @@ function enrichOrdersWithProgressSync(orders: any[]) {
   if (!orders?.length) return;
   for (const order of orders) {
     if (!Array.isArray(order.stages_status)) order.stages_status = [];
+    if (Array.isArray(order.required_stages)) {
+      order.required_stages = order.required_stages.filter((id: any) => Number(id) !== 12);
+    }
     const qty = order.quantity || 0;
-    order.stages_status = order.stages_status.map((st: any) => {
-      const key = `${order.id}_${Number(st.id)}`;
-      let prog = _lossStageProgressStore.get(key);
-      const isSplitStage = (Number(st.id) === 2 && order.total_via_corte !== undefined) || (Number(st.id) === 12 && order.total_via_separacao !== undefined);
-      if (!prog) {
-        let defaultQty = qty;
-        if (Number(st.id) === 2 && order.total_via_corte !== undefined) defaultQty = order.total_via_corte;
-        if (Number(st.id) === 12 && order.total_via_separacao !== undefined) defaultQty = order.total_via_separacao;
-        prog = { order_id: order.id, stage_id: Number(st.id), quantidade_pedido: defaultQty, quantidade_boa: st.finished ? defaultQty : 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: !!st.finished };
-        _lossStageProgressStore.set(key, prog);
-      } else if (!isSplitStage && qty && prog.quantidade_pedido !== qty) {
-        prog.quantidade_pedido = qty;
-      }
-      return { ...st, finished: prog.finished, quantidade_boa: prog.quantidade_boa, quantidade_perdida: prog.quantidade_perdida, pendencia_reposicao: prog.pendencia_reposicao, quantidade_pedido: prog.quantidade_pedido || qty };
-    });
+    order.stages_status = order.stages_status
+      .filter((st: any) => Number(st.id) !== 12)
+      .map((st: any) => {
+        const key = `${order.id}_${Number(st.id)}`;
+        let prog = _lossStageProgressStore.get(key);
+        const isSplitStage = (Number(st.id) === 2 && order.total_via_corte !== undefined);
+        const isFinished = Boolean(st.finished || prog?.finished);
+        if (!prog) {
+          let defaultQty = qty;
+          if (Number(st.id) === 2 && order.total_via_corte !== undefined) defaultQty = order.total_via_corte;
+          prog = { order_id: order.id, stage_id: Number(st.id), quantidade_pedido: defaultQty, quantidade_boa: isFinished ? defaultQty : 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: isFinished };
+          _lossStageProgressStore.set(key, prog);
+        } else {
+          if (!isSplitStage && qty && prog.quantidade_pedido !== qty) {
+            prog.quantidade_pedido = qty;
+          }
+          if (isFinished && !prog.finished) {
+            prog.finished = true;
+            if (!prog.quantidade_boa) prog.quantidade_boa = prog.quantidade_pedido || qty;
+          }
+        }
+        return { ...st, finished: isFinished, quantidade_boa: prog.quantidade_boa, quantidade_perdida: prog.quantidade_perdida, pendencia_reposicao: prog.pendencia_reposicao, quantidade_pedido: prog.quantidade_pedido || qty };
+      });
   }
 }
 async function logProgress(sb: any, orderId: number, stageId: number, userId: number, userName: string, incremento: number) {
@@ -1661,10 +1672,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
 
             // Route stages:
             // Stage 1: Ficha, Stage 12: Separa├â┬º├â┬úo estoque, Stage 2: Corte, Stage 7: Costura, Stage 8: Confer├â┬¬ncia
-            let defaultRequiredStages = [1, 12, 7, 8];
-            if (totalViaCorte > 0) {
-                defaultRequiredStages = [1, 12, 2, 7, 8];
-            }
+            let defaultRequiredStages = [1, 2, 7, 8];
 
             let obsText = `Importado do Olist ERP (ID: ${detail.id}, N├é┬║: ${detail.numero}) - Aguardando revis├â┬úo de estampa`;
             if (totalViaCorte > 0) {
@@ -1739,38 +1747,6 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
             if (createdOrder) {
                 existingOlistIds.add(olistId);
                 importedOrders.push(createdOrder);
-
-                try {
-                    const progEntries: any[] = [];
-                    if (totalViaSeparacao > 0 || totalViaCorte > 0) {
-                        progEntries.push({
-                            order_id: createdOrder.id,
-                            stage_id: 12, // Separa├â┬º├â┬úo estoque
-                            quantidade_pedido: totalViaSeparacao,
-                            quantidade_boa: 0,
-                            quantidade_perdida: 0,
-                            pendencia_reposicao: 0,
-                            finished: totalViaSeparacao === 0
-                        });
-                    }
-                    if (totalViaCorte > 0) {
-                        progEntries.push({
-                            order_id: createdOrder.id,
-                            stage_id: 2, // Corte
-                            quantidade_pedido: totalViaCorte,
-                            quantidade_boa: 0,
-                            quantidade_perdida: 0,
-                            pendencia_reposicao: 0,
-                            finished: false
-                        });
-                    }
-
-                    if (progEntries.length > 0) {
-                        await supabaseAdmin.from("order_stage_progress").upsert(progEntries);
-                    }
-                } catch (spErr) {
-                    console.warn(`[OlistSync] Aviso ao salvar order_stage_progress inicial:`, spErr);
-                }
 
                 try {
                     await supabaseAdmin.from("order_history").insert({
@@ -2408,7 +2384,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Orders ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/orders", async (req, res) => {
-    const { search, stage_id, stage_status, product_type, print_type } = req.query;
+    const { search, stage_id, stage_status, product_type, print_type, include_delivered } = req.query;
     let data: any[] | null = null;
     let error: any = null;
 
@@ -2444,17 +2420,40 @@ app.get("/api/orders", async (req, res) => {
     if (checkError(error, res, "Erro ao buscar pedidos")) return;
 
     if (data && data.length > 0) {
+        if (include_delivered !== "true" && !search) {
+            data = data.filter((o: any) => o.status !== "Entregue" && o.status !== "Cancelado");
+        }
+    }
+
+    if (data && data.length > 0) {
         const orderIds = data.map((o: any) => o.id);
+        const activeOrderIds = data
+            .filter((o: any) => o.status !== "Entregue" && o.status !== "Cancelado")
+            .map((o: any) => o.id);
+        const targetOrderIds = activeOrderIds.length > 0 && orderIds.length > 200 ? activeOrderIds : orderIds;
+
         const { data: executions } = await supabaseAdmin
             .from("stage_executions")
             .select("order_id, status, stage_id, end_time, users(name)")
-            .in("order_id", orderIds);
+            .in("order_id", targetOrderIds);
 
         const operatorMap = new Map();
         const activeStageExecutionMap = new Map();
         const latestFinishedStageMap = new Map();
+        const execStateByOrderStage = new Map<string, string>();
+
         if (executions) {
             executions.forEach((ex: any) => {
+                const osKey = `${ex.order_id}_${Number(ex.stage_id)}`;
+                const prevState = execStateByOrderStage.get(osKey);
+                if (ex.status === "Finalizado") {
+                    execStateByOrderStage.set(osKey, "Finalizado");
+                } else if (ex.status === "Em andamento" && prevState !== "Finalizado") {
+                    execStateByOrderStage.set(osKey, "Em andamento");
+                } else if (ex.status === "Pausado" && !prevState) {
+                    execStateByOrderStage.set(osKey, "Pausado");
+                }
+
                 if (ex.status === "Em andamento") {
                     operatorMap.set(ex.order_id, ex.users?.name || null);
                 }
@@ -2485,7 +2484,7 @@ app.get("/api/orders", async (req, res) => {
             const { data: dbItems } = await supabaseAdmin
                 .from("orders")
                 .select("id, items")
-                .in("id", orderIds);
+                .in("id", targetOrderIds);
 
             if (dbItems) {
                 const itemsMap = new Map();
@@ -2493,7 +2492,7 @@ app.get("/api/orders", async (req, res) => {
                     if (row.items) itemsMap.set(row.id, row.items);
                 });
                 data.forEach((order: any) => {
-                    order.items = itemsMap.get(order.id) || [];
+                    order.items = itemsMap.get(order.id) || order.items || [];
                 });
             }
         } catch (err) {
@@ -2503,7 +2502,7 @@ app.get("/api/orders", async (req, res) => {
         const { data: dbProgress } = await supabaseAdmin
             .from("order_stage_progress")
             .select("*")
-            .in("order_id", orderIds);
+            .in("order_id", targetOrderIds);
 
         if (dbProgress) {
             dbProgress.forEach((p: any) => {
@@ -2519,7 +2518,7 @@ app.get("/api/orders", async (req, res) => {
             const { data: obsData } = await supabaseAdmin
                 .from("stage_observations")
                 .select("order_id, stage_id, observation, created_at")
-                .in("order_id", orderIds)
+                .in("order_id", targetOrderIds)
                 .order("created_at", { ascending: false });
 
             if (obsData) {
@@ -2538,6 +2537,21 @@ app.get("/api/orders", async (req, res) => {
         }
 
         for (const order of data) {
+            if (Array.isArray(order.stages_status)) {
+                order.stages_status = order.stages_status
+                    .filter((st: any) => Number(st.id) !== 12)
+                    .map((st: any) => {
+                        const execState = execStateByOrderStage.get(`${order.id}_${Number(st.id)}`);
+                        if (execState === "Finalizado") {
+                            return { ...st, finished: true, in_progress: false };
+                        }
+                        if (execState === "Em andamento" || execState === "Pausado") {
+                            return { ...st, in_progress: true };
+                        }
+                        return st;
+                    });
+            }
+
             order.current_operator = operatorMap.get(order.id) || null;
             order.active_stage_execution = activeStageExecutionMap.get(order.id) || null;
             
@@ -3937,9 +3951,29 @@ app.post("/api/executions/start", async (req, res) => {
             }
         }
     } catch (autoErr) {
-        console.error("[API] Erro na automa├â┬º├â┬úo de exclusividade Corte/Separa├â┬º├â┬úo:", autoErr);
-        // N├â┬úo retornar erro para o front, deixar a execu├â┬º├â┬úo seguir normalmente se a automa├â┬º├â┬úo falhar
+        console.error("[API] Erro na automacao Corte/Separacao:", autoErr);
     }
+
+    try {
+        if (Number(stage_id) !== 1) {
+            await supabaseAdmin
+                .from("orders")
+                .update({ status: "Em Produção" })
+                .eq("id", Number(order_id))
+                .eq("status", "Entrada");
+        }
+        const progKey = `${Number(order_id)}_${Number(stage_id)}`;
+        const existingProg = _lossStageProgressStore.get(progKey);
+        if (existingProg && existingProg.finished) {
+            existingProg.finished = false;
+            _lossStageProgressStore.set(progKey, existingProg);
+        }
+        await supabaseAdmin
+            .from("order_stage_progress")
+            .update({ finished: false })
+            .eq("order_id", Number(order_id))
+            .eq("stage_id", Number(stage_id));
+    } catch (_) {}
 
     return res.json({ id: data.id });
 });
@@ -4176,7 +4210,7 @@ app.post("/api/executions/:id/resume", async (req, res) => {
 
 app.post("/api/executions/:id/finish", async (req, res) => {
     const execution_id = Number(req.params.id);
-    const { force, observation } = req.body || {};
+    const { observation } = req.body || {};
     const nowISO = new Date().toISOString();
     const nowMs = new Date().getTime();
 
@@ -4187,15 +4221,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .eq("id", execution_id)
         .single();
 
-    if (checkError(e1, res, "Execu├â┬º├â┬úo n├â┬úo encontrada") || !execution) return;
-
-    // 1.5 Validate if stage can be finished (for por_peca, quantidade_boa >= quantidade_pedido)
-    if (!force) {
-        const val = await validateStageFinish(supabase, execution.order_id, execution.stage_id);
-        if (!val.canFinish) {
-            return res.status(400).json({ error: val.message, remaining: val.remaining, canForce: true });
-        }
-    }
+    if (checkError(e1, res, "Execucao nao encontrada") || !execution) return;
 
     // 2. Finalize any active pause
     const { data: lastPauseData } = await supabaseAdmin
@@ -4211,7 +4237,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         const duration = Math.floor((nowMs - new Date(lastPauseData.start_pause).getTime()) / 1000);
         await supabaseAdmin
             .from("pauses")
-            .update({ end_pause: nowISO, duration_seconds: duration })
+            .update({ end_pause: nowISO, duration_seconds: Math.max(0, duration) })
             .eq("id", lastPauseData.id);
     }
 
@@ -4240,7 +4266,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         })
         .eq("id", execution_id);
 
-    if (checkError(e2, res, "Erro ao finalizar execu├â┬º├â┬úo")) return;
+    if (checkError(e2, res, "Erro ao finalizar execucao")) return;
 
     if (observation && execution) {
         try {
@@ -4251,37 +4277,66 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 observation
             });
         } catch (e) {
-            console.error("Erro ao salvar observa├â┬º├â┬úo da etapa na finaliza├â┬º├â┬úo:", e);
+            console.error("Erro ao salvar observacao da etapa na finalizacao:", e);
         }
     }
 
-    // 6. Update order total time
+    // 6. Update order total time & fetch order metadata
     const { data: allExecs } = await supabaseAdmin
         .from("stage_executions")
-        .select("total_time_seconds")
+        .select("total_time_seconds, stage_id, status")
         .eq("order_id", execution.order_id);
 
     const totalOrderTime = (allExecs || []).reduce(
         (sum: number, e: any) => sum + (e.total_time_seconds || 0), 0
     );
 
+    const { data: orderData } = await supabaseAdmin
+        .from("orders")
+        .select("quantity, required_stages, status")
+        .eq("id", execution.order_id)
+        .single();
+
     await supabaseAdmin
         .from("orders")
         .update({ total_time_seconds: totalOrderTime })
         .eq("id", execution.order_id);
 
-    // 7. Update order status if specific stage finished
-    const stageName = execution.stages?.name?.toLowerCase() || '';
-    if (stageName.includes('ficha') && stageName.includes('aprova')) {
+    // 6.5 Synchronize order_stage_progress so RPC get_orders_with_stages sees finished = true
+    const orderQty = orderData?.quantity || 1;
+    const progRow = {
+        order_id: Number(execution.order_id),
+        stage_id: Number(execution.stage_id),
+        quantidade_pedido: orderQty,
+        quantidade_boa: orderQty,
+        quantidade_perdida: 0,
+        pendencia_reposicao: 0,
+        finished: true
+    };
+    _lossStageProgressStore.set(`${execution.order_id}_${execution.stage_id}`, progRow);
+    try {
         await supabaseAdmin
-            .from("orders")
-            .update({ status: "Em Produção" })
-            .eq("id", execution.order_id)
-            .eq("status", "Entrada");
+            .from("order_stage_progress")
+            .upsert(progRow, { onConflict: "order_id,stage_id" });
+    } catch (progErr) {
+        console.warn("[API] Erro ao sincronizar order_stage_progress no finish:", progErr);
     }
 
-    // ALWAYS mark as Entregue if Conferencia is finished, because users often skip subsequent optional stages
-    if (stageName.includes('confer')) {
+    // 7. Update order status if specific stage finished
+    let newOrderStatus = orderData?.status || "Em Produção";
+    const stageName = execution.stages?.name?.toLowerCase() || '';
+    if ((stageName.includes('ficha') && stageName.includes('aprova')) || Number(execution.stage_id) === 1) {
+        if (orderData?.status === "Entrada") {
+            await supabaseAdmin
+                .from("orders")
+                .update({ status: "Em Produção" })
+                .eq("id", execution.order_id);
+            newOrderStatus = "Em Produção";
+        }
+    }
+
+    // ALWAYS mark as Entregue if Conferencia is finished, or if all active required stages are finished
+    if (stageName.includes('confer') || Number(execution.stage_id) === 8) {
         await supabaseAdmin
             .from("orders")
             .update({ 
@@ -4289,35 +4344,38 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 delivered_at: nowISO
             })
             .eq("id", execution.order_id);
+        newOrderStatus = "Entregue";
         console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Conferência.`);
-    } else {
-        // Check if all required stages for this order are completed
-        const { data: orderData } = await supabaseAdmin
-            .from("orders")
-            .select("required_stages")
-            .eq("id", execution.order_id)
-            .single();
+    } else if (orderData && Array.isArray(orderData.required_stages) && orderData.required_stages.length > 0) {
+        const activeReqStages = orderData.required_stages
+            .map((id: any) => Number(id))
+            .filter((id: number) => id !== 12);
 
-        if (orderData && orderData.required_stages && orderData.required_stages.length > 0) {
-            const { data: completedExecs } = await supabaseAdmin
-                .from("stage_executions")
-                .select("stage_id")
-                .eq("order_id", execution.order_id)
-                .eq("status", "Finalizado");
-            
-            const completedStageIds = new Set((completedExecs || []).map((e: any) => e.stage_id));
-            const allCompleted = orderData.required_stages.every((id: number) => completedStageIds.has(id));
+        const completedStageIds = new Set(
+            (allExecs || [])
+                .filter((e: any) => e.status === "Finalizado")
+                .map((e: any) => Number(e.stage_id))
+        );
+        completedStageIds.add(Number(execution.stage_id));
 
-            if (allCompleted) {
-                await supabaseAdmin
-                    .from("orders")
-                    .update({ 
-                        status: "Entregue",
-                        delivered_at: nowISO
-                    })
-                    .eq("id", execution.order_id);
-                console.log(`[API] Pedido ${execution.order_id} marcado como Entregue pois todas as etapas obrigatorias foram finalizadas.`);
-            }
+        const { data: progRows } = await supabaseAdmin
+            .from("order_stage_progress")
+            .select("stage_id")
+            .eq("order_id", execution.order_id)
+            .eq("finished", true);
+        (progRows || []).forEach((r: any) => completedStageIds.add(Number(r.stage_id)));
+
+        const allCompleted = activeReqStages.length > 0 && activeReqStages.every((id: number) => completedStageIds.has(id));
+        if (allCompleted) {
+            await supabaseAdmin
+                .from("orders")
+                .update({ 
+                    status: "Entregue",
+                    delivered_at: nowISO
+                })
+                .eq("id", execution.order_id);
+            newOrderStatus = "Entregue";
+            console.log(`[API] Pedido ${execution.order_id} marcado como Entregue pois todas as etapas obrigatorias foram finalizadas.`);
         }
     }
 
@@ -4367,11 +4425,69 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 .eq("id", execution.stage_id);
         }
     } catch (metricError) {
-        console.error("[API] Erro ao recalcular m├â┬®tricas de tempo da etapa:", metricError);
-        // N├â┬úo falha a requisi├â┬º├â┬úo se falhar ao atualizar a m├â┬®trica
+        console.error("[API] Erro ao recalcular metricas de tempo da etapa:", metricError);
     }
 
-    return res.json({ success: true, total_time: totalExecutionSeconds });
+    return res.json({ success: true, total_time: totalExecutionSeconds, order_status: newOrderStatus });
+});
+
+app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
+    const orderId = Number(req.params.id);
+    const stageId = Number(req.params.stageId);
+
+    try {
+        const { data: execs } = await supabaseAdmin
+            .from("stage_executions")
+            .select("id")
+            .eq("order_id", orderId)
+            .eq("stage_id", stageId);
+
+        if (execs && execs.length > 0) {
+            const execIds = execs.map((e: any) => e.id);
+            await supabaseAdmin.from("pauses").delete().in("execution_id", execIds);
+            await supabaseAdmin.from("stage_executions").delete().in("id", execIds);
+        }
+
+        const progKey = `${orderId}_${stageId}`;
+        const existingProg = _lossStageProgressStore.get(progKey);
+        if (existingProg) {
+            existingProg.finished = false;
+            existingProg.quantidade_boa = 0;
+            _lossStageProgressStore.set(progKey, existingProg);
+        }
+
+        await supabaseAdmin
+            .from("order_stage_progress")
+            .update({ finished: false, quantidade_boa: 0 })
+            .eq("order_id", orderId)
+            .eq("stage_id", stageId);
+
+        const { data: orderData } = await supabaseAdmin
+            .from("orders")
+            .select("status")
+            .eq("id", orderId)
+            .single();
+
+        let updatedStatus = orderData?.status;
+        if (stageId === 1) {
+            updatedStatus = "Entrada";
+            await supabaseAdmin
+                .from("orders")
+                .update({ status: "Entrada", delivered_at: null })
+                .eq("id", orderId);
+        } else if (orderData?.status === "Entregue") {
+            updatedStatus = "Em Produção";
+            await supabaseAdmin
+                .from("orders")
+                .update({ status: "Em Produção", delivered_at: null })
+                .eq("id", orderId);
+        }
+
+        return res.json({ success: true, order_status: updatedStatus });
+    } catch (err: any) {
+        console.error("[API] Erro ao reabrir etapa:", err);
+        return res.status(500).json({ error: "Erro ao reabrir etapa" });
+    }
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼

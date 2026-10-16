@@ -9,7 +9,6 @@ import {
   Layers, CheckSquare, X, CheckCircle2, User as UserIcon, AlertCircle, ClipboardList, Timer
 } from 'lucide-react';
 import { Badge } from '../Badge';
-import { ProductionProgressPanel } from '../ProductionProgressPanel';
 import type { Order, Stage } from '../../types';
 
 export const OrderDetailsDrawer = ({
@@ -42,18 +41,17 @@ export const OrderDetailsDrawer = ({
   handlePauseStage,
   handleResumeStage,
   handleFinishStage,
-    isActionLoading,
-    setSelectedStageId,
+  handleReopenStage,
+  isActionLoading,
+  setSelectedStageId,
   selectedStageId
 }: any) => {
   const confirmTimeoutRef = useRef<NodeJS.Timeout>();
 
   return (
     <AnimatePresence>
-                <AnimatePresence>
-          {
-            selectedOrder && (
-              <div className="fixed inset-0 z-[200] flex justify-end bg-black/40 backdrop-blur-sm">
+      {selectedOrder && (
+        <div className="fixed inset-0 z-[200] flex justify-end bg-black/40 backdrop-blur-sm">
                 <motion.div
                   initial={{ x: '100%' }}
                   animate={{ x: 0 }}
@@ -394,9 +392,6 @@ export const OrderDetailsDrawer = ({
                               </div>
                             )}
 
-                            {/* Andamento Produtivo (PCP ProComfort) */}
-                            <ProductionProgressPanel orderId={selectedOrder.id} />
-
                             {selectedOrder.observations && (
                               <section>
                                 <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
@@ -423,10 +418,14 @@ export const OrderDetailsDrawer = ({
                                 <Layers size={16} className="text-sky-500" /> FLUXO DE PRODUÇÃO
                               </div>
                               {(() => {
-                                const stagesStatusList = selectedOrder.stages_status || [];
+                                const stagesStatusList = (selectedOrder.stages_status || []).filter((s: any) => Number(s.id) !== 12);
+                                const finishedCount = stagesStatusList.filter((s: any) => {
+                                  const execs = (executions || []).filter((e: any) => Number(e.stage_id) === Number(s.id));
+                                  return Boolean(s.finished || execs.some((e: any) => e.status === 'Finalizado'));
+                                }).length;
                                 return (
                                   <Badge variant="info" className="text-[8px] py-0 px-1.5">
-                                    {stagesStatusList.filter(s => s.finished).length}/{stagesStatusList.length}
+                                    {finishedCount}/{stagesStatusList.length}
                                   </Badge>
                                 );
                               })()}
@@ -434,15 +433,30 @@ export const OrderDetailsDrawer = ({
 
                             <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-3">
                               {(() => {
-                                const stagesStatusList = selectedOrder.stages_status || [];
-                                const firstUnfinishedId = stagesStatusList.find(s => !s.finished)?.id;
-                                return stagesStatusList.map(orderStage => {
-                                  const stage = stages.find(s => s.id === orderStage.id);
+                                const stagesStatusList = (selectedOrder.stages_status || []).filter((s: any) => Number(s.id) !== 12);
+                                const getStageExecution = (stageId: number) => {
+                                  const stageExecs = (executions || []).filter((e: any) => Number(e.stage_id) === Number(stageId));
+                                  return (
+                                    stageExecs.find((e: any) => e.status === 'Em andamento') ||
+                                    stageExecs.find((e: any) => e.status === 'Pausado') ||
+                                    stageExecs.find((e: any) => e.status === 'Finalizado') ||
+                                    stageExecs[0]
+                                  );
+                                };
+                                const isStageDone = (orderStage: any) => {
+                                  const exec = getStageExecution(orderStage.id);
+                                  return Boolean(orderStage.finished || exec?.status === 'Finalizado');
+                                };
+                                const firstUnfinishedId = stagesStatusList.find((s: any) => !isStageDone(s))?.id;
+
+                                return stagesStatusList.map((orderStage: any) => {
+                                  const stage = stages.find((s: any) => Number(s.id) === Number(orderStage.id));
                                   if (!stage) return null;
-                                  const execution = executions.find(e => e.stage_id === stage.id);
+                                  const execution = getStageExecution(stage.id);
+                                  const isFinished = isStageDone(orderStage);
                                   const stageTimes = execution ? calculateExecutionTimes(execution, execution.pauses || [], now.getTime()) : null;
                                   const isSelected = selectedStageId === stage.id;
-                                  const isNextToStart = !execution && stage.id === firstUnfinishedId;
+                                  const isNextToStart = !isFinished && (!execution || (execution.status !== 'Em andamento' && execution.status !== 'Pausado')) && stage.id === firstUnfinishedId;
 
                                   return (
                                     <div key={stage.id} 
@@ -452,21 +466,21 @@ export const OrderDetailsDrawer = ({
                                         isSelected ? "ring-2 ring-sky-500 bg-sky-50/20 border-sky-200" :
                                         execution?.status === 'Em andamento' ? "bg-white border-zinc-900 shadow-md ring-1 ring-zinc-900" :
                                         execution?.status === 'Pausado' ? "bg-amber-50/30 border-amber-100" :
-                                        orderStage.finished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
+                                        isFinished ? "bg-zinc-50/50 border-zinc-100" : "bg-white border-zinc-100"
                                       )}
                                     >
                                       <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2.5 overflow-hidden">
                                           <div className={cn(
                                             "w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors",
-                                            orderStage.finished ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-400"
+                                            isFinished ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-500"
                                           )}>
-                                            {orderStage.finished ? <CheckCircle2 size={14} /> : stage.sort_order}
+                                            {isFinished ? <CheckCircle2 size={14} /> : stage.sort_order}
                                           </div>
                                           <div className="min-w-0">
                                             <p className={cn(
                                               "font-bold text-xs truncate",
-                                              orderStage.finished ? "text-zinc-500" : "text-zinc-900"
+                                              isFinished ? "text-zinc-500 line-through" : "text-zinc-900"
                                             )}>
                                               {stage.name}
                                             </p>
@@ -509,49 +523,38 @@ export const OrderDetailsDrawer = ({
                                             Pausado ({formatSeconds(stageTimes.totalAccumulatedSeconds)})
                                           </div>
                                         )}
+
+                                        {isFinished && handleReopenStage && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleReopenStage(stage.id);
+                                            }}
+                                            disabled={isActionLoading}
+                                            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-600 text-[9px] font-bold transition-all active:scale-95"
+                                            title="Voltar para trás / Reabrir esta etapa"
+                                          >
+                                            <ArrowLeft size={10} /> Voltar
+                                          </button>
+                                        )}
                                       </div>
 
-                                      {stage.calculation_type !== 'por_pedido' && (
-                                        <div className="mt-2 text-[10px] space-y-1 bg-zinc-50/80 p-2 rounded-md border border-zinc-100">
-                                          <div className="flex items-center justify-between text-zinc-700 font-bold">
-                                            <span>Progresso de peças:</span>
-                                            <span className="font-mono text-emerald-700">
-                                              {orderStage.quantidade_boa || 0} / {orderStage.quantidade_pedido || selectedOrder.quantity}
-                                            </span>
-                                          </div>
-                                          <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
-                                            <div
-                                              className="bg-emerald-500 h-full rounded-full transition-all duration-300"
-                                              style={{ width: `${Math.min(100, Math.round(((orderStage.quantidade_boa || 0) / (orderStage.quantidade_pedido || selectedOrder.quantity || 1)) * 100))}%` }}
-                                            />
-                                          </div>
-                                          <div className="flex flex-wrap items-center justify-between gap-1 text-[9px] pt-1">
-                                            {orderStage.quantidade_perdida ? (
-                                              <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
-                                                Perdas: {orderStage.quantidade_perdida} pc
-                                              </span>
-                                            ) : <span />}
-                                            {orderStage.pendencia_reposicao ? (
-                                              <span className="bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold animate-pulse">
-                                                Reposição pendente: +{orderStage.pendencia_reposicao} pc
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {!orderStage.finished && (
+                                      {!isFinished && (
                                         <div className="mt-2 space-y-1.5">
-
                                           <div className="flex items-center gap-1.5">
-                                            {!execution && (
+                                            {(!execution || (execution.status !== 'Em andamento' && execution.status !== 'Pausado')) && (
                                               <button
-                                                onClick={() => handleStartStage(stage.id)}
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleStartStage(stage.id);
+                                                }}
                                                 className={cn(
                                                   "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md transition-all font-bold text-[10px]",
                                                   isNextToStart 
-                                                    ? "bg-zinc-900 text-white hover:bg-zinc-800" 
-                                                    : "bg-zinc-50 text-zinc-300 cursor-not-allowed border border-zinc-100"
+                                                    ? "bg-zinc-900 text-white hover:bg-zinc-800 shadow-xs" 
+                                                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-200"
                                                 )}
                                               >
                                                 <Play size={12} fill="currentColor" />
@@ -562,16 +565,25 @@ export const OrderDetailsDrawer = ({
                                             {execution?.status === 'Em andamento' && (
                                               <>
                                                 <button
-                                                  onClick={() => handlePauseStage(execution.id, stage.id)}
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handlePauseStage(execution.id, stage.id);
+                                                  }}
+                                                  disabled={isActionLoading}
                                                   className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white text-zinc-600 rounded-md hover:bg-zinc-50 transition-all font-bold text-[10px] border border-zinc-200"
                                                 >
                                                   <Pause size={12} fill="currentColor" />
                                                   PAUSAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-zinc-600 text-white rounded text-[8px] font-mono shadow-sm">2</kbd>
                                                 </button>
                                                 <button
-    onClick={() => handleFinishStage(execution.id, stage.id)}
-    disabled={execution?.status !== 'Em andamento' || isActionLoading}
-    className="flex-1 flex disabled:opacity-50  items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleFinishStage(execution.id, stage.id);
+                                                  }}
+                                                  disabled={isActionLoading}
+                                                  className="flex-1 flex disabled:opacity-50 items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
                                                 >
                                                   {isActionLoading ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div> FINALIZANDO...</> : <><CheckCircle size={12} /> FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd></>}
                                                 </button>
@@ -579,13 +591,31 @@ export const OrderDetailsDrawer = ({
                                             )}
 
                                             {execution?.status === 'Pausado' && (
-                                              <button
-                                                onClick={() => handleResumeStage(execution.id)}
-                                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
-                                              >
-                                                <Play size={12} fill="currentColor" />
-                                                RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
-                                              </button>
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleResumeStage(execution.id);
+                                                  }}
+                                                  disabled={isActionLoading}
+                                                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 transition-all font-bold text-[10px]"
+                                                >
+                                                  <Play size={12} fill="currentColor" />
+                                                  RETOMAR <kbd className="ml-2 px-1.5 py-0.5 bg-zinc-900 text-white rounded text-[8px] font-mono shadow-sm">1</kbd>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleFinishStage(execution.id, stage.id);
+                                                  }}
+                                                  disabled={isActionLoading}
+                                                  className="flex-1 flex disabled:opacity-50 items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all font-bold text-[10px]"
+                                                >
+                                                  {isActionLoading ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div> FINALIZANDO...</> : <><CheckCircle size={12} /> FINALIZAR <kbd className="ml-1.5 px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[8px] font-mono shadow-sm">3</kbd></>}
+                                                </button>
+                                              </>
                                             )}
                                           </div>
                                         </div>
@@ -626,52 +656,71 @@ export const OrderDetailsDrawer = ({
                         </div>
 
                         <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4">
-                          {selectedOrder.art_urls && selectedOrder.art_urls.length > 0 ? (
-                            <div className="grid grid-cols-1 gap-4">
-                              {selectedOrder.art_urls.map((url, i) => (
-                                <div
-                                  key={i}
-                                  onClick={() => {
-                                    if (isImage(url)) {
-                                      setSelectedFullImage(url);
-                                    } else {
-                                      window.open(url, '_blank');
-                                    }
-                                  }}
-                                  className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-900 transition-all"
-                                >
-                                  {isImage(url) ? (
-                                    <img
-                                      src={url}
-                                      alt={`Ficha ${i + 1}`}
-                                      className="max-w-full max-h-full object-contain"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  ) : isPdf(url) ? (
-                                    <div className="flex flex-col items-center gap-2 text-rose-500">
-                                      <div className="p-3 bg-rose-50 rounded-full border border-rose-100">
-                                        <FileText size={24} />
-                                      </div>
-                                      <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Documento PDF</span>
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-col items-center gap-2 text-zinc-400">
-                                      <FileText size={24} />
-                                      <span className="text-[10px] uppercase font-bold text-zinc-500">Arquivo</span>
-                                    </div>
-                                  )}
-                                  <div className="absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-2">
-                                    <Search size={14} /> AMPLIAR
-                                  </div>
+                          {(() => {
+                            const fileUrls: string[] = Array.from(
+                              new Set(
+                                [
+                                  ...(Array.isArray(selectedOrder.art_urls) ? selectedOrder.art_urls : []),
+                                  ...(selectedOrder.art_url ? [selectedOrder.art_url] : [])
+                                ].filter(Boolean)
+                              )
+                            );
+                            if (fileUrls.length === 0) {
+                              return (
+                                <div className="flex flex-col items-center justify-center py-16 bg-zinc-50/50 rounded-xl border border-dashed border-zinc-200 text-zinc-400 gap-3">
+                                  <ImageIcon size={32} className="opacity-20" />
+                                  <p className="text-[10px] font-bold uppercase tracking-widest">Sem arquivos</p>
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center py-16 bg-zinc-50/50 rounded-xl border border-dashed border-zinc-200 text-zinc-400 gap-3">
-                              <ImageIcon size={32} className="opacity-20" />
-                              <p className="text-[10px] font-bold uppercase tracking-widest">Sem arquivos</p>
-                            </div>
-                          )}
+                              );
+                            }
+                            return (
+                              <div className="grid grid-cols-1 gap-4">
+                                {fileUrls.map((url, i) => (
+                                  <div
+                                    key={i}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedFullImage(url);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setSelectedFullImage(url);
+                                      }
+                                    }}
+                                    className="group relative rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50 aspect-video flex items-center justify-center cursor-pointer hover:border-zinc-900 transition-all"
+                                  >
+                                    {isImage(url) ? (
+                                      <img
+                                        src={url}
+                                        alt={`Ficha ${i + 1}`}
+                                        className="max-w-full max-h-full object-contain pointer-events-none select-none"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : isPdf(url) ? (
+                                      <div className="pointer-events-none flex flex-col items-center gap-2 text-rose-500">
+                                        <div className="p-3 bg-rose-50 rounded-full border border-rose-100">
+                                          <FileText size={24} />
+                                        </div>
+                                        <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Documento PDF (Clique para abrir)</span>
+                                      </div>
+                                    ) : (
+                                      <div className="pointer-events-none flex flex-col items-center gap-2 text-zinc-400">
+                                        <FileText size={24} />
+                                        <span className="text-[10px] uppercase font-bold text-zinc-500">Arquivo (Clique para abrir)</span>
+                                      </div>
+                                    )}
+                                    <div className="pointer-events-none absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-2">
+                                      <Search size={14} /> AMPLIAR / VISUALIZAR
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -679,9 +728,6 @@ export const OrderDetailsDrawer = ({
               </motion.div>
             </div>
           )}
-        </AnimatePresence>
-
-
     </AnimatePresence>
   );
 };

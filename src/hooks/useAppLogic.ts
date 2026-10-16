@@ -297,11 +297,14 @@ export function useAppLogic() {
   };
 
   useEffect(() => {
+    if (!selectedOrder) return;
+    const hasRunningExec = (executions || []).some(ex => ex.status === 'Em andamento');
+    if (!hasRunningExec) return;
     const timer = setInterval(() => {
       setNow(new Date());
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [selectedOrder?.id, executions]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -401,7 +404,7 @@ export function useAppLogic() {
       statsUrl += `print_type=${printTypeFilter}&`;
     }
 
-    let ordersUrl = `/api/orders?search=${encodeURIComponent(searchTerm)}`;
+    let ordersUrl = `/api/orders?search=${encodeURIComponent(searchTerm)}&include_delivered=${showCompletedOrders ? 'true' : 'false'}`;
     if (selectedStageFilter) {
       ordersUrl += `&stage_id=${selectedStageFilter}&stage_status=${selectedStageStatus}`;
     }
@@ -443,9 +446,14 @@ export function useAppLogic() {
         }
 
         if (Array.isArray(fallbackOrders)) {
+          if (!showCompletedOrders && !searchTerm) {
+            fallbackOrders = fallbackOrders.filter((o: any) => o.status !== 'Entregue' && o.status !== 'Cancelado');
+          }
           ordersData = fallbackOrders.map((o: any) => ({
             ...o,
-            stages_status: Array.isArray(o.stages_status) ? o.stages_status : []
+            stages_status: Array.isArray(o.stages_status)
+              ? o.stages_status.filter((s: any) => Number(s.id) !== 12)
+              : []
           }));
 
           // Enrich fallbackOrders with items column
@@ -549,6 +557,11 @@ export function useAppLogic() {
         return (isNaN(timeA) ? Infinity : timeA) - (isNaN(timeB) ? Infinity : timeB);
       });
       setOrders(sortedOrders);
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const updated = sortedOrders.find((o: Order) => o.id === prev.id);
+        return updated ? { ...prev, ...updated, items: updated.items?.length ? updated.items : prev.items } : prev;
+      });
     }
     if (Array.isArray(stagesData)) setStages(stagesData);
     if (statsData) setStats(statsData);
@@ -556,9 +569,10 @@ export function useAppLogic() {
     fetchCollaboratorGoals();
     fetchDraftOrders();
 
-    // Always refresh forecast when data changes
-    const forecastResult = await safeFetch('/api/orders/delivery-forecast');
-    if (forecastResult) setForecastData(forecastResult);
+    // Refresh forecast non-blockingly so UI updates immediately
+    safeFetch('/api/orders/delivery-forecast').then(forecastResult => {
+      if (forecastResult) setForecastData(forecastResult);
+    });
   };
 
   const fetchDraftOrders = async () => {
@@ -1206,11 +1220,34 @@ export function useAppLogic() {
     setExecutionActionModal({ type, executionId, stageId });
   };
 
-  const handlePauseStage = (executionId: number, stageId: number) => {
-    handleOpenActionModal('pause', executionId, stageId);
+  const handlePauseStage = async (executionId: number, _stageId: number) => {
+    if (isActionLoading) return;
+    if (!selectedOrder) return;
+    setIsActionLoading(true);
+    try {
+      const pauseRes = await fetch(`/api/executions/${executionId}/pause`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        },
+        body: JSON.stringify({ observation: '' })
+      });
+      if (pauseRes.ok) {
+        await fetchExecutions(selectedOrder.id);
+        fetchData();
+        fetchActiveExecution();
+        showToast("Etapa pausada.");
+      } else {
+        showToast("Erro ao pausar etapa.");
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
   };
 
   const handleFinishStage = async (executionId: number, stageId: number) => {
+    if (isActionLoading) return;
     if (!selectedOrder) return;
     setIsActionLoading(true);
     try {
@@ -1223,11 +1260,74 @@ export function useAppLogic() {
         body: JSON.stringify({ force: true, observation: '' })
       });
       if (finishRes.ok) {
-        fetchExecutions(selectedOrder.id);
-        fetchData();
+        const resData = await finishRes.json().catch(() => ({}));
+        const isDelivered = resData?.order_status === 'Entregue' || Number(stageId) === 8;
+
+        // Optimistically update selectedOrder stages_status immediately
+        setSelectedOrder(prev => {
+          if (!prev) return null;
+          if (isDelivered && !showCompletedOrders) return null;
+          const nextStages = (prev.stages_status || []).map(s =>
+            Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
+          );
+          return {
+            ...prev,
+            status: resData?.order_status || prev.status,
+            stages_status: nextStages
+          };
+        });
+
+        await fetchExecutions(selectedOrder.id);
+        await fetchData();
         fetchActiveExecution();
+
+        if (isDelivered) {
+          showToast("Conferência concluída! Pedido movido para Entregues.");
+        } else {
+          showToast("Etapa finalizada com sucesso!");
+        }
       } else {
-        showToast("Erro ao finalizar etapa");
+        const err = await finishRes.json().catch(() => ({}));
+        showToast(err.error || "Erro ao finalizar etapa");
+      }
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleReopenStage = async (stageId: number) => {
+    if (isActionLoading || !selectedOrder) return;
+    const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
+    if (!window.confirm(`Deseja voltar atrás e reabrir a etapa "${stageName}"?`)) return;
+
+    setIsActionLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/reopen`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': currentUser?.role || ''
+        }
+      });
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        setSelectedOrder(prev => {
+          if (!prev) return null;
+          const nextStages = (prev.stages_status || []).map(s =>
+            Number(s.id) === Number(stageId) ? { ...s, finished: false } : s
+          );
+          return {
+            ...prev,
+            status: resData?.order_status || prev.status,
+            stages_status: nextStages
+          };
+        });
+        await fetchExecutions(selectedOrder.id);
+        await fetchData();
+        fetchActiveExecution();
+        showToast(`Etapa "${stageName}" reaberta!`);
+      } else {
+        showToast("Erro ao reabrir etapa.");
       }
     } finally {
       setIsActionLoading(false);
@@ -1351,7 +1451,10 @@ export function useAppLogic() {
       method: 'POST',
       headers: { 'x-user-role': currentUser?.role || '' }
     });
-    fetchExecutions(selectedOrder!.id);
+    if (selectedOrder) {
+      await fetchExecutions(selectedOrder.id);
+    }
+    fetchData();
     fetchActiveExecution();
   };
 
@@ -1468,7 +1571,7 @@ export function useAppLogic() {
       fetchUsers();
       fetchCollaboratorGoals();
     }
-  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, activeTab, currentUser]);
+  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, showCompletedOrders, activeTab, currentUser]);
 
   useEffect(() => {
     if (activeTab === 'collaborators') {
@@ -1520,7 +1623,7 @@ export function useAppLogic() {
     } else {
       setSelectedStageId(null);
     }
-  }, [selectedOrder]);
+  }, [selectedOrder?.id, selectedOrder?.stages_status]);
 
   // Shortcut Listener at top level to avoid Hook order violation
   useEffect(() => {
@@ -1530,10 +1633,16 @@ export function useAppLogic() {
         return;
       }
 
-      // Handle Escape even if scan input is focused (to close order)
-      if (e.key === 'Escape' && selectedOrder) {
-        setSelectedOrder(null);
-        return;
+      // Handle Escape: close full image lightbox first, then order drawer
+      if (e.key === 'Escape') {
+        if (selectedFullImage) {
+          setSelectedFullImage(null);
+          return;
+        }
+        if (selectedOrder) {
+          setSelectedOrder(null);
+          return;
+        }
       }
 
       // If no order is selected, we don't handle the numbered shortcuts
@@ -1588,7 +1697,7 @@ export function useAppLogic() {
           break;
         case '3':
           e.preventDefault();
-          if (execution?.status === 'Em andamento') {
+          if (execution?.status === 'Em andamento' || execution?.status === 'Pausado') {
             handleFinishStage(execution.id, stage.id);
           }
           break;
@@ -1597,7 +1706,7 @@ export function useAppLogic() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [selectedOrder, selectedStageId, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
+  }, [selectedOrder, selectedFullImage, selectedStageId, executions, stages, handleStartStage, handleResumeStage, handlePauseStage, handleFinishStage]);
 
   // New Order Form State
   const [newOrderForm, setNewOrderForm] = useState({
@@ -1729,6 +1838,7 @@ export function useAppLogic() {
     handleOpenLossModal,
     handleOpenProgressModal,
     handlePauseStage,
+    handleReopenStage,
     handleRequestToggleDtf,
     handleResumeStage,
     handleSaveLoss,

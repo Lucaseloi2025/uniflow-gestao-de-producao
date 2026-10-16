@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
 import { Clock, FileText, Scissors } from 'lucide-react';
@@ -63,33 +63,37 @@ export const Kanban = ({
                     isOverdue ? "border-rose-500 bg-rose-50/30 hover:border-rose-600" : "border-zinc-200 hover:border-zinc-400"
                   )}
                 >
-                  {order.art_url && (
-                    <div className="w-full h-32 bg-zinc-100 relative overflow-hidden group/art">
-                      {isImage(order.art_url) ? (
-                        <img
-                          src={order.art_url}
-                          alt="Mockup"
-                          className="w-full h-full object-cover transition-transform group-hover/art:scale-110"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : isPdf(order.art_url) ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50 border-b border-rose-100 text-rose-500">
-                          <FileText size={40} />
-                          <span className="text-[10px] font-bold mt-1">PDF</span>
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
-                          <FileText size={40} />
-                          <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{order.art_url.split('.').pop()}</span>
-                        </div>
-                      )}
-                      {order.art_urls && order.art_urls.length > 1 && (
-                        <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-white text-[10px] font-bold shadow-sm">
-                          +{order.art_urls.length - 1} foto{order.art_urls.length - 1 !== 1 ? 's' : ''}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {(() => {
+                    const coverUrl = order.art_url || (order.art_urls && order.art_urls[0]);
+                    if (!coverUrl) return null;
+                    return (
+                      <div className="w-full h-32 bg-zinc-100 relative overflow-hidden group/art">
+                        {isImage(coverUrl) ? (
+                          <img
+                            src={coverUrl}
+                            alt="Mockup"
+                            className="w-full h-full object-cover transition-transform group-hover/art:scale-110"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : isPdf(coverUrl) ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-rose-50 border-b border-rose-100 text-rose-500">
+                            <FileText size={40} />
+                            <span className="text-[10px] font-bold mt-1">PDF</span>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-50 border-b border-zinc-100 text-zinc-400">
+                            <FileText size={40} />
+                            <span className="text-[10px] uppercase font-black tracking-tighter mt-1">{coverUrl.split('.').pop()}</span>
+                          </div>
+                        )}
+                        {order.art_urls && order.art_urls.length > 1 && (
+                          <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-white text-[10px] font-bold shadow-sm">
+                            +{order.art_urls.length - 1} foto{order.art_urls.length - 1 !== 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-3">
                       <span className="text-[10px] font-mono text-zinc-400">{order.order_number}</span>
