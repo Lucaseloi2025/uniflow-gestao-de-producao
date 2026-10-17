@@ -445,22 +445,8 @@ export default function App() {
           />
         )}
 
-                {activeTab === 'cutting' && (
-          <ConsolidatedCuttingPanel
-            orders={orders}
-            users={users}
-            currentUser={currentUser}
-            onRefresh={fetchData}
-            onSelectOrder={(ord) => {
-              setSelectedOrder(ord);
-            }}
-          />
-        )}
-
         <ErrorBoundary>
-          <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando mÃ³dulo...</div>}>
-            {activeTab === 'costura' && <PcpControleFaccao currentUser={currentUser} />}
-            {activeTab === 'estamparia' && <div className="p-8 text-center text-xl font-bold">Estamparia (Em desenvolvimento)</div>}
+          <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando módulo...</div>}>
             {activeTab === 'conferencia' && <Conferencia orders={orders} currentUser={currentUser} stages={stages} fetchOrders={fetchData} />}
           </Suspense>
         </ErrorBoundary>

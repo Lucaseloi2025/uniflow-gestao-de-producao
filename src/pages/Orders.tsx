@@ -159,11 +159,9 @@ export const Orders = ({
                         "cursor-pointer transition-colors border-l-4",
                         hasPendingReplacements 
                           ? "bg-rose-50 hover:bg-rose-100/80 border-l-rose-500 font-semibold"
-                          : getOrderCuttingQty(order) > 0
-                            ? "bg-amber-50/70 hover:bg-amber-100/80 border-l-amber-500 font-semibold"
-                            : isOverdue 
-                              ? "bg-amber-50/50 hover:bg-amber-100/60 border-l-amber-500"
-                              : "border-l-transparent hover:bg-zinc-50"
+                          : isOverdue 
+                            ? "bg-amber-50/50 hover:bg-amber-100/60 border-l-amber-500"
+                            : "border-l-transparent hover:bg-zinc-50"
                       )}
                       onClick={() => {
                         setSelectedOrder(order);
@@ -172,20 +170,6 @@ export const Orders = ({
                     >
                       <td className="px-6 py-4 text-sm font-medium">
                         <div className="font-bold text-zinc-900">{order.client_name}</div>
-                        {(() => {
-                          const cutQty = getOrderCuttingQty(order);
-                          if (cutQty > 0) {
-                            return (
-                              <div className="mt-1 flex items-center gap-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-md text-[10px] font-black animate-pulse shadow-sm">
-                                  <Scissors size={11} className="text-amber-700 shrink-0" />
-                                  FALTA ESTOQUE: {cutQty} PÃƒâ€¡S (CORTE)
-                                </span>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">

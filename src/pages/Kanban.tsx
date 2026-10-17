@@ -102,20 +102,6 @@ export const Kanban = ({
                       </Badge>
                     </div>
                     <p className="text-xs text-zinc-500 mb-2">{order.quantity}x {order.product_type}</p>
-                    {(() => {
-                      const cutQty = getOrderCuttingQty(order);
-                      if (cutQty > 0) {
-                        return (
-                          <div className="mb-3">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-[10px] font-black animate-pulse shadow-sm w-full">
-                              <Scissors size={12} className="text-amber-700 shrink-0" />
-                              <span>FALTA ESTOQUE: {cutQty} PÇS (CORTE)</span>
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
 
                     {order.stages_status && order.stages_status.length > 0 && (
                       <div className="mb-3 space-y-2">

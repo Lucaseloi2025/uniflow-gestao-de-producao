@@ -487,11 +487,11 @@ function enrichOrdersWithProgressSync(orders: any[]) {
   for (const order of orders) {
     if (!Array.isArray(order.stages_status)) order.stages_status = [];
     if (Array.isArray(order.required_stages)) {
-      order.required_stages = order.required_stages.filter((id: any) => Number(id) !== 12);
+      order.required_stages = order.required_stages.filter((id: any) => ![2, 7, 12].includes(Number(id)));
     }
     const qty = order.quantity || 0;
     order.stages_status = order.stages_status
-      .filter((st: any) => Number(st.id) !== 12)
+      .filter((st: any) => ![2, 7, 12].includes(Number(st.id)))
       .map((st: any) => {
         const key = `${order.id}_${Number(st.id)}`;
         let prog = _lossStageProgressStore.get(key);
@@ -1619,68 +1619,8 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                 productType = _resolveProductType(detail.itens[0].descricao, detail.itens[0].productType);
             }
 
-            let totalViaSeparacao = 0;
-            let totalViaCorte = 0;
-            let stockCheckFailed = false;
-            const corteDetails: Array<{
-                description: string;
-                size: string;
-                sku: string;
-                qty_pedida: number;
-                qty_separacao: number;
-                qty_corte: number;
-                stock_available: number | null;
-            }> = [];
-
-            if (detail.itens && detail.itens.length > 0) {
-                for (const item of detail.itens) {
-                    const itemQty = item.quantity || item.quantidade || 1;
-                    const stockAvail = await _fetchOlistStockForItem(token, item.id_produto, item.sku || item.codigo);
-
-                    let itemSeparacao = itemQty;
-                    let itemCorte = 0;
-
-                    if (stockAvail !== null) {
-                        itemSeparacao = Math.min(itemQty, stockAvail);
-                        itemCorte = Math.max(0, itemQty - itemSeparacao);
-                    } else {
-                        stockCheckFailed = true;
-                    }
-
-                    item.qty_separacao = itemSeparacao;
-                    item.qty_corte = itemCorte;
-                    item.stock_available = stockAvail;
-
-                    totalViaSeparacao += itemSeparacao;
-                    totalViaCorte += itemCorte;
-
-                    if (itemCorte > 0) {
-                        corteDetails.push({
-                            description: item.description || item.descricao || 'Produto',
-                            size: item.size || item.tamanho || 'Tamanho n├â┬úo informado',
-                            sku: item.sku || item.codigo || '-',
-                            qty_pedida: itemQty,
-                            qty_separacao: itemSeparacao,
-                            qty_corte: itemCorte,
-                            stock_available: stockAvail
-                        });
-                    }
-                }
-            } else {
-                totalViaSeparacao = quantity;
-            }
-
-            // Route stages:
-            // Stage 1: Ficha, Stage 12: Separa├â┬º├â┬úo estoque, Stage 2: Corte, Stage 7: Costura, Stage 8: Confer├â┬¬ncia
-            let defaultRequiredStages = [1, 2, 7, 8];
-
-            let obsText = `Importado do Olist ERP (ID: ${detail.id}, N├é┬║: ${detail.numero}) - Aguardando revis├â┬úo de estampa`;
-            if (totalViaCorte > 0) {
-                obsText += ` | ├ó┼í┬á├»┬©┬Å ${totalViaCorte} p├â┬ºs sem estoque (precisam de Corte)`;
-            }
-            if (stockCheckFailed) {
-                obsText += ` | ├ó┼í┬á├»┬©┬Å Consulta de estoque no Olist falhou (alocado 100% via Separa├â┬º├â┬úo Estoque para revis├â┬úo manual)`;
-            }
+            let defaultRequiredStages = [1, 17, 8];
+            let obsText = `Importado do Olist ERP (ID: ${detail.id}, Nº: ${detail.numero}) - Aguardando revisão de estampa`;
 
             let deadlineIso = new Date().toISOString();
             if (detail.data_prevista) {
@@ -2110,7 +2050,9 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
             return res.status(404).json({ error: "Pedido rascunho n├â┬úo encontrado" });
         }
 
-        const stagesArray = required_stages || currentOrder.required_stages || [1, 2, 7, 8];
+        const rawStages = required_stages || currentOrder.required_stages || [1, 17, 8];
+        const filteredStages = Array.isArray(rawStages) ? rawStages.filter((id: any) => ![2, 7, 12].includes(Number(id))) : [];
+        const stagesArray = filteredStages.length > 0 ? filteredStages : [1, 17, 8];
 
         const updates: any = {
             status: "Entrada",
@@ -2539,7 +2481,7 @@ app.get("/api/orders", async (req, res) => {
         for (const order of data) {
             if (Array.isArray(order.stages_status)) {
                 order.stages_status = order.stages_status
-                    .filter((st: any) => Number(st.id) !== 12)
+                    .filter((st: any) => ![2, 7, 12].includes(Number(st.id)))
                     .map((st: any) => {
                         const execState = execStateByOrderStage.get(`${order.id}_${Number(st.id)}`);
                         if (execState === "Finalizado") {
@@ -4349,7 +4291,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
     } else if (orderData && Array.isArray(orderData.required_stages) && orderData.required_stages.length > 0) {
         const activeReqStages = orderData.required_stages
             .map((id: any) => Number(id))
-            .filter((id: number) => id !== 12);
+            .filter((id: number) => ![2, 7, 12].includes(id));
 
         const completedStageIds = new Set(
             (allExecs || [])

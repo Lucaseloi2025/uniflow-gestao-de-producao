@@ -101,15 +101,7 @@ export function useAppLogic() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  const cortePendingBadgeCount = useMemo(() => {
-    try {
-      const aggregated = aggregateCuttingDemand(orders || []);
-      return (aggregated || []).reduce((acc, item) => acc + (item.total_necessario || 0), 0);
-    } catch (e) {
-      console.warn('Erro ao calcular badge de corte:', e);
-      return 0;
-    }
-  }, [orders]);
+  const cortePendingBadgeCount = 0;
 
   const [stages, setStages] = useState<Stage[]>([]);
   const [templates, setTemplates] = useState<OrderTemplate[]>([]);
@@ -626,12 +618,14 @@ export function useAppLogic() {
 
   const handleOpenDraftReview = (order: Order) => {
     setSelectedDraftOrder(order);
+    const activeIds = stages.filter(s => s.active && ![2, 7, 12].includes(Number(s.id))).map(s => s.id);
+    const cleanedOrderStages = (order.required_stages || []).filter(id => ![2, 7, 12].includes(Number(id)));
     setConfirmDraftForm({
       print_type: (order.print_type && ['DTF', 'Silk', 'Sublimação', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
       product_type: order.product_type || 'Dry Fit',
       num_colors: order.num_colors || 1,
       observations: order.observations || '',
-      required_stages: order.required_stages && order.required_stages.length > 0 ? order.required_stages : stages.filter(s => s.active).map(s => s.id)
+      required_stages: cleanedOrderStages.length > 0 ? cleanedOrderStages : activeIds
     });
   };
 

@@ -287,13 +287,11 @@ export const OrderDetailsDrawer = ({
                                           <th className="px-3 py-2.5">Item / Descrição</th>
                                           <th className="px-3 py-2.5 text-center">Tamanho</th>
                                           <th className="px-3 py-2.5 text-right">Qtd Total</th>
-                                          <th className="px-3 py-2.5 text-center">Falta (Corte)</th>
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-indigo-50">
                                         {selectedOrder.items.map((item, idx) => {
                                           const qty = item.quantity ?? item.quantidade ?? 1;
-                                          const corteQty = item.qty_corte ?? item.total_via_corte ?? (item.stock_available !== undefined && item.stock_available !== null ? Math.max(0, qty - Math.min(qty, item.stock_available)) : 0);
                                           const displaySize = getItemDisplaySize(item);
                                           return (
                                             <tr key={idx} className="hover:bg-indigo-50/40 text-xs">
@@ -304,17 +302,6 @@ export const OrderDetailsDrawer = ({
                                                 </span>
                                               </td>
                                               <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-zinc-900">{qty} un</td>
-                                              <td className="px-3 py-2.5 text-center">
-                                                {corteQty > 0 ? (
-                                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 text-white rounded-lg text-xs font-black font-mono shadow-xs">
-                                                    <Scissors size={11} className="text-white" /> {corteQty} un (FALTA)
-                                                  </span>
-                                                ) : (
-                                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold font-mono">
-                                                    <CheckCircle2 size={11} className="text-emerald-600" /> 0 un (Estoque)
-                                                  </span>
-                                                )}
-                                              </td>
                                             </tr>
                                           );
                                         })}
@@ -322,73 +309,6 @@ export const OrderDetailsDrawer = ({
                                     </table>
                                   </div>
                                 </section>
-
-                                {/* Resumo de Peças para Corte (Abaixo da Lista do Pedido) */}
-                                {(() => {
-                                  const cuttingItems = selectedOrder.items.filter(it => {
-                                    const qtyPedida = it.quantity ?? it.quantidade ?? 1;
-                                    const corteQty = it.qty_corte ?? it.total_via_corte ?? (it.stock_available !== undefined && it.stock_available !== null ? Math.max(0, qtyPedida - Math.min(qtyPedida, it.stock_available)) : 0);
-                                    return corteQty > 0;
-                                  });
-
-                                  if (cuttingItems.length === 0) return null;
-
-                                  const totalCuttingQty = cuttingItems.reduce((sum, it) => sum + (it.qty_corte ?? it.total_via_corte ?? 1), 0);
-
-                                  return (
-                                    <section className="p-4 bg-amber-50/90 border border-amber-200/90 rounded-2xl shadow-sm space-y-3">
-                                      <div className="flex items-center justify-between">
-                                        <h4 className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-950 flex items-center gap-1.5">
-                                          <Scissors size={13} className="text-amber-600 animate-pulse" /> RESUMO DE PEÇAS PARA CORTE (FALTA EM ESTOQUE OLIST)
-                                        </h4>
-                                        <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
-                                          {totalCuttingQty} {totalCuttingQty === 1 ? 'PEÇA A CORTAR' : 'PEÇAS A CORTAR'}
-                                        </span>
-                                      </div>
-
-                                      <div className="overflow-x-auto border border-amber-200/70 rounded-xl bg-white shadow-sm">
-                                        <table className="w-full text-left text-xs">
-                                          <thead>
-                                            <tr className="bg-amber-100/70 text-amber-950 font-bold uppercase text-[9px] border-b border-amber-200">
-                                              <th className="px-3 py-2.5">Item a Cortar</th>
-                                              <th className="px-3 py-2.5 text-center">Tamanho</th>
-                                              <th className="px-3 py-2.5 text-center">Estoque Olist</th>
-                                              <th className="px-3 py-2.5 text-right">Qtd a Cortar</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="divide-y divide-amber-100/60">
-                                            {cuttingItems.map((item, idx) => {
-                                              const corteQty = item.qty_corte ?? item.total_via_corte ?? 1;
-                                              const stockAvail = item.stock_available ?? 0;
-                                              const displaySize = getItemDisplaySize(item);
-                                              return (
-                                                <tr key={idx} className="hover:bg-amber-50/50 text-xs">
-                                                  <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
-                                                  <td className="px-3 py-2.5 text-center">
-                                                    <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
-                                                      {displaySize}
-                                                    </span>
-                                                  </td>
-                                                  <td className="px-3 py-2.5 text-center font-mono text-xs font-bold text-zinc-700">{stockAvail > 0 ? `${stockAvail} un` : '0 un (Sem Estoque)'}</td>
-                                                  <td className="px-3 py-2.5 text-right">
-                                                    <span className="inline-block px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-sm font-black font-mono">
-                                                      {corteQty} un
-                                                    </span>
-                                                  </td>
-                                                </tr>
-                                              );
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-
-                                      <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2.5 rounded-xl flex items-center gap-2 border border-amber-200/60">
-                                        <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-                                        <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
-                                      </div>
-                                    </section>
-                                  );
-                                })()}
                               </div>
                             )}
 

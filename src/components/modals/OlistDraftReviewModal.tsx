@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, safeFormat } from '../../lib/utils';
 import { getItemDisplaySize } from '../../lib/cuttingUtils';
-import { X, RefreshCw, Trash2, Package, Scissors, AlertTriangle, CheckCircle2, Check } from 'lucide-react';
+import { X, RefreshCw, Trash2, Package, Check } from 'lucide-react';
 import type { Stage } from '../../types';
 
 export const OlistDraftReviewModal = ({
@@ -17,7 +17,7 @@ export const OlistDraftReviewModal = ({
 }: any) => {
   return (
     <AnimatePresence>
-            {selectedDraftOrder && (
+      {selectedDraftOrder && (
         <div className="fixed inset-0 z-[270] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
             <div className="bg-indigo-900 text-white p-6 relative">
@@ -51,7 +51,7 @@ export const OlistDraftReviewModal = ({
                 </div>
               </div>
 
-              {/* Grade de Tamanhos Table & Resumo de Corte */}
+              {/* Grade de Tamanhos Table */}
               {selectedDraftOrder.items && selectedDraftOrder.items.length > 0 && (
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -68,13 +68,11 @@ export const OlistDraftReviewModal = ({
                             <th className="px-3 py-2">Item / Descrição</th>
                             <th className="px-2 py-2 text-center">Tamanho</th>
                             <th className="px-2 py-2 text-right">Qtd Total</th>
-                            <th className="px-2 py-2 text-center">Falta (Corte)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {selectedDraftOrder.items.map((item, idx) => {
+                          {selectedDraftOrder.items.map((item: any, idx: number) => {
                             const qty = item.quantity ?? item.quantidade ?? 1;
-                            const corteQty = item.qty_corte ?? item.total_via_corte ?? (item.stock_available !== undefined && item.stock_available !== null ? Math.max(0, qty - Math.min(qty, item.stock_available)) : 0);
                             const displaySize = getItemDisplaySize(item);
                             return (
                               <tr key={idx} className="hover:bg-zinc-50/50 text-xs">
@@ -85,17 +83,6 @@ export const OlistDraftReviewModal = ({
                                   </span>
                                 </td>
                                 <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-zinc-900">{qty} un</td>
-                                <td className="px-3 py-2.5 text-center">
-                                  {corteQty > 0 ? (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 text-white rounded-lg text-xs font-black font-mono shadow-xs">
-                                      <Scissors size={11} className="text-white" /> {corteQty} un (FALTA)
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-900 rounded-lg text-xs font-bold font-mono">
-                                      <CheckCircle2 size={11} className="text-emerald-600" /> 0 un (Estoque)
-                                    </span>
-                                  )}
-                                </td>
                               </tr>
                             );
                           })}
@@ -103,74 +90,6 @@ export const OlistDraftReviewModal = ({
                       </table>
                     </div>
                   </div>
-
-                  {/* Resumo de Peças para Corte (Abaixo do Lista do Pedido) */}
-                  {(() => {
-                    const cuttingItems = selectedDraftOrder.items.filter(it => {
-                      const qtyPedida = it.quantity ?? it.quantidade ?? 1;
-                      const corteQty = it.qty_corte ?? it.total_via_corte ?? (it.stock_available !== undefined && it.stock_available !== null ? Math.max(0, qtyPedida - Math.min(qtyPedida, it.stock_available)) : 0);
-                      return corteQty > 0;
-                    });
-
-                    if (cuttingItems.length === 0) return null;
-
-                    const totalCuttingQty = cuttingItems.reduce((sum, it) => sum + (it.qty_corte ?? it.total_via_corte ?? 1), 0);
-
-                    return (
-                      <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-4 shadow-sm space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-2">
-                            <Scissors size={15} className="text-amber-600 animate-pulse" />
-                            Resumo de Peças para Corte (Falta em Estoque Olist)
-                          </h4>
-                          <span className="px-2.5 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-black font-mono uppercase border border-amber-300">
-                            {totalCuttingQty} {totalCuttingQty === 1 ? 'peça a cortar' : 'peças a cortar'}
-                          </span>
-                        </div>
-
-                        <div className="overflow-x-auto border border-amber-200/70 rounded-xl bg-white shadow-sm">
-                          <table className="w-full text-left text-xs">
-                            <thead>
-                              <tr className="bg-amber-100/70 text-amber-950 font-bold uppercase text-[9px] border-b border-amber-200">
-                                <th className="px-3 py-2.5">Item a Cortar</th>
-                                <th className="px-3 py-2.5 text-center">Tamanho</th>
-                                <th className="px-3 py-2.5 text-center">Estoque Olist</th>
-                                <th className="px-3 py-2.5 text-right">Qtd a Cortar</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-amber-100/60">
-                              {cuttingItems.map((item, idx) => {
-                                const corteQty = item.qty_corte ?? item.total_via_corte ?? 1;
-                                const stockAvail = item.stock_available ?? 0;
-                                const displaySize = getItemDisplaySize(item);
-                                return (
-                                  <tr key={idx} className="hover:bg-amber-50/50 text-xs">
-                                    <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
-                                    <td className="px-3 py-2.5 text-center">
-                                      <span className="inline-block px-3 py-1 bg-amber-500 text-amber-950 rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-amber-600 tracking-wider">
-                                        {displaySize}
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2.5 text-center font-mono text-xs font-bold text-zinc-700">{stockAvail > 0 ? `${stockAvail} un` : '0 un (Sem Estoque)'}</td>
-                                    <td className="px-3 py-2.5 text-right">
-                                      <span className="inline-block px-2.5 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-lg text-sm font-black font-mono">
-                                        {corteQty} un
-                                      </span>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <div className="text-[10px] text-amber-900 font-medium bg-amber-100/60 p-2 rounded-lg flex items-center gap-1.5 border border-amber-200/60">
-                          <AlertTriangle size={13} className="text-amber-600 shrink-0" />
-                          <span>Estes itens não possuem saldo suficiente no estoque do Olist ERP e precisarão passar obrigatoriamente pela etapa de <strong>Corte</strong>.</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               )}
 
@@ -186,7 +105,7 @@ export const OlistDraftReviewModal = ({
                     </label>
                     <select
                       value={confirmDraftForm.print_type}
-                      onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, print_type: e.target.value as any }))}
+                      onChange={(e) => setConfirmDraftForm((prev: any) => ({ ...prev, print_type: e.target.value as any }))}
                       className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     >
                       <option value="DTF">DTF (Direct to Film)</option>
@@ -204,7 +123,7 @@ export const OlistDraftReviewModal = ({
                     <input
                       type="text"
                       value={confirmDraftForm.product_type}
-                      onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, product_type: e.target.value }))}
+                      onChange={(e) => setConfirmDraftForm((prev: any) => ({ ...prev, product_type: e.target.value }))}
                       placeholder="Ex: Dry Fit, Algodão 30.1, Poliéster..."
                       className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
@@ -221,7 +140,7 @@ export const OlistDraftReviewModal = ({
                         min="1"
                         max="10"
                         value={confirmDraftForm.num_colors}
-                        onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, num_colors: parseInt(e.target.value) || 1 }))}
+                        onChange={(e) => setConfirmDraftForm((prev: any) => ({ ...prev, num_colors: parseInt(e.target.value) || 1 }))}
                         className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
@@ -236,8 +155,8 @@ export const OlistDraftReviewModal = ({
                   <textarea
                     rows={2}
                     value={confirmDraftForm.observations}
-                    onChange={(e) => setConfirmDraftForm(prev => ({ ...prev, observations: e.target.value }))}
-                    placeholder="Instruções para o corte, estampa ou costura..."
+                    onChange={(e) => setConfirmDraftForm((prev: any) => ({ ...prev, observations: e.target.value }))}
+                    placeholder="Instruções de produção ou estampa..."
                     className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-medium bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -248,7 +167,7 @@ export const OlistDraftReviewModal = ({
                     Etapas do Fluxo de Produção
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {stages.filter(st => st.active).map(st => {
+                    {stages.filter((st: Stage) => st.active && ![2, 7, 12].includes(Number(st.id))).map((st: Stage) => {
                       const isChecked = confirmDraftForm.required_stages.includes(st.id);
                       return (
                         <label
@@ -263,9 +182,9 @@ export const OlistDraftReviewModal = ({
                             checked={isChecked}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setConfirmDraftForm(prev => ({ ...prev, required_stages: [...prev.required_stages, st.id] }));
+                                setConfirmDraftForm((prev: any) => ({ ...prev, required_stages: [...prev.required_stages, st.id] }));
                               } else {
-                                setConfirmDraftForm(prev => ({ ...prev, required_stages: prev.required_stages.filter(id => id !== st.id) }));
+                                setConfirmDraftForm((prev: any) => ({ ...prev, required_stages: prev.required_stages.filter((id: number) => id !== st.id) }));
                               }
                             }}
                             className="rounded text-indigo-600 focus:ring-indigo-500"
@@ -314,4 +233,3 @@ export const OlistDraftReviewModal = ({
     </AnimatePresence>
   );
 };
-

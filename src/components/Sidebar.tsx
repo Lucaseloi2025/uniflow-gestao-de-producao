@@ -1,13 +1,17 @@
 import React from 'react';
 import { 
   LayoutDashboard, 
-  Scissors, 
   ClipboardList, 
-  Shirt, 
+  Package,
   PackageCheck, 
+  Users,
+  Activity,
+  DollarSign,
   Settings, 
   BarChart3, 
-  LogOut 
+  LogOut,
+  User as UserIcon,
+  X
 } from 'lucide-react';
 
 interface SidebarItemProps {
@@ -40,21 +44,25 @@ export const Sidebar = ({
   setActiveTab, 
   isMobileMenuOpen, 
   setIsMobileMenuOpen, 
-  cortePendingBadgeCount = 0 
+  currentUser,
+  handleLogout
 }: any) => {
   return (
-    <div className={`absolute lg:static inset-y-0 left-0 w-64 h-full shrink-0 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 z-[150] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-      <div className="h-16 flex items-center px-6 border-b border-slate-100">
+    <div className={`fixed lg:static inset-y-0 left-0 w-64 h-full shrink-0 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 z-[150] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
         <div className="flex items-center gap-2 text-indigo-950">
           <div className="bg-indigo-600 p-1.5 rounded-lg">
             <PackageCheck size={20} className="text-white" />
           </div>
           <span className="font-black text-lg tracking-tight">ComfortPro</span>
         </div>
+        <button onClick={() => setIsMobileMenuOpen(false)} className="lg:hidden p-1 text-slate-400 hover:text-slate-600">
+          <X size={20} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
-        <div className="mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">PRODUÇÃO LINHA</div>
+        <div className="mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">PRODUÇÃO</div>
         
         <SidebarItem
           icon={LayoutDashboard}
@@ -62,51 +70,38 @@ export const Sidebar = ({
           active={activeTab === 'dashboard'}
           onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
         />
-        
+
         <SidebarItem
           icon={ClipboardList}
-          label="1. Pedidos (Entrada)"
+          label="Fluxo Kanban"
+          active={activeTab === 'kanban'}
+          onClick={() => { setActiveTab('kanban'); setIsMobileMenuOpen(false); }}
+        />
+        
+        <SidebarItem
+          icon={Package}
+          label="Pedidos (Entrada)"
           active={activeTab === 'orders'}
           onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
         />
         
         <SidebarItem
-          icon={Scissors}
-          label="2. Corte"
-          active={activeTab === 'cutting'}
-          badge={cortePendingBadgeCount}
-          onClick={() => { setActiveTab('cutting'); setIsMobileMenuOpen(false); }}
-        />
-        
-        <SidebarItem
-          icon={Shirt}
-          label="3. Costura"
-          active={activeTab === 'costura'}
-          onClick={() => { setActiveTab('costura'); setIsMobileMenuOpen(false); }}
-        />
-        
-                <SidebarItem
           icon={PackageCheck}
-          label="4. Conferência (Separação)"
+          label="Conferência (Separação)"
           active={activeTab === 'conferencia'}
           onClick={() => { setActiveTab('conferencia'); setIsMobileMenuOpen(false); }}
         />
 
-        <SidebarItem
-          icon={PackageCheck}
-          label="5. Estamparia e Expedição"
-          active={activeTab === 'estamparia'}
-          onClick={() => { setActiveTab('estamparia'); setIsMobileMenuOpen(false); }}
-        />
-
-        <SidebarItem
-          icon={PackageCheck}
-          label="5. Estamparia e Expedição"
-          active={activeTab === 'estamparia'}
-          onClick={() => { setActiveTab('estamparia'); setIsMobileMenuOpen(false); }}
-        />
-
         <div className="mt-8 mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">GERENCIAL</div>
+
+        {currentUser?.role === 'Admin' && (
+          <SidebarItem
+            icon={Users}
+            label="Colaboradores"
+            active={activeTab === 'collaborators'}
+            onClick={() => { setActiveTab('collaborators'); setIsMobileMenuOpen(false); }}
+          />
+        )}
 
         <SidebarItem
           icon={BarChart3}
@@ -114,6 +109,24 @@ export const Sidebar = ({
           active={activeTab === 'reports'}
           onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
         />
+
+        {currentUser?.role === 'Admin' && (
+          <SidebarItem
+            icon={Activity}
+            label="Monitor"
+            active={activeTab === 'monitor'}
+            onClick={() => { setActiveTab('monitor'); setIsMobileMenuOpen(false); }}
+          />
+        )}
+
+        {currentUser?.role === 'Admin' && (
+          <SidebarItem
+            icon={DollarSign}
+            label="Custos"
+            active={activeTab === 'costs'}
+            onClick={() => { setActiveTab('costs'); setIsMobileMenuOpen(false); }}
+          />
+        )}
         
         <SidebarItem
           icon={Settings}
@@ -121,6 +134,27 @@ export const Sidebar = ({
           active={activeTab === 'settings'}
           onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
         />
+      </div>
+
+      <div className="p-4 border-t border-slate-100">
+        <div className="flex items-center gap-3 px-2 mb-3">
+          <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+            <UserIcon size={18} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-slate-900 truncate">{currentUser?.name || '---'}</p>
+            <p className="text-[11px] text-slate-500 truncate">{currentUser?.role || '---'}</p>
+          </div>
+        </div>
+        {handleLogout && (
+          <button
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-2 w-full py-2 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+          >
+            <LogOut size={15} />
+            Sair da Conta
+          </button>
+        )}
       </div>
     </div>
   );
