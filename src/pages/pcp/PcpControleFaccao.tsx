@@ -168,7 +168,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   const handleConfirmReceive = async () => {
     setActionLoading(true);
     try {
-      const totalReturned = Object.values(itemReturns).reduce((sum, val) => sum + (val || 0), 0);
+      const totalReturned = Object.values(itemReturns).reduce<number>((sum, val) => sum + Number(val || 0), 0);
       
       await fetch(`/api/cut-plans/${selectedPlan.id}/return-sewing`, {
         method: 'POST',

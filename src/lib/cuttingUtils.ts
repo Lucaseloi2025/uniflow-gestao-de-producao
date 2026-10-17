@@ -828,7 +828,7 @@ export function groupCuttingDemandByRawMaterial(demandItems: CorteDemandItem[]):
       }
     }
     grp.pedidos_count = orderSet.size;
-    grp.pedidos_waiting = Array.from(allWaitingMap.values());
+    grp.pedidos_waiting = Array.from(allWaitingMap.values()).map(w => ({ ...w, quantity: w.qty_corte_pending }));
     const modelMap = new Map<string, { total: number; sizes: { [size: string]: number }; items: CorteDemandItem[] }>();
 
     for (const item of grp.all_items) {

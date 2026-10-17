@@ -371,10 +371,30 @@ dotenv.config();
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: lossStore ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 // (Inlined to avoid cross-file .ts import issues on Vercel @vercel/node runtime)
 
+type OperationStatus =
+  | 'AGUARDANDO'
+  | 'LIBERADA'
+  | 'EM_ANDAMENTO'
+  | 'PAUSADA'
+  | 'PARCIAL'
+  | 'BLOQUEADA'
+  | 'CONCLUIDA'
+  | 'CANCELADA';
+
 interface OrderStageProgress {
-  id?: number; order_id: number; stage_id: number;
-  quantidade_pedido: number; quantidade_boa: number;
-  quantidade_perdida: number; pendencia_reposicao: number; finished: boolean;
+  id?: number;
+  order_id: number;
+  stage_id: number;
+  quantidade_pedido: number;
+  quantidade_recebida?: number;
+  quantidade_boa: number;
+  quantidade_perdida: number;
+  quantidade_retrabalho?: number;
+  quantidade_transferida?: number;
+  pendencia_reposicao: number;
+  saldo_pendente?: number;
+  finished: boolean;
+  status_operacao?: OperationStatus;
 }
 interface OrderLossLog {
   id?: number; order_id: number; stage_id: number; stage_name: string;
@@ -387,22 +407,130 @@ interface LossReportData {
   perdas_por_setor: any[]; perdas_por_motivo: any[]; impacto_pedidos: any[];
 }
 
+function resolveOperationStatusInline(input: {
+  isCancelled?: boolean;
+  isBlocked?: boolean;
+  finished?: boolean;
+  activeExecutionStatus?: string | null;
+  quantidadePedido: number;
+  quantidadeRecebida?: number;
+  quantidadeBoa: number;
+  pendenciaReposicao?: number;
+  isFirstStageInRoute: boolean;
+  previousStageFinished: boolean;
+  previousStageTransferredQty?: number;
+  calculationType?: string;
+}): OperationStatus {
+  if (input.isCancelled) return 'CANCELADA';
+  if (input.isBlocked) return 'BLOQUEADA';
+  const targetQty = Math.max(0, Number(input.quantidadePedido) || 0);
+  const goodQty = Math.max(0, Number(input.quantidadeBoa) || 0);
+  const replQty = Math.max(0, Number(input.pendenciaReposicao) || 0);
+  const calcType = input.calculationType || 'por_peca';
+
+  if (input.activeExecutionStatus === 'Em andamento') return 'EM_ANDAMENTO';
+  if (input.activeExecutionStatus === 'Pausado') return 'PAUSADA';
+
+  if (calcType === 'por_pedido') {
+    if (input.finished) return 'CONCLUIDA';
+  } else {
+    if (input.finished && replQty === 0 && (targetQty === 0 || goodQty >= targetQty)) return 'CONCLUIDA';
+    if (targetQty > 0 && goodQty >= targetQty && replQty === 0) return 'CONCLUIDA';
+  }
+
+  if (goodQty > 0 && (goodQty < targetQty || replQty > 0)) return 'PARCIAL';
+
+  const receivedFromPrev = Math.max(0, Number(input.previousStageTransferredQty) || 0);
+  const explicitlyReceived = Math.max(0, Number(input.quantidadeRecebida) || 0);
+  const canStart =
+    input.isFirstStageInRoute ||
+    input.previousStageFinished ||
+    receivedFromPrev > 0 ||
+    explicitlyReceived > 0;
+
+  return canStart ? 'LIBERADA' : 'AGUARDANDO';
+}
+
+async function recordPcpAuditLog(
+  sb: any,
+  params: {
+    order_id?: number | null;
+    stage_id?: number | null;
+    user_id?: number | null;
+    usuario: string;
+    acao: string;
+    motivo?: string | null;
+    quantidade?: number | null;
+    valor_anterior?: any;
+    valor_novo?: any;
+    observacao?: string | null;
+    origem?: string;
+  }
+) {
+  try {
+    const payload = {
+      order_id: params.order_id ?? null,
+      acao: params.acao,
+      motivo: params.motivo || params.observacao || null,
+      usuario: params.usuario || 'Sistema',
+      valor_anterior: params.valor_anterior ?? null,
+      valor_novo: {
+        ...(typeof params.valor_novo === 'object' && params.valor_novo !== null ? params.valor_novo : { value: params.valor_novo }),
+        stage_id: params.stage_id ?? null,
+        user_id: params.user_id ?? null,
+        quantidade: params.quantidade ?? null,
+        observacao: params.observacao ?? null,
+        origem: params.origem || 'WEB',
+        timestamp_brt: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00',
+      },
+      created_at: new Date().toISOString(),
+    };
+    await sb.from('pcp_audit_log').insert(payload);
+  } catch (err) {
+    console.warn('[AuditLog] Falha não bloqueante ao gravar pcp_audit_log:', err);
+  }
+}
+
+async function safeUpsertOrderStageProgress(sb: any, prog: OrderStageProgress) {
+  const baseRow = {
+    order_id: Number(prog.order_id),
+    stage_id: Number(prog.stage_id),
+    quantidade_pedido: Number(prog.quantidade_pedido) || 0,
+    quantidade_boa: Number(prog.quantidade_boa) || 0,
+    quantidade_perdida: Number(prog.quantidade_perdida) || 0,
+    pendencia_reposicao: Number(prog.pendencia_reposicao) || 0,
+    finished: Boolean(prog.finished),
+  };
+  const extendedRow: any = {
+    ...baseRow,
+    ...(prog.quantidade_recebida !== undefined ? { quantidade_recebida: Number(prog.quantidade_recebida) } : {}),
+    ...(prog.quantidade_retrabalho !== undefined ? { quantidade_retrabalho: Number(prog.quantidade_retrabalho) } : {}),
+    ...(prog.quantidade_transferida !== undefined ? { quantidade_transferida: Number(prog.quantidade_transferida) } : {}),
+    ...(prog.status_operacao !== undefined ? { status_operacao: prog.status_operacao } : {}),
+  };
+  const { error } = await sb.from('order_stage_progress').upsert(extendedRow, { onConflict: 'order_id,stage_id' });
+  if (error) {
+    await sb.from('order_stage_progress').upsert(baseRow, { onConflict: 'order_id,stage_id' });
+  }
+}
+
 function _getDefaultLossReasons(stages: { id: number; name: string; sort_order?: number }[]): LossReasonSetting[] {
   const find = (name: string, fb: number) => stages.find(s => s.name.toLowerCase().trim() === name.toLowerCase().trim())?.id ?? fb;
   const sorted = [...stages].sort((a, b) => (a.sort_order||0)-(b.sort_order||0));
   const first = sorted[0]?.id ?? 1;
-  const corte = find('Corte', first); const estoque = find('Separa├â┬º├â┬úo estoque', corte);
-  const dtf = find('DTF', corte); const costura = find('Costura', corte);
+  const dtf = find('DTF', first);
+  const conf = find('Conferência', dtf);
   return [
-    { motivo: 'Falta de mat├â┬®ria-prima/pe├â┬ºa (estoque)', etapa_reentrada_id: estoque },
-    { motivo: 'Defeito de corte', etapa_reentrada_id: corte },
+    { motivo: 'Falta de matéria-prima/peça (estoque)', etapa_reentrada_id: first },
+    { motivo: 'Defeito na peça base', etapa_reentrada_id: first },
     { motivo: 'Falha na estampa/DTF', etapa_reentrada_id: dtf },
-    { motivo: 'Defeito de costura', etapa_reentrada_id: costura },
+    { motivo: 'Mancha ou avaria no processo', etapa_reentrada_id: dtf },
     { motivo: 'Extravio', etapa_reentrada_id: first },
-    { motivo: 'Reprovado na confer├â┬¬ncia (qualidade)', etapa_reentrada_id: corte },
+    { motivo: 'Reprovado na conferência (qualidade)', etapa_reentrada_id: conf },
     { motivo: 'Outro', etapa_reentrada_id: first },
   ];
 }
+
 function _calculateLossReport(lossLogs: OrderLossLog[], orders: any[]=[], stages: any[]=[]): LossReportData {
   const stageMap = new Map<number, string>(); stages.forEach(s => stageMap.set(s.id, s.name));
   const totalLost = lossLogs.reduce((s, l) => s + (l.quantidade_perdida||0), 0);
@@ -424,64 +552,150 @@ function _calculateLossReport(lossLogs: OrderLossLog[], orders: any[]=[], stages
   return { summary: { total_perdido:totalLost, pct_perda:ttp>0?Math.round(totalLost/ttp*1000)/10:0, total_pedidos_com_perda:orderLostMap.size, impacto_prazo_horas:impacto_pedidos.length>0?Math.round(impacto_pedidos.reduce((s,i)=>s+i.atraso_adicional_horas,0)/impacto_pedidos.length*10)/10:0 }, perdas_por_setor, perdas_por_motivo, impacto_pedidos };
 }
 
+// Mantido apenas como cache efêmero por requisição para enriquecimento síncrono de listagens;
+// A fonte oficial de verdade é SEMPRE o Supabase.
 const _lossStageProgressStore = new Map<string, OrderStageProgress>();
-let _lossLogsStore: OrderLossLog[] = [];
-let _progressLogsStore: any[] = [];
 let _corteAllocationsStore: any[] = [];
-let _lossReasonSettingsStore: LossReasonSetting[] = [];
-let _lossStoreInitialized = false;
 
 async function _initLossStore(sb: any) {
-  if (_lossStoreInitialized) return;
-  _lossStoreInitialized = true;
-  try { const { data } = await sb.from('loss_reason_settings').select('*'); if (data?.length) _lossReasonSettingsStore = data; } catch(e) {}
-  if (_lossReasonSettingsStore.length === 0) {
-    try { const { data } = await sb.from('stages').select('id, name, sort_order'); if (data) _lossReasonSettingsStore = _getDefaultLossReasons(data); }
-    catch(e) { _lossReasonSettingsStore = _getDefaultLossReasons([{id:1,name:'Ficha de aprova├â┬º├â┬úo',sort_order:1},{id:2,name:'Corte',sort_order:2},{id:12,name:'Separa├â┬º├â┬úo estoque',sort_order:4},{id:5,name:'DTF',sort_order:7},{id:7,name:'Costura',sort_order:12},{id:8,name:'Confer├â┬¬ncia',sort_order:13}]); }
-  }
-  try { const { data } = await sb.from('order_loss_logs').select('*'); if (data) _lossLogsStore = data; } catch(e) {}
-  try { const { data } = await sb.from('order_progress_logs').select('*'); if (data) _progressLogsStore = data; } catch(e) {}
-  try { const { data } = await sb.from('corte_allocations').select('*'); if (data) _corteAllocationsStore = data; } catch(e) {}
-  try { const { data } = await sb.from('order_stage_progress').select('*'); if (data) data.forEach((p: any) => _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p)); } catch(e) {}
+  try {
+    const { data } = await sb.from('corte_allocations').select('*');
+    if (data) _corteAllocationsStore = data;
+  } catch (_) {}
 }
-async function getLossReasons(sb: any) { await _initLossStore(sb); return _lossReasonSettingsStore; }
-async function updateLossReasons(sb: any, settings: LossReasonSetting[]) { await _initLossStore(sb); _lossReasonSettingsStore = settings; try { await sb.from('loss_reason_settings').upsert(settings); } catch(e) {} return _lossReasonSettingsStore; }
-async function getStageProgressForOrder(sb: any, orderId: number, orderData?: any) {
-  await _initLossStore(sb);
-  let order = orderData || (await sb.from('orders').select('*').eq('id', orderId).single()).data;
+
+async function getLossReasons(sb: any): Promise<LossReasonSetting[]> {
+  try {
+    const { data } = await sb.from('loss_reason_settings').select('*').order('id', { ascending: true });
+    if (data && data.length > 0) return data;
+  } catch (_) {}
+  let stagesData: any[] = [];
+  try {
+    const { data } = await sb.from('stages').select('id, name, sort_order').eq('active', 1);
+    if (data) stagesData = data;
+  } catch (_) {}
+  const defaults = _getDefaultLossReasons(
+    stagesData.length > 0
+      ? stagesData
+      : [
+          { id: 1, name: 'Ficha de aprovação', sort_order: 1 },
+          { id: 5, name: 'DTF', sort_order: 7 },
+          { id: 8, name: 'Conferência', sort_order: 13 },
+        ]
+  );
+  try {
+    await sb.from('loss_reason_settings').upsert(defaults);
+  } catch (_) {}
+  return defaults;
+}
+
+async function updateLossReasons(sb: any, settings: LossReasonSetting[]) {
+  try {
+    await sb.from('loss_reason_settings').delete().gt('id', 0);
+    const { data } = await sb.from('loss_reason_settings').insert(settings).select('*');
+    if (data && data.length > 0) return data;
+  } catch (_) {
+    try {
+      await sb.from('loss_reason_settings').upsert(settings);
+    } catch (_) {}
+  }
+  return settings;
+}
+
+async function getStageProgressForOrder(sb: any, orderId: number, orderData?: any): Promise<OrderStageProgress[]> {
+  const order = orderData || (await sb.from('orders').select('*').eq('id', orderId).single()).data;
   if (!order) return [];
-  const requiredStages: number[] = Array.isArray(order.required_stages) ? order.required_stages : [];
+  const rawRequiredStages: number[] = Array.isArray(order.required_stages) ? order.required_stages : [];
+  const requiredStages = rawRequiredStages.filter((id: any) => ![2, 7, 12].includes(Number(id)));
   const stagesStatus: any[] = Array.isArray(order.stages_status) ? order.stages_status : [];
 
-  // Buscar progresso atualizado direto do banco para evitar cache local dessincronizado
-  try {
-    const { data: dbProg } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId);
-    if (dbProg) {
-      dbProg.forEach((p: any) => {
-        _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p);
-      });
-    }
-  } catch (err) {
-    console.warn('[API] Falha ao buscar progresso atualizado no getStageProgressForOrder:', err);
+  const [progRes, execRes] = await Promise.all([
+    sb.from('order_stage_progress').select('*').eq('order_id', orderId),
+    sb.from('stage_executions').select('stage_id, status').eq('order_id', orderId).in('status', ['Em andamento', 'Pausado']),
+  ]);
+
+  const dbProgMap = new Map<number, any>();
+  (progRes.data || []).forEach((p: any) => {
+    dbProgMap.set(Number(p.stage_id), p);
+    _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p);
+  });
+
+  const activeExecMap = new Map<number, string>();
+  (execRes.data || []).forEach((e: any) => {
+    activeExecMap.set(Number(e.stage_id), e.status);
+  });
+
+  const isOrderCancelled = order.status === 'Cancelado' || Boolean(order.deleted_at);
+  const isOrderBlocked = Boolean(order.pcp_is_blocked);
+
+  const result: OrderStageProgress[] = [];
+  for (let idx = 0; idx < requiredStages.length; idx++) {
+    const stageId = Number(requiredStages[idx]);
+    const st = stagesStatus.find((s: any) => Number(s.id) === stageId);
+    const existing = dbProgMap.get(stageId);
+    const defaultQty = Number(order.quantity) || 0;
+    const isFinished = Boolean(existing?.finished || st?.finished);
+    const goodQty = existing ? Number(existing.quantidade_boa) || (isFinished ? defaultQty : 0) : isFinished ? defaultQty : 0;
+    const lostQty = existing ? Number(existing.quantidade_perdida) || 0 : 0;
+    const reworkQty = existing ? Number(existing.quantidade_retrabalho) || 0 : 0;
+    const replQty = existing ? Number(existing.pendencia_reposicao) || 0 : 0;
+
+    const prevStageProg = idx > 0 ? result[idx - 1] : null;
+    const isFirstStage = idx === 0;
+    const prevFinished = isFirstStage ? true : Boolean(prevStageProg?.finished);
+    const prevTransferred = isFirstStage
+      ? defaultQty
+      : Math.max(0, Number(prevStageProg?.quantidade_transferida ?? prevStageProg?.quantidade_boa) || 0);
+
+    const receivedQty =
+      existing?.quantidade_recebida !== undefined && Number(existing.quantidade_recebida) > 0
+        ? Number(existing.quantidade_recebida)
+        : isFirstStage || prevFinished
+        ? defaultQty
+        : prevTransferred;
+
+    const transferredQty =
+      existing?.quantidade_transferida !== undefined && Number(existing.quantidade_transferida) > 0
+        ? Number(existing.quantidade_transferida)
+        : Math.min(defaultQty, goodQty);
+
+    const saldoPendente = Math.max(0, defaultQty - goodQty + replQty);
+    const statusOperacao = resolveOperationStatusInline({
+      isCancelled: isOrderCancelled,
+      isBlocked: isOrderBlocked,
+      finished: isFinished,
+      activeExecutionStatus: activeExecMap.get(stageId) || null,
+      quantidadePedido: defaultQty,
+      quantidadeRecebida: receivedQty,
+      quantidadeBoa: goodQty,
+      pendenciaReposicao: replQty,
+      isFirstStageInRoute: isFirstStage,
+      previousStageFinished: prevFinished,
+      previousStageTransferredQty: prevTransferred,
+      calculationType: st?.calculation_type || 'por_peca',
+    });
+
+    const progObj: OrderStageProgress = {
+      order_id: orderId,
+      stage_id: stageId,
+      quantidade_pedido: defaultQty,
+      quantidade_recebida: receivedQty,
+      quantidade_boa: goodQty,
+      quantidade_perdida: lostQty,
+      quantidade_retrabalho: reworkQty,
+      quantidade_transferida: transferredQty,
+      pendencia_reposicao: replQty,
+      saldo_pendente: saldoPendente,
+      finished: isFinished,
+      status_operacao: statusOperacao,
+    };
+    _lossStageProgressStore.set(`${orderId}_${stageId}`, progObj);
+    result.push(progObj);
   }
 
-  return requiredStages.map(stageId => {
-    const key = `${orderId}_${stageId}`;
-    let prog = _lossStageProgressStore.get(key);
-    const isSplitStage = (Number(stageId) === 2 && order.total_via_corte !== undefined) || (Number(stageId) === 12 && order.total_via_separacao !== undefined);
-    if (!prog) {
-      const st = stagesStatus.find((s: any) => Number(s.id) === Number(stageId));
-      let defaultQty = order.quantity || 0;
-      if (Number(stageId) === 2 && order.total_via_corte !== undefined) defaultQty = order.total_via_corte;
-      if (Number(stageId) === 12 && order.total_via_separacao !== undefined) defaultQty = order.total_via_separacao;
-      prog = { order_id: orderId, stage_id: stageId, quantidade_pedido: defaultQty, quantidade_boa: st?.finished ? defaultQty : 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: !!st?.finished };
-      _lossStageProgressStore.set(key, prog);
-    } else if (!isSplitStage && order.quantity && prog.quantidade_pedido !== order.quantity) {
-      prog.quantidade_pedido = order.quantity;
-    }
-    return prog;
-  });
+  return result;
 }
+
 function enrichOrdersWithProgressSync(orders: any[]) {
   if (!orders?.length) return;
   for (const order of orders) {
@@ -489,114 +703,396 @@ function enrichOrdersWithProgressSync(orders: any[]) {
     if (Array.isArray(order.required_stages)) {
       order.required_stages = order.required_stages.filter((id: any) => ![2, 7, 12].includes(Number(id)));
     }
-    const qty = order.quantity || 0;
-    order.stages_status = order.stages_status
-      .filter((st: any) => ![2, 7, 12].includes(Number(st.id)))
-      .map((st: any) => {
-        const key = `${order.id}_${Number(st.id)}`;
-        let prog = _lossStageProgressStore.get(key);
-        const isSplitStage = (Number(st.id) === 2 && order.total_via_corte !== undefined);
-        const isFinished = Boolean(st.finished || prog?.finished);
-        if (!prog) {
-          let defaultQty = qty;
-          if (Number(st.id) === 2 && order.total_via_corte !== undefined) defaultQty = order.total_via_corte;
-          prog = { order_id: order.id, stage_id: Number(st.id), quantidade_pedido: defaultQty, quantidade_boa: isFinished ? defaultQty : 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: isFinished };
-          _lossStageProgressStore.set(key, prog);
-        } else {
-          if (!isSplitStage && qty && prog.quantidade_pedido !== qty) {
-            prog.quantidade_pedido = qty;
-          }
-          if (isFinished && !prog.finished) {
-            prog.finished = true;
-            if (!prog.quantidade_boa) prog.quantidade_boa = prog.quantidade_pedido || qty;
-          }
+    const qty = Number(order.quantity) || 0;
+    const isCancelled = order.status === 'Cancelado' || Boolean(order.deleted_at);
+    const isBlocked = Boolean(order.pcp_is_blocked);
+    const filteredStages = order.stages_status.filter((st: any) => ![2, 7, 12].includes(Number(st.id)));
+
+    let prevFinished = true;
+    let prevTransferredQty = qty;
+
+    order.stages_status = filteredStages.map((st: any, idx: number) => {
+      const stageId = Number(st.id);
+      const key = `${order.id}_${stageId}`;
+      let prog = _lossStageProgressStore.get(key);
+      const isFinished = Boolean(st.finished || prog?.finished);
+      if (!prog) {
+        prog = {
+          order_id: order.id,
+          stage_id: stageId,
+          quantidade_pedido: qty,
+          quantidade_boa: isFinished ? qty : 0,
+          quantidade_perdida: 0,
+          pendencia_reposicao: 0,
+          finished: isFinished,
+        };
+        _lossStageProgressStore.set(key, prog);
+      } else {
+        if (qty && prog.quantidade_pedido !== qty) {
+          prog.quantidade_pedido = qty;
         }
-        return { ...st, finished: isFinished, quantidade_boa: prog.quantidade_boa, quantidade_perdida: prog.quantidade_perdida, pendencia_reposicao: prog.pendencia_reposicao, quantidade_pedido: prog.quantidade_pedido || qty };
+        if (isFinished && !prog.finished) {
+          prog.finished = true;
+          if (!prog.quantidade_boa) prog.quantidade_boa = prog.quantidade_pedido || qty;
+        }
+      }
+
+      const goodQty = Number(prog.quantidade_boa) || 0;
+      const lostQty = Number(prog.quantidade_perdida) || 0;
+      const replQty = Number(prog.pendencia_reposicao) || 0;
+      const receivedQty =
+        prog.quantidade_recebida !== undefined && Number(prog.quantidade_recebida) > 0
+          ? Number(prog.quantidade_recebida)
+          : idx === 0 || prevFinished
+          ? qty
+          : prevTransferredQty;
+      const transferredQty =
+        prog.quantidade_transferida !== undefined && Number(prog.quantidade_transferida) > 0
+          ? Number(prog.quantidade_transferida)
+          : Math.min(qty, goodQty);
+      const saldoPendente = Math.max(0, (prog.quantidade_pedido || qty) - goodQty + replQty);
+
+      const statusOperacao = resolveOperationStatusInline({
+        isCancelled,
+        isBlocked,
+        finished: isFinished,
+        activeExecutionStatus: st.in_progress ? 'Em andamento' : null,
+        quantidadePedido: prog.quantidade_pedido || qty,
+        quantidadeRecebida: receivedQty,
+        quantidadeBoa: goodQty,
+        pendenciaReposicao: replQty,
+        isFirstStageInRoute: idx === 0,
+        previousStageFinished: prevFinished,
+        previousStageTransferredQty: prevTransferredQty,
+        calculationType: st.calculation_type || 'por_peca',
       });
+
+      prevFinished = isFinished;
+      prevTransferredQty = transferredQty;
+
+      return {
+        ...st,
+        finished: isFinished,
+        status_operacao: statusOperacao,
+        quantidade_boa: goodQty,
+        quantidade_perdida: lostQty,
+        quantidade_recebida: receivedQty,
+        quantidade_transferida: transferredQty,
+        pendencia_reposicao: replQty,
+        saldo_pendente: saldoPendente,
+        quantidade_pedido: prog.quantidade_pedido || qty,
+      };
+    });
   }
 }
-async function logProgress(sb: any, orderId: number, stageId: number, userId: number, userName: string, incremento: number) {
-  await _initLossStore(sb);
-  
-  // Buscar progresso atualizado direto do banco para evitar cache local dessincronizado
-  try {
-    const { data: dbProg } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', stageId).maybeSingle();
-    if (dbProg) {
-      _lossStageProgressStore.set(`${orderId}_${stageId}`, dbProg);
-    }
-  } catch (err) {
-    console.warn('[API] Falha ao sincronizar progresso no logProgress:', err);
+
+async function logProgress(
+  sb: any,
+  orderId: number,
+  stageId: number,
+  userId: number,
+  userName: string,
+  incremento: number,
+  options?: {
+    quantidade_perdida?: number;
+    quantidade_retrabalho?: number;
+    observacao?: string;
+    transfer_to_next?: boolean;
+  }
+) {
+  const [orderRes, stageRes, dbProgRes] = await Promise.all([
+    sb.from('orders').select('id, quantity, required_stages, status, pcp_is_blocked').eq('id', orderId).single(),
+    sb.from('stages').select('id, name, calculation_type').eq('id', stageId).single(),
+    sb.from('order_stage_progress').select('*').eq('order_id', orderId),
+  ]);
+
+  const order = orderRes.data;
+  const orderQty = Number(order?.quantity) || 0;
+  const calcType = stageRes.data?.calculation_type || 'por_peca';
+  const reqStages: number[] = Array.isArray(order?.required_stages)
+    ? order.required_stages.map(Number).filter((id: number) => ![2, 7, 12].includes(id))
+    : [];
+
+  const allProgs: any[] = dbProgRes.data || [];
+  const existingProg = allProgs.find((p: any) => Number(p.stage_id) === Number(stageId));
+
+  const prevGood = Number(existingProg?.quantidade_boa) || 0;
+  const prevLost = Number(existingProg?.quantidade_perdida) || 0;
+  const prevRework = Number(existingProg?.quantidade_retrabalho) || 0;
+  const prevRepl = Number(existingProg?.pendencia_reposicao) || 0;
+  const prevTransferred =
+    existingProg?.quantidade_transferida !== undefined
+      ? Number(existingProg.quantidade_transferida)
+      : Math.min(orderQty, prevGood);
+
+  const incGood = Math.max(0, Number(incremento) || 0);
+  const incLost = Math.max(0, Number(options?.quantidade_perdida) || 0);
+  const incRework = Math.max(0, Number(options?.quantidade_retrabalho) || 0);
+
+  const targetQty = Number(existingProg?.quantidade_pedido) || orderQty;
+  const maxAllowedGood = Math.max(targetQty + prevRepl, prevGood + incGood);
+  const newGood = targetQty > 0 ? Math.min(targetQty + prevRepl, prevGood + incGood) : maxAllowedGood;
+  const newLost = prevLost + incLost;
+  const newRework = prevRework + incRework;
+  const newRepl = incGood > 0 && prevRepl > 0 ? Math.max(0, prevRepl - incGood) : prevRepl;
+  const saldoPendente = Math.max(0, targetQty - newGood + newRepl);
+
+  const isFinished =
+    calcType === 'por_pedido'
+      ? newGood > 0 && saldoPendente === 0
+      : targetQty > 0 && newGood >= targetQty && newRepl === 0;
+
+  // Cálculo de transferência formal sem duplicação para a próxima etapa da rota
+  const transferableGoodTotal = targetQty > 0 ? Math.min(newGood, targetQty) : newGood;
+  const availableToTransfer = Math.max(0, transferableGoodTotal - prevTransferred);
+  const routeIdx = reqStages.indexOf(Number(stageId));
+  const nextStageId = routeIdx >= 0 && routeIdx + 1 < reqStages.length ? reqStages[routeIdx + 1] : null;
+  const shouldTransfer = options?.transfer_to_next !== false && nextStageId !== null && availableToTransfer > 0;
+  const transferredDelta = shouldTransfer ? availableToTransfer : 0;
+  const newTransferredTotal = prevTransferred + transferredDelta;
+
+  const statusOperacao: OperationStatus = isFinished
+    ? 'CONCLUIDA'
+    : newGood > 0
+    ? 'PARCIAL'
+    : 'LIBERADA';
+
+  const prog: OrderStageProgress = {
+    order_id: orderId,
+    stage_id: stageId,
+    quantidade_pedido: targetQty,
+    quantidade_recebida: Number(existingProg?.quantidade_recebida) || targetQty,
+    quantidade_boa: newGood,
+    quantidade_perdida: newLost,
+    quantidade_retrabalho: newRework,
+    quantidade_transferida: newTransferredTotal,
+    pendencia_reposicao: newRepl,
+    saldo_pendente: saldoPendente,
+    finished: isFinished,
+    status_operacao: statusOperacao,
+  };
+
+  _lossStageProgressStore.set(`${orderId}_${stageId}`, prog);
+  await safeUpsertOrderStageProgress(sb, prog);
+
+  let nextStageProgress: OrderStageProgress | null = null;
+  if (shouldTransfer && nextStageId !== null) {
+    const existingNext = allProgs.find((p: any) => Number(p.stage_id) === Number(nextStageId));
+    const prevNextReceived = Number(existingNext?.quantidade_recebida) || 0;
+    const nextReceived = Math.min(targetQty, Math.max(prevNextReceived + transferredDelta, newTransferredTotal));
+    nextStageProgress = {
+      order_id: orderId,
+      stage_id: nextStageId,
+      quantidade_pedido: Number(existingNext?.quantidade_pedido) || targetQty,
+      quantidade_recebida: nextReceived,
+      quantidade_boa: Number(existingNext?.quantidade_boa) || 0,
+      quantidade_perdida: Number(existingNext?.quantidade_perdida) || 0,
+      quantidade_retrabalho: Number(existingNext?.quantidade_retrabalho) || 0,
+      quantidade_transferida: Number(existingNext?.quantidade_transferida) || 0,
+      pendencia_reposicao: Number(existingNext?.pendencia_reposicao) || 0,
+      saldo_pendente: Math.max(0, targetQty - (Number(existingNext?.quantidade_boa) || 0)),
+      finished: Boolean(existingNext?.finished),
+      status_operacao: existingNext?.finished ? 'CONCLUIDA' : (Number(existingNext?.quantidade_boa) || 0) > 0 ? 'PARCIAL' : 'LIBERADA',
+    };
+    _lossStageProgressStore.set(`${orderId}_${nextStageId}`, nextStageProgress);
+    await safeUpsertOrderStageProgress(sb, nextStageProgress);
   }
 
-  const key = `${orderId}_${stageId}`;
-  let prog = _lossStageProgressStore.get(key) || { order_id: orderId, stage_id: stageId, quantidade_pedido: (await sb.from('orders').select('quantity').eq('id', orderId).single()).data?.quantity || 0, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
-  prog.quantidade_boa = Math.max(0, prog.quantidade_boa + incremento);
-  if (prog.pendencia_reposicao > 0) prog.pendencia_reposicao = Math.max(0, prog.pendencia_reposicao - incremento);
-  const calcType = (await sb.from('stages').select('calculation_type').eq('id', stageId).single()).data?.calculation_type || 'por_peca';
-  if (calcType === 'por_peca') prog.finished = prog.quantidade_boa >= prog.quantidade_pedido;
-  _lossStageProgressStore.set(key, prog);
-  try { await sb.from('order_stage_progress').upsert(prog); } catch(e) {}
-  const logEntry = { order_id: orderId, stage_id: stageId, user_id: userId, user_name: userName, quantidade_boa_incremento: incremento, created_at: new Date().toISOString() };
-  _progressLogsStore.push(logEntry);
-  try { await sb.from('order_progress_logs').insert(logEntry); } catch(e) {}
-  return { success: true, progress: prog, log: logEntry };
+  const logEntry = {
+    order_id: orderId,
+    stage_id: stageId,
+    user_id: userId,
+    user_name: userName,
+    quantidade_boa_incremento: incGood,
+    created_at: new Date().toISOString(),
+  };
+  try {
+    await sb.from('order_progress_logs').insert(logEntry);
+  } catch (e) {
+    console.warn('[API] Erro ao inserir order_progress_logs:', e);
+  }
+
+  await recordPcpAuditLog(sb, {
+    order_id: orderId,
+    stage_id: stageId,
+    user_id: userId,
+    usuario: userName,
+    acao: isFinished ? 'ETAPA_CONCLUIDA_POR_QUANTIDADE' : 'APONTAMENTO_PARCIAL',
+    quantidade: incGood,
+    observacao: options?.observacao || null,
+    valor_anterior: {
+      quantidade_boa: prevGood,
+      quantidade_perdida: prevLost,
+      quantidade_transferida: prevTransferred,
+      finished: Boolean(existingProg?.finished),
+    },
+    valor_novo: {
+      quantidade_boa: newGood,
+      quantidade_perdida: newLost,
+      quantidade_retrabalho: newRework,
+      quantidade_transferida: newTransferredTotal,
+      transferred_delta: transferredDelta,
+      next_stage_id: nextStageId,
+      saldo_pendente: saldoPendente,
+      status_operacao: statusOperacao,
+      finished: isFinished,
+    },
+  });
+
+  return {
+    success: true,
+    progress: prog,
+    next_stage_progress: nextStageProgress,
+    transferred_delta: transferredDelta,
+    log: logEntry,
+  };
 }
-async function logLoss(sb: any, orderId: number, stageId: number, userId: number, userName: string, qtd: number, motivo: string, det?: string, retId?: number) {
-  await _initLossStore(sb);
-  
-  // Buscar progresso atualizado direto do banco para evitar cache local dessincronizado
+
+async function logLoss(
+  sb: any,
+  orderId: number,
+  stageId: number,
+  userId: number,
+  userName: string,
+  qtd: number,
+  motivo: string,
+  det?: string,
+  retId?: number
+) {
+  const [orderRes, dbProgRes, reasons] = await Promise.all([
+    sb.from('orders').select('quantity').eq('id', orderId).single(),
+    sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', stageId).maybeSingle(),
+    getLossReasons(sb),
+  ]);
+
+  const orderQty = Number(orderRes.data?.quantity) || 0;
+  const existingProg = dbProgRes.data;
+  const prevGood = Number(existingProg?.quantidade_boa) || 0;
+  const prevLost = Number(existingProg?.quantidade_perdida) || 0;
+  const prevRepl = Number(existingProg?.pendencia_reposicao) || 0;
+  const targetQty = Number(existingProg?.quantidade_pedido) || orderQty;
+
+  const newLost = prevLost + qtd;
+  const isStillFinished = prevGood >= targetQty && prevRepl === 0 && qtd === 0;
+
+  const prog: OrderStageProgress = {
+    order_id: orderId,
+    stage_id: stageId,
+    quantidade_pedido: targetQty,
+    quantidade_boa: prevGood,
+    quantidade_perdida: newLost,
+    pendencia_reposicao: prevRepl,
+    saldo_pendente: Math.max(0, targetQty - prevGood + prevRepl),
+    finished: isStillFinished,
+    status_operacao: isStillFinished ? 'CONCLUIDA' : prevGood > 0 ? 'PARCIAL' : 'LIBERADA',
+  };
+
+  _lossStageProgressStore.set(`${orderId}_${stageId}`, prog);
+  await safeUpsertOrderStageProgress(sb, prog);
+
+  const rs = retId || reasons.find(r => r.motivo.toLowerCase() === motivo.toLowerCase())?.etapa_reentrada_id || stageId;
+  const [snRes, rnRes, dbReentryRes] = await Promise.all([
+    sb.from('stages').select('name').eq('id', stageId).single(),
+    sb.from('stages').select('name').eq('id', rs).single(),
+    sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', rs).maybeSingle(),
+  ]);
+
+  const sn = snRes.data?.name || `Etapa #${stageId}`;
+  const rn = rnRes.data?.name || `Etapa #${rs}`;
+
+  // Importante: Não enviar 'id' manual para evitar colisão de chave primária no PostgreSQL
+  const lossPayload = {
+    order_id: orderId,
+    stage_id: stageId,
+    stage_name: sn,
+    user_id: userId,
+    user_name: userName,
+    quantidade_perdida: qtd,
+    motivo,
+    motivo_detalhe: det || '',
+    etapa_reentrada_id: rs,
+    etapa_reentrada_name: rn,
+    created_at: new Date().toISOString(),
+  };
+
+  let insertedLossLog: any = lossPayload;
   try {
-    const { data: dbProg } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', stageId).maybeSingle();
-    if (dbProg) {
-      _lossStageProgressStore.set(`${orderId}_${stageId}`, dbProg);
-    }
-  } catch (err) {
-    console.warn('[API] Falha ao sincronizar progresso no logLoss:', err);
+    const { data: lossRow } = await sb.from('order_loss_logs').insert(lossPayload).select('*').single();
+    if (lossRow) insertedLossLog = lossRow;
+  } catch (e) {
+    console.warn('[API] Aviso ao inserir order_loss_logs:', e);
   }
 
-  const key = `${orderId}_${stageId}`;
-  let prog = _lossStageProgressStore.get(key) || { order_id: orderId, stage_id: stageId, quantidade_pedido: (await sb.from('orders').select('quantity').eq('id', orderId).single()).data?.quantity || 0, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
-  prog.quantidade_perdida += qtd; if (prog.quantidade_boa < prog.quantidade_pedido) prog.finished = false;
-  _lossStageProgressStore.set(key, prog); try { await sb.from('order_stage_progress').upsert(prog); } catch(e) {}
-  const rs = retId || _lossReasonSettingsStore.find(r => r.motivo.toLowerCase() === motivo.toLowerCase())?.etapa_reentrada_id || stageId;
-  const sn = (await sb.from('stages').select('name').eq('id', stageId).single()).data?.name || `Etapa #${stageId}`;
-  const rn = (await sb.from('stages').select('name').eq('id', rs).single()).data?.name || `Etapa #${rs}`;
-  const lossLog: OrderLossLog = { id: _lossLogsStore.length+1, order_id: orderId, stage_id: stageId, stage_name: sn, user_id: userId, user_name: userName, quantidade_perdida: qtd, motivo, motivo_detalhe: det||'', etapa_reentrada_id: rs, etapa_reentrada_name: rn, created_at: new Date().toISOString() };
-  _lossLogsStore.push(lossLog); try { await sb.from('order_loss_logs').insert(lossLog); } catch(e) {}
-  
-  // Buscar progresso da reentrada para evitar dessincronizar
-  try {
-    const { data: dbProgReentry } = await sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', rs).maybeSingle();
-    if (dbProgReentry) {
-      _lossStageProgressStore.set(`${orderId}_${rs}`, dbProgReentry);
-    }
-  } catch (err) {
-    console.warn('[API] Falha ao sincronizar progresso de reentrada no logLoss:', err);
-  }
+  const existingReentry = dbReentryRes.data;
+  const reentryGood = Number(existingReentry?.quantidade_boa) || 0;
+  const reentryLost = Number(existingReentry?.quantidade_perdida) || 0;
+  const reentryRepl = (Number(existingReentry?.pendencia_reposicao) || 0) + qtd;
 
-  const rk = `${orderId}_${rs}`; let rp = _lossStageProgressStore.get(rk) || { order_id: orderId, stage_id: rs, quantidade_pedido: prog.quantidade_pedido, quantidade_boa: 0, quantidade_perdida: 0, pendencia_reposicao: 0, finished: false };
-  rp.pendencia_reposicao += qtd; rp.finished = false; _lossStageProgressStore.set(rk, rp); try { await sb.from('order_stage_progress').upsert(rp); } catch(e) {}
-  return { success: true, progress: prog, lossLog, reentradaStageId: rs };
+  const rp: OrderStageProgress = {
+    order_id: orderId,
+    stage_id: rs,
+    quantidade_pedido: targetQty,
+    quantidade_boa: reentryGood,
+    quantidade_perdida: reentryLost,
+    pendencia_reposicao: reentryRepl,
+    saldo_pendente: Math.max(0, targetQty - reentryGood + reentryRepl),
+    finished: false,
+    status_operacao: reentryGood > 0 ? 'PARCIAL' : 'LIBERADA',
+  };
+  _lossStageProgressStore.set(`${orderId}_${rs}`, rp);
+  await safeUpsertOrderStageProgress(sb, rp);
+
+  await recordPcpAuditLog(sb, {
+    order_id: orderId,
+    stage_id: stageId,
+    user_id: userId,
+    usuario: userName,
+    acao: 'REGISTRO_PERDA_REPOSICAO',
+    motivo: `${motivo}${det ? ` - ${det}` : ''}`,
+    quantidade: qtd,
+    valor_anterior: { quantidade_perdida: prevLost, pendencia_reposicao_reentrada: Number(existingReentry?.pendencia_reposicao) || 0 },
+    valor_novo: { quantidade_perdida: newLost, etapa_reentrada_id: rs, pendencia_reposicao_reentrada: reentryRepl },
+  });
+
+  return { success: true, progress: prog, lossLog: insertedLossLog, reentradaStageId: rs };
 }
+
 async function validateStageFinish(sb: any, orderId: number, stageId: number) {
-  await _initLossStore(sb);
   const si = (await sb.from('stages').select('name, calculation_type').eq('id', stageId).single()).data;
   if (si?.calculation_type === 'por_pedido') return { canFinish: true };
-  const prog = (await getStageProgressForOrder(sb, orderId)).find((p: any) => p.stage_id === stageId);
-  if (!prog || prog.quantidade_boa >= prog.quantidade_pedido) return { canFinish: true };
-  const remaining = prog.quantidade_pedido - prog.quantidade_boa;
-  return { canFinish: false, remaining, message: `N├â┬úo ├â┬® poss├â┬¡vel finalizar a etapa '${si?.name||stageId}': faltam ${remaining} pe├â┬ºas boas para atingir o total de ${prog.quantidade_pedido} pe├â┬ºas do pedido.` };
+  const prog = (await getStageProgressForOrder(sb, orderId)).find((p: any) => Number(p.stage_id) === Number(stageId));
+  if (!prog || (prog.quantidade_boa >= prog.quantidade_pedido && (prog.pendencia_reposicao || 0) === 0)) {
+    return { canFinish: true, progress: prog };
+  }
+  const remaining = Math.max(0, prog.quantidade_pedido - prog.quantidade_boa + (prog.pendencia_reposicao || 0));
+  return {
+    canFinish: false,
+    remaining,
+    progress: prog,
+    message: `A etapa '${si?.name || stageId}' possui produção parcial (${prog.quantidade_boa}/${prog.quantidade_pedido} boas, saldo pendente: ${remaining}). Ela será mantida como PARCIAL até completar o saldo.`,
+  };
 }
+
 async function getLossReportDataStore(sb: any, startDate?: string, endDate?: string) {
-  await _initLossStore(sb);
-  let logs = [..._lossLogsStore];
-  if (startDate) { const ms = new Date(startDate).getTime(); logs = logs.filter(l => new Date(l.created_at).getTime() >= ms); }
-  if (endDate) { const ms = new Date(endDate).getTime(); logs = logs.filter(l => new Date(l.created_at).getTime() <= ms); }
-  let orders: any[] = []; try { const { data } = await sb.from('orders').select('id, order_number, client_name, total_time_seconds, status, quantity'); if (data) orders = data; } catch(e) {}
-  let stages: any[] = []; try { const { data } = await sb.from('stages').select('id, name'); if (data) stages = data; } catch(e) {}
-  return _calculateLossReport(logs, orders, stages);
+  let query = sb.from('order_loss_logs').select('*').order('created_at', { ascending: false });
+  if (startDate) query = query.gte('created_at', new Date(startDate).toISOString());
+  if (endDate) {
+    const endObj = new Date(endDate);
+    if (endDate.length <= 10) endObj.setUTCHours(23, 59, 59, 999);
+    query = query.lte('created_at', endObj.toISOString());
+  }
+  const [logsRes, ordersRes, stagesRes] = await Promise.all([
+    query,
+    sb.from('orders').select('id, order_number, client_name, total_time_seconds, status, quantity'),
+    sb.from('stages').select('id, name'),
+  ]);
+  return _calculateLossReport(logsRes.data || [], ordersRes.data || [], stagesRes.data || []);
 }
-async function getProgressLogs(sb: any) { await _initLossStore(sb); return _progressLogsStore; }
+
+async function getProgressLogs(sb: any) {
+  const { data } = await sb.from('order_progress_logs').select('*').order('created_at', { ascending: false });
+  return data || [];
+}
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: timerUtils ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 interface PauseRecord { id?: number; execution_id?: number; start_pause: string; end_pause?: string | null; duration_seconds?: number | null; }
@@ -706,26 +1202,52 @@ function checkError(error: any, res: express.Response, msg = "Erro interno") {
     return false;
 }
 
+const VALID_ADMIN_ROLES = ['Admin', 'Administrador'];
+const VALID_PCP_SUPERVISOR_ROLES = ['Admin', 'Administrador', 'PCP', 'Supervisor'];
+const VALID_COMMERCIAL_OR_MANAGEMENT_ROLES = ['Admin', 'Administrador', 'Comercial', 'PCP', 'Supervisor'];
+const VALID_AUTHENTICATED_ROLES = [
+    'Admin',
+    'Administrador',
+    'PCP',
+    'Supervisor',
+    'Operador',
+    'Produção',
+    'Produ├â┬º├â┬úo',
+    'Producao',
+    'Comercial',
+    'Visualização',
+    'Visualiza├â┬º├â┬úo',
+    'Visualizacao',
+];
+
 const isAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = req.headers['x-user-role'];
-    if (role !== 'Admin') {
-        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem realizar esta a├â┬º├â┬úo." });
+    const role = String(req.headers['x-user-role'] || '').trim();
+    if (!VALID_ADMIN_ROLES.includes(role)) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem realizar esta ação." });
+    }
+    next();
+};
+
+const isPcpOrSupervisorOrAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const role = String(req.headers['x-user-role'] || '').trim();
+    if (!VALID_PCP_SUPERVISOR_ROLES.includes(role)) {
+        return res.status(403).json({ error: "Acesso negado. Ação permitida apenas para PCP, Supervisor ou Administração." });
     }
     next();
 };
 
 const isAdminOrComercial = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = req.headers['x-user-role'];
-    if (role !== 'Admin' && role !== 'Comercial') {
-        return res.status(403).json({ error: "Acesso negado. A├â┬º├â┬úo permitida apenas para Administra├â┬º├â┬úo ou Comercial." });
+    const role = String(req.headers['x-user-role'] || '').trim();
+    if (!VALID_COMMERCIAL_OR_MANAGEMENT_ROLES.includes(role)) {
+        return res.status(403).json({ error: "Acesso negado. Ação permitida apenas para Administração, PCP, Supervisor ou Comercial." });
     }
     next();
 };
 
 const isAuthenticated = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = req.headers['x-user-role'];
-    if (role !== 'Admin' && role !== 'Comercial' && role !== 'Produ├â┬º├â┬úo') {
-        return res.status(403).json({ error: "Acesso negado. Login necess├â┬írio." });
+    const role = String(req.headers['x-user-role'] || '').trim();
+    if (!VALID_AUTHENTICATED_ROLES.includes(role)) {
+        return res.status(403).json({ error: "Acesso negado. Login necessário." });
     }
     next();
 };
@@ -3085,12 +3607,9 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
                         pendencia_reposicao: 0,
                         finished: !!corteStage.finished
                     };
-                    _lossStageProgressStore.set(`${orderId}_2`, progPayload);
-                    try {
-                        await supabaseAdmin.from("order_stage_progress").upsert(progPayload);
-                    } catch (e) {}
+                    await safeUpsertOrderStageProgress(supabaseAdmin, progPayload);
 
-                    // Registrar log de progresso
+                    // Registrar log de progresso no Supabase
                     const logEntry = {
                         order_id: orderId,
                         stage_id: 2,
@@ -3099,7 +3618,6 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
                         quantidade_boa_incremento: corteStage.quantidade_boa,
                         created_at: new Date().toISOString()
                     };
-                    _progressLogsStore.push(logEntry);
                     try {
                         await supabaseAdmin.from("order_progress_logs").insert(logEntry);
                     } catch (e) {}
@@ -3494,9 +4012,17 @@ app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         const stageId = Number(req.params.stageId);
-        const { incremento, user_id, user_name } = req.body;
+        const {
+            incremento,
+            quantidade_perdida,
+            quantidade_retrabalho,
+            observacao,
+            transfer_to_next,
+            user_id,
+            user_name,
+        } = req.body;
 
-        if (!incremento || Number(incremento) <= 0) {
+        if ((!incremento || Number(incremento) <= 0) && (!quantidade_perdida || Number(quantidade_perdida) <= 0) && (!quantidade_retrabalho || Number(quantidade_retrabalho) <= 0)) {
             return res.status(400).json({ error: "Quantidade incremental deve ser maior que 0." });
         }
 
@@ -3505,9 +4031,27 @@ app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
             orderId,
             stageId,
             Number(user_id) || 1,
-            user_name || "Operador",
-            Number(incremento)
+            user_name || (req.headers["x-user-name"] as string) || "Operador",
+            Number(incremento) || 0,
+            {
+                quantidade_perdida: Number(quantidade_perdida) || 0,
+                quantidade_retrabalho: Number(quantidade_retrabalho) || 0,
+                observacao,
+                transfer_to_next: transfer_to_next !== false,
+            }
         );
+
+        if (observacao) {
+            try {
+                await supabaseAdmin.from("stage_observations").insert({
+                    order_id: orderId,
+                    stage_id: stageId,
+                    user_id: Number(user_id) || 1,
+                    observation: observacao,
+                });
+            } catch (_) {}
+        }
+
         return res.json(result);
     } catch (err: any) {
         console.error("[API] Erro ao registrar progresso parcial:", err);
@@ -3794,134 +4338,161 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
     return res.json(formatted);
 });
 
+const _activeStartExecutionLocks = new Set<string>();
+
 app.post("/api/executions/start", async (req, res) => {
-    const { order_id, stage_id, user_id } = req.body;
+    const { order_id, stage_id, user_id, supervisor_override } = req.body;
+    const orderIdNum = Number(order_id);
+    const stageIdNum = Number(stage_id);
+    const userIdNum = Number(user_id);
 
-    // Use supabaseAdmin to bypass RLS for internal logic
-    const { data: existing, error: e1 } = await supabaseAdmin
-        .from("stage_executions")
-        .select("id")
-        .eq("order_id", Number(order_id))
-        .eq("stage_id", Number(stage_id))
-        .eq("status", "Em andamento")
-        .limit(1);
-
-    if (e1) {
-        return checkError(e1, res, "Erro ao verificar execu├â┬º├â┬Áes existentes");
+    if (!userIdNum || userIdNum <= 0) {
+        return res.status(400).json({ error: "Usuário não identificado. Por favor, saia e entre novamente." });
     }
 
-    if (existing && existing.length > 0) {
-        return res.status(400).json({ error: "Esta etapa j├â┬í est├â┬í sendo executada para este pedido." });
+    const lockKey = `${orderIdNum}_${stageIdNum}_${userIdNum}`;
+    if (_activeStartExecutionLocks.has(lockKey)) {
+        return res.status(429).json({ error: "Inicialização já em processamento (proteção contra clique duplo)." });
     }
+    _activeStartExecutionLocks.add(lockKey);
 
-    if (Number(user_id) === 0) {
-        return res.status(400).json({ error: "Usu├â┬írio n├â┬úo identificado. Por favor, saia e entre novamente." });
-    }
-
-    // No auto-pause anymore as per user requested multiple tasks support
-    const { data, error } = await supabaseAdmin
-        .from("stage_executions")
-        .insert({
-            order_id: Number(order_id),
-            stage_id: Number(stage_id),
-            user_id: Number(user_id),
-            status: "Em andamento",
-        })
-        .select("id")
-        .maybeSingle();
-
-    if (error) {
-        console.error("[API] Erro ao iniciar execu├â┬º├â┬úo:", error);
-        return res.status(500).json({ error: `Erro ao iniciar execu├â┬º├â┬úo: ${error.message}` });
-    }
-
-    if (!data) {
-        return res.status(500).json({ error: "Erro ao recuperar ID da nova execu├â┬º├â┬úo." });
-    }
-
-    // --- AUTOMA├âÔÇí├âãÆO CORTE VS SEPARA├âÔÇí├âãÆO ESTOQUE ---
     try {
-        // Obter nome da etapa sendo iniciada
-        const { data: stageData } = await supabaseAdmin
-            .from("stages")
-            .select("name")
-            .eq("id", Number(stage_id))
-            .single();
+        // 1. Verificar se o pedido está bloqueado ou cancelado
+        const { data: orderCheck } = await supabaseAdmin
+            .from("orders")
+            .select("id, order_number, status, pcp_is_blocked, deleted_at, quantity")
+            .eq("id", orderIdNum)
+            .maybeSingle();
 
-        if (stageData && (stageData.name === "Corte" || stageData.name === "Separa├â┬º├â┬úo estoque")) {
-            // Se for "Corte", a etapa oponente a remover ├â┬® "Separa├â┬º├â┬úo estoque". E vice-versa.
-            const oppositeStageName = stageData.name === "Corte" ? "Separa├â┬º├â┬úo estoque" : "Corte";
+        if (!orderCheck || orderCheck.deleted_at || orderCheck.status === "Cancelado") {
+            return res.status(400).json({ error: "Não é possível iniciar operação em um pedido cancelado ou excluído." });
+        }
 
-            // Encontrar o ID da etapa oponente
-            const { data: oppositeStageData } = await supabaseAdmin
-                .from("stages")
-                .select("id")
-                .eq("name", oppositeStageName)
-                .single();
+        if (orderCheck.pcp_is_blocked) {
+            return res.status(400).json({
+                error: `O pedido #${orderCheck.order_number} está BLOQUEADO pelo PCP. Resolva o bloqueio antes de iniciar a operação.`,
+                code: "ORDER_BLOCKED",
+            });
+        }
 
-            if (oppositeStageData) {
-                const oppositeStageId = oppositeStageData.id;
+        // 2. Verificar se esta etapa já está sendo executada para este pedido (clique duplo / concorrência)
+        const { data: existing, error: e1 } = await supabaseAdmin
+            .from("stage_executions")
+            .select("id, user_id")
+            .eq("order_id", orderIdNum)
+            .eq("stage_id", stageIdNum)
+            .eq("status", "Em andamento")
+            .limit(1);
 
-                const { data: orderData } = await supabaseAdmin
-                    .from("orders")
-                    .select("required_stages, items, observations")
-                    .eq("id", Number(order_id))
-                    .single();
+        if (e1) {
+            return checkError(e1, res, "Erro ao verificar execuções existentes");
+        }
 
-                const corteNeeded = getOrderCuttingNeeded(orderData);
-                const isParallelActive = (corteNeeded > 0) ||
-                    (Array.isArray(orderData?.required_stages) &&
-                     orderData.required_stages.map(String).includes("2") &&
-                     orderData.required_stages.map(String).includes("12"));
+        if (existing && existing.length > 0) {
+            if (Number(existing[0].user_id) === userIdNum) {
+                return res.json({ id: existing[0].id, idempotent: true });
+            }
+            return res.status(400).json({ error: "Esta etapa já está sendo executada para este pedido." });
+        }
 
-                if (isParallelActive) {
-                    console.log(`[API] Ambas as etapas (Corte e Separa├â┬º├â┬úo estoque) est├â┬úo ativas em paralelo para o pedido ${order_id}. Mantendo ambas.`);
-                } else if (orderData && Array.isArray(orderData.required_stages)) {
-                    // Remover a etapa oposta apenas se n├â┬úo for execu├â┬º├â┬úo paralela
-                    const updatedStages = orderData.required_stages.filter(
-                        (id) => String(id) !== String(oppositeStageId)
-                    );
+        // 3. Regra de sessão ativa única por operador (salvo autorização do supervisor/Admin)
+        const userRole = String(req.headers["x-user-role"] || "").trim();
+        const allowConcurrentSession =
+            Boolean(supervisor_override) ||
+            ["Admin", "Administrador", "Supervisor"].includes(userRole);
 
-                    if (updatedStages.length !== orderData.required_stages.length) {
-                        await supabaseAdmin
-                            .from("orders")
-                            .update({ required_stages: updatedStages })
-                            .eq("id", Number(order_id));
-                        console.log(`[API] Automa├â┬º├â┬úo: Est├â┬ígio oponente '${oppositeStageName}' (${oppositeStageId}) removido do pedido ${order_id}.`);
-                    }
-                }
+        if (!allowConcurrentSession) {
+            const { data: activeUserExecs } = await supabaseAdmin
+                .from("stage_executions")
+                .select("id, order_id, stage_id, start_time, orders(order_number), stages(name)")
+                .eq("user_id", userIdNum)
+                .eq("status", "Em andamento")
+                .limit(1);
+
+            if (activeUserExecs && activeUserExecs.length > 0) {
+                const activeExec: any = activeUserExecs[0];
+                const activeOrderNum = activeExec.orders?.order_number || `#${activeExec.order_id}`;
+                const activeStageName = activeExec.stages?.name || `Etapa #${activeExec.stage_id}`;
+                return res.status(409).json({
+                    error: `Você já possui uma operação ativa (${activeStageName} no pedido ${activeOrderNum}). Pause ou finalize a operação atual antes de iniciar outra, ou solicite autorização do supervisor.`,
+                    code: "OPERATOR_ALREADY_ACTIVE",
+                    active_execution: {
+                        id: activeExec.id,
+                        order_id: activeExec.order_id,
+                        order_number: activeOrderNum,
+                        stage_id: activeExec.stage_id,
+                        stage_name: activeStageName,
+                        start_time: activeExec.start_time,
+                    },
+                });
             }
         }
-    } catch (autoErr) {
-        console.error("[API] Erro na automacao Corte/Separacao:", autoErr);
+
+        const { data, error } = await supabaseAdmin
+            .from("stage_executions")
+            .insert({
+                order_id: orderIdNum,
+                stage_id: stageIdNum,
+                user_id: userIdNum,
+                status: "Em andamento",
+            })
+            .select("id")
+            .maybeSingle();
+
+        if (error) {
+            console.error("[API] Erro ao iniciar execução:", error);
+            return res.status(500).json({ error: `Erro ao iniciar execução: ${error.message}` });
+        }
+
+        if (!data) {
+            return res.status(500).json({ error: "Erro ao recuperar ID da nova execução." });
+        }
+
+        try {
+            if (stageIdNum !== 1) {
+                await supabaseAdmin
+                    .from("orders")
+                    .update({ status: "Em Produção", pcp_status: "EM_PRODUCAO" })
+                    .eq("id", orderIdNum)
+                    .eq("status", "Entrada");
+            }
+            const progKey = `${orderIdNum}_${stageIdNum}`;
+            const existingProg = _lossStageProgressStore.get(progKey);
+            if (existingProg) {
+                existingProg.finished = false;
+                existingProg.status_operacao = "EM_ANDAMENTO";
+                _lossStageProgressStore.set(progKey, existingProg);
+            }
+            await safeUpsertOrderStageProgress(supabaseAdmin, {
+                order_id: orderIdNum,
+                stage_id: stageIdNum,
+                quantidade_pedido: Number(orderCheck.quantity) || 0,
+                quantidade_boa: Number(existingProg?.quantidade_boa) || 0,
+                quantidade_perdida: Number(existingProg?.quantidade_perdida) || 0,
+                pendencia_reposicao: Number(existingProg?.pendencia_reposicao) || 0,
+                finished: false,
+                status_operacao: "EM_ANDAMENTO",
+            });
+        } catch (_) {}
+
+        await recordPcpAuditLog(supabaseAdmin, {
+            order_id: orderIdNum,
+            stage_id: stageIdNum,
+            user_id: userIdNum,
+            usuario: (req.headers["x-user-name"] as string) || `Operador #${userIdNum}`,
+            acao: "INICIO_OPERACAO",
+            valor_anterior: { status_operacao: "LIBERADA" },
+            valor_novo: { execution_id: data.id, status_operacao: "EM_ANDAMENTO", supervisor_override: Boolean(supervisor_override) },
+        });
+
+        return res.json({ id: data.id, status_operacao: "EM_ANDAMENTO" });
+    } finally {
+        _activeStartExecutionLocks.delete(lockKey);
     }
-
-    try {
-        if (Number(stage_id) !== 1) {
-            await supabaseAdmin
-                .from("orders")
-                .update({ status: "Em Produção" })
-                .eq("id", Number(order_id))
-                .eq("status", "Entrada");
-        }
-        const progKey = `${Number(order_id)}_${Number(stage_id)}`;
-        const existingProg = _lossStageProgressStore.get(progKey);
-        if (existingProg && existingProg.finished) {
-            existingProg.finished = false;
-            _lossStageProgressStore.set(progKey, existingProg);
-        }
-        await supabaseAdmin
-            .from("order_stage_progress")
-            .update({ finished: false })
-            .eq("order_id", Number(order_id))
-            .eq("stage_id", Number(stage_id));
-    } catch (_) {}
-
-    return res.json({ id: data.id });
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Pause-All: pausa todas as execu├â┬º├â┬Áes ativas (fim de expediente) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.post("/api/executions/pause-all", isAdmin, async (req, res) => {
+app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
         const now = new Date();
 
@@ -3991,7 +4562,6 @@ app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
 
         // 6. Limpar memórias locais do backend
         _lossStageProgressStore.clear();
-        _progressLogsStore.length = 0;
         _corteAllocationsStore.length = 0;
 
         // 7. Resetar o tempo acumulado dos pedidos para 0
@@ -4078,44 +4648,112 @@ app.post("/api/executions/auto-pause", async (req, res) => {
 
 app.post("/api/executions/:id/pause", async (req, res) => {
     const execution_id = Number(req.params.id);
-    const { observation } = req.body || {};
+    const { observation, motivo, reason } = req.body || {};
+    const pauseReason = (motivo || reason || observation || "Pausa operacional").toString().trim();
 
     const { data: exec } = await supabaseAdmin
         .from("stage_executions")
-        .select("order_id, stage_id, user_id")
+        .select("order_id, stage_id, user_id, status")
         .eq("id", execution_id)
         .single();
+
+    if (!exec) {
+        return res.status(404).json({ error: "Execução não encontrada." });
+    }
+
+    // Proteção contra clique duplo na pausa
+    const { data: existingOpenPause } = await supabaseAdmin
+        .from("pauses")
+        .select("id")
+        .eq("execution_id", execution_id)
+        .is("end_pause", null)
+        .limit(1)
+        .maybeSingle();
+
+    if (existingOpenPause && exec.status === "Pausado") {
+        return res.json({ success: true, idempotent: true, status_operacao: "PAUSADA" });
+    }
 
     const { error: e1 } = await supabaseAdmin
         .from("stage_executions")
         .update({ status: "Pausado" })
         .eq("id", execution_id);
-    if (checkError(e1, res, "Erro ao pausar execu├â┬º├â┬úo")) return;
+    if (checkError(e1, res, "Erro ao pausar execução")) return;
 
-    const { error: e2 } = await supabaseAdmin
-        .from("pauses")
-        .insert({ execution_id });
-    if (checkError(e2, res, "Erro ao registrar pausa")) return;
+    if (!existingOpenPause) {
+        const { error: e2 } = await supabaseAdmin
+            .from("pauses")
+            .insert({ execution_id, start_pause: new Date().toISOString() });
+        if (checkError(e2, res, "Erro ao registrar pausa")) return;
+    }
 
-    if (observation && exec) {
+    if ((observation || motivo || reason) && exec) {
         try {
             await supabaseAdmin.from("stage_observations").insert({
                 order_id: exec.order_id,
                 stage_id: exec.stage_id,
                 user_id: exec.user_id,
-                observation
+                observation: `[PAUSA] ${pauseReason}`,
             });
         } catch (e) {
-            console.error("Erro ao salvar observa├â┬º├â┬úo da etapa na pausa:", e);
+            console.error("Erro ao salvar observação da etapa na pausa:", e);
         }
     }
 
-    return res.json({ success: true });
+    await recordPcpAuditLog(supabaseAdmin, {
+        order_id: exec.order_id,
+        stage_id: exec.stage_id,
+        user_id: exec.user_id,
+        usuario: (req.headers["x-user-name"] as string) || `Operador #${exec.user_id}`,
+        acao: "PAUSA_OPERACAO",
+        motivo: pauseReason,
+        valor_anterior: { status_operacao: "EM_ANDAMENTO" },
+        valor_novo: { execution_id, status_operacao: "PAUSADA", motivo: pauseReason },
+    });
+
+    return res.json({ success: true, status_operacao: "PAUSADA", motivo: pauseReason });
 });
 
 app.post("/api/executions/:id/resume", async (req, res) => {
     const execution_id = Number(req.params.id);
+    const { supervisor_override } = req.body || {};
     const now = new Date();
+
+    const { data: exec } = await supabaseAdmin
+        .from("stage_executions")
+        .select("id, order_id, stage_id, user_id, status")
+        .eq("id", execution_id)
+        .single();
+
+    if (!exec) {
+        return res.status(404).json({ error: "Execução não encontrada." });
+    }
+
+    // Regra de sessão única ativa ao retomar operação
+    const userRole = String(req.headers["x-user-role"] || "").trim();
+    const allowConcurrentSession =
+        Boolean(supervisor_override) ||
+        ["Admin", "Administrador", "Supervisor"].includes(userRole);
+
+    if (!allowConcurrentSession && exec.user_id) {
+        const { data: otherActive } = await supabaseAdmin
+            .from("stage_executions")
+            .select("id, order_id, stage_id, orders(order_number), stages(name)")
+            .eq("user_id", exec.user_id)
+            .eq("status", "Em andamento")
+            .neq("id", execution_id)
+            .limit(1);
+
+        if (otherActive && otherActive.length > 0) {
+            const activeExec: any = otherActive[0];
+            const activeOrderNum = activeExec.orders?.order_number || `#${activeExec.order_id}`;
+            const activeStageName = activeExec.stages?.name || `Etapa #${activeExec.stage_id}`;
+            return res.status(409).json({
+                error: `Você já possui outra operação em andamento (${activeStageName} no pedido ${activeOrderNum}). Pause ou finalize a operação atual antes de retomar esta.`,
+                code: "OPERATOR_ALREADY_ACTIVE",
+            });
+        }
+    }
 
     // 1. Get the active pause
     const { data: activePause, error: e0 } = await supabaseAdmin
@@ -4129,13 +4767,14 @@ app.post("/api/executions/:id/resume", async (req, res) => {
 
     if (e0) return checkError(e0, res, "Erro ao buscar pausa ativa");
 
+    let pauseDuration = 0;
     if (activePause) {
-        const duration = Math.floor((now.getTime() - new Date(activePause.start_pause).getTime()) / 1000);
+        pauseDuration = Math.max(0, Math.floor((now.getTime() - new Date(activePause.start_pause).getTime()) / 1000));
         const { error: e2 } = await supabaseAdmin
             .from("pauses")
             .update({
                 end_pause: now.toISOString(),
-                duration_seconds: Math.max(0, duration)
+                duration_seconds: pauseDuration,
             })
             .eq("id", activePause.id);
         if (checkError(e2, res, "Erro ao finalizar pausa")) return;
@@ -4145,25 +4784,44 @@ app.post("/api/executions/:id/resume", async (req, res) => {
         .from("stage_executions")
         .update({ status: "Em andamento" })
         .eq("id", execution_id);
-    if (checkError(e1, res, "Erro ao retomar execu├â┬º├â┬úo")) return;
+    if (checkError(e1, res, "Erro ao retomar execução")) return;
 
-    return res.json({ success: true });
+    await recordPcpAuditLog(supabaseAdmin, {
+        order_id: exec.order_id,
+        stage_id: exec.stage_id,
+        user_id: exec.user_id,
+        usuario: (req.headers["x-user-name"] as string) || `Operador #${exec.user_id}`,
+        acao: "RETOMADA_OPERACAO",
+        valor_anterior: { status_operacao: "PAUSADA" },
+        valor_novo: { execution_id, status_operacao: "EM_ANDAMENTO", pause_duration_seconds: pauseDuration },
+    });
+
+    return res.json({ success: true, status_operacao: "EM_ANDAMENTO" });
 });
 
 app.post("/api/executions/:id/finish", async (req, res) => {
     const execution_id = Number(req.params.id);
-    const { observation } = req.body || {};
+    const { observation, quantidade_boa_incremento, partial } = req.body || {};
     const nowISO = new Date().toISOString();
     const nowMs = new Date().getTime();
 
     // 1. Get current execution
     const { data: execution, error: e1 } = await supabaseAdmin
         .from("stage_executions")
-        .select("*, stages(name)")
+        .select("*, stages(name, calculation_type)")
         .eq("id", execution_id)
         .single();
 
     if (checkError(e1, res, "Execucao nao encontrada") || !execution) return;
+
+    // Proteção contra clique duplo na finalização
+    if (execution.status === "Finalizado") {
+        return res.json({
+            success: true,
+            idempotent: true,
+            total_time: execution.total_time_seconds || 0,
+        });
+    }
 
     // 2. Finalize any active pause
     const { data: lastPauseData } = await supabaseAdmin
@@ -4190,13 +4848,15 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .eq("execution_id", execution_id);
 
     const totalPauseSeconds = (pausesData || []).reduce(
-        (sum: number, p: any) => sum + (p.duration_seconds || 0), 0
+        (sum: number, p: any) => sum + (p.duration_seconds || 0),
+        0
     );
 
-    // 4. Calculate total execution time
-    const totalExecutionSeconds = Math.max(0, Math.floor(
-        (nowMs - new Date(execution.start_time).getTime()) / 1000
-    ) - totalPauseSeconds);
+    // 4. Calculate total execution time (tempo produtivo líquido descontando pausas)
+    const totalExecutionSeconds = Math.max(
+        0,
+        Math.floor((nowMs - new Date(execution.start_time).getTime()) / 1000) - totalPauseSeconds
+    );
 
     // 5. Update execution status
     const { error: e2 } = await supabaseAdmin
@@ -4204,7 +4864,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         .update({
             end_time: nowISO,
             total_time_seconds: totalExecutionSeconds,
-            status: "Finalizado"
+            status: "Finalizado",
         })
         .eq("id", execution_id);
 
@@ -4216,7 +4876,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 order_id: execution.order_id,
                 stage_id: execution.stage_id,
                 user_id: execution.user_id,
-                observation
+                observation,
             });
         } catch (e) {
             console.error("Erro ao salvar observacao da etapa na finalizacao:", e);
@@ -4224,102 +4884,190 @@ app.post("/api/executions/:id/finish", async (req, res) => {
     }
 
     // 6. Update order total time & fetch order metadata
-    const { data: allExecs } = await supabaseAdmin
-        .from("stage_executions")
-        .select("total_time_seconds, stage_id, status")
-        .eq("order_id", execution.order_id);
+    const [allExecsRes, orderRes, existingProgRes] = await Promise.all([
+        supabaseAdmin.from("stage_executions").select("total_time_seconds, stage_id, status").eq("order_id", execution.order_id),
+        supabaseAdmin.from("orders").select("quantity, required_stages, status, pcp_status").eq("id", execution.order_id).single(),
+        supabaseAdmin
+            .from("order_stage_progress")
+            .select("*")
+            .eq("order_id", execution.order_id)
+            .eq("stage_id", execution.stage_id)
+            .maybeSingle(),
+    ]);
 
-    const totalOrderTime = (allExecs || []).reduce(
-        (sum: number, e: any) => sum + (e.total_time_seconds || 0), 0
-    );
+    const allExecs = allExecsRes.data || [];
+    const orderData = orderRes.data;
+    const existingProg = existingProgRes.data;
 
-    const { data: orderData } = await supabaseAdmin
-        .from("orders")
-        .select("quantity, required_stages, status")
-        .eq("id", execution.order_id)
-        .single();
+    const totalOrderTime = allExecs.reduce((sum: number, e: any) => sum + (e.total_time_seconds || 0), 0);
 
     await supabaseAdmin
         .from("orders")
         .update({ total_time_seconds: totalOrderTime })
         .eq("id", execution.order_id);
 
-    // 6.5 Synchronize order_stage_progress so RPC get_orders_with_stages sees finished = true
-    const orderQty = orderData?.quantity || 1;
-    const progRow = {
+    // 6.5 Validar saldo de produção parcial vs conclusão total da etapa
+    const orderQty = Number(orderData?.quantity) || 1;
+    const calcType = execution.stages?.calculation_type || "por_peca";
+
+    if (quantidade_boa_incremento && Number(quantidade_boa_incremento) > 0) {
+        await logProgress(
+            supabaseAdmin,
+            Number(execution.order_id),
+            Number(execution.stage_id),
+            Number(execution.user_id) || 1,
+            (req.headers["x-user-name"] as string) || `Operador #${execution.user_id}`,
+            Number(quantidade_boa_incremento),
+            { observacao: observation }
+        );
+    }
+
+    const { data: refreshedProg } = await supabaseAdmin
+        .from("order_stage_progress")
+        .select("*")
+        .eq("order_id", execution.order_id)
+        .eq("stage_id", execution.stage_id)
+        .maybeSingle();
+
+    const currentGood = Number(refreshedProg?.quantidade_boa) || 0;
+    const currentLost = Number(refreshedProg?.quantidade_perdida) || 0;
+    const currentRepl = Number(refreshedProg?.pendencia_reposicao) || 0;
+
+    // Se o operador apontou produção parcial (< orderQty) ou marcou partial=true ou há pendência de reposição,
+    // manter a etapa como PARCIAL (finished = false) com saldo pendente!
+    const hasPartialBalance =
+        Boolean(partial) ||
+        currentRepl > 0 ||
+        (calcType !== "por_pedido" && currentGood > 0 && currentGood < orderQty);
+
+    const isStageFullyCompleted = !hasPartialBalance;
+    const finalGoodQty = isStageFullyCompleted ? Math.max(orderQty, currentGood) : currentGood;
+    const saldoPendente = Math.max(0, orderQty - finalGoodQty + currentRepl);
+    const stageOperationStatus: OperationStatus = isStageFullyCompleted ? "CONCLUIDA" : "PARCIAL";
+
+    const progRow: OrderStageProgress = {
         order_id: Number(execution.order_id),
         stage_id: Number(execution.stage_id),
         quantidade_pedido: orderQty,
-        quantidade_boa: orderQty,
-        quantidade_perdida: 0,
-        pendencia_reposicao: 0,
-        finished: true
+        quantidade_recebida: orderQty,
+        quantidade_boa: finalGoodQty,
+        quantidade_perdida: currentLost,
+        quantidade_transferida: Math.min(orderQty, finalGoodQty),
+        pendencia_reposicao: currentRepl,
+        saldo_pendente: saldoPendente,
+        finished: isStageFullyCompleted,
+        status_operacao: stageOperationStatus,
     };
     _lossStageProgressStore.set(`${execution.order_id}_${execution.stage_id}`, progRow);
-    try {
-        await supabaseAdmin
+    await safeUpsertOrderStageProgress(supabaseAdmin, progRow);
+
+    // Liberar a próxima etapa da rota com a quantidade transferida (total ou parcial)
+    const activeReqStages = Array.isArray(orderData?.required_stages)
+        ? orderData.required_stages.map((id: any) => Number(id)).filter((id: number) => ![2, 7, 12].includes(id))
+        : [];
+    const currentRouteIdx = activeReqStages.indexOf(Number(execution.stage_id));
+    const nextStageIdInRoute =
+        currentRouteIdx >= 0 && currentRouteIdx + 1 < activeReqStages.length
+            ? activeReqStages[currentRouteIdx + 1]
+            : null;
+
+    if (nextStageIdInRoute && finalGoodQty > 0) {
+        const { data: nextProgExisting } = await supabaseAdmin
             .from("order_stage_progress")
-            .upsert(progRow, { onConflict: "order_id,stage_id" });
-    } catch (progErr) {
-        console.warn("[API] Erro ao sincronizar order_stage_progress no finish:", progErr);
+            .select("*")
+            .eq("order_id", execution.order_id)
+            .eq("stage_id", nextStageIdInRoute)
+            .maybeSingle();
+
+        const nextGood = Number(nextProgExisting?.quantidade_boa) || 0;
+        const nextReceived = Math.min(orderQty, Math.max(Number(nextProgExisting?.quantidade_recebida) || 0, finalGoodQty));
+        const nextProgRow: OrderStageProgress = {
+            order_id: Number(execution.order_id),
+            stage_id: nextStageIdInRoute,
+            quantidade_pedido: orderQty,
+            quantidade_recebida: nextReceived,
+            quantidade_boa: nextGood,
+            quantidade_perdida: Number(nextProgExisting?.quantidade_perdida) || 0,
+            pendencia_reposicao: Number(nextProgExisting?.pendencia_reposicao) || 0,
+            saldo_pendente: Math.max(0, orderQty - nextGood),
+            finished: Boolean(nextProgExisting?.finished),
+            status_operacao: nextProgExisting?.finished ? "CONCLUIDA" : nextGood > 0 ? "PARCIAL" : "LIBERADA",
+        };
+        _lossStageProgressStore.set(`${execution.order_id}_${nextStageIdInRoute}`, nextProgRow);
+        await safeUpsertOrderStageProgress(supabaseAdmin, nextProgRow);
     }
 
-    // 7. Update order status if specific stage finished
+    // 7. Atualizar status do pedido: NUNCA finalizar automaticamente todo o pedido quando apenas uma etapa intermediária ou parcial foi concluída!
     let newOrderStatus = orderData?.status || "Em Produção";
-    const stageName = execution.stages?.name?.toLowerCase() || '';
-    if ((stageName.includes('ficha') && stageName.includes('aprova')) || Number(execution.stage_id) === 1) {
+    const stageName = execution.stages?.name?.toLowerCase() || "";
+    if (((stageName.includes("ficha") && stageName.includes("aprova")) || Number(execution.stage_id) === 1) && isStageFullyCompleted) {
         if (orderData?.status === "Entrada") {
             await supabaseAdmin
                 .from("orders")
-                .update({ status: "Em Produção" })
+                .update({ status: "Em Produção", pcp_status: "EM_PRODUCAO" })
                 .eq("id", execution.order_id);
             newOrderStatus = "Em Produção";
         }
     }
 
-    // ALWAYS mark as Entregue if Conferencia is finished, or if all active required stages are finished
-    if (stageName.includes('confer') || Number(execution.stage_id) === 8) {
-        await supabaseAdmin
-            .from("orders")
-            .update({ 
-                status: "Entregue",
-                delivered_at: nowISO
-            })
-            .eq("id", execution.order_id);
-        newOrderStatus = "Entregue";
-        console.log(`[API] Pedido ${execution.order_id} marcado como Entregue automaticamente ao finalizar Conferência.`);
-    } else if (orderData && Array.isArray(orderData.required_stages) && orderData.required_stages.length > 0) {
-        const activeReqStages = orderData.required_stages
-            .map((id: any) => Number(id))
-            .filter((id: number) => ![2, 7, 12].includes(id));
-
-        const completedStageIds = new Set(
-            (allExecs || [])
-                .filter((e: any) => e.status === "Finalizado")
-                .map((e: any) => Number(e.stage_id))
-        );
-        completedStageIds.add(Number(execution.stage_id));
-
+    if (isStageFullyCompleted) {
         const { data: progRows } = await supabaseAdmin
             .from("order_stage_progress")
-            .select("stage_id")
-            .eq("order_id", execution.order_id)
-            .eq("finished", true);
-        (progRows || []).forEach((r: any) => completedStageIds.add(Number(r.stage_id)));
+            .select("stage_id, finished")
+            .eq("order_id", execution.order_id);
 
-        const allCompleted = activeReqStages.length > 0 && activeReqStages.every((id: number) => completedStageIds.has(id));
-        if (allCompleted) {
+        const finishedByProgress = new Set(
+            (progRows || []).filter((r: any) => r.finished).map((r: any) => Number(r.stage_id))
+        );
+        finishedByProgress.add(Number(execution.stage_id));
+
+        const isLastStageInRoute =
+            activeReqStages.length > 0 &&
+            activeReqStages[activeReqStages.length - 1] === Number(execution.stage_id);
+        const isConferenciaOrEmbalagem =
+            stageName.includes("confer") || stageName.includes("embalag") || Number(execution.stage_id) === 8;
+
+        const allStagesCompleted =
+            activeReqStages.length > 0
+                ? activeReqStages.every((id: number) => finishedByProgress.has(id))
+                : isConferenciaOrEmbalagem;
+
+        if (allStagesCompleted || (isConferenciaOrEmbalagem && isLastStageInRoute)) {
             await supabaseAdmin
                 .from("orders")
-                .update({ 
+                .update({
                     status: "Entregue",
-                    delivered_at: nowISO
+                    pcp_status: "PRONTO",
+                    delivered_at: nowISO,
                 })
                 .eq("id", execution.order_id);
             newOrderStatus = "Entregue";
-            console.log(`[API] Pedido ${execution.order_id} marcado como Entregue pois todas as etapas obrigatorias foram finalizadas.`);
+            console.log(`[API] Pedido ${execution.order_id} concluiu todas as etapas da rota produtiva (pcp_status=PRONTO).`);
         }
     }
+
+    await recordPcpAuditLog(supabaseAdmin, {
+        order_id: Number(execution.order_id),
+        stage_id: Number(execution.stage_id),
+        user_id: Number(execution.user_id),
+        usuario: (req.headers["x-user-name"] as string) || `Operador #${execution.user_id}`,
+        acao: isStageFullyCompleted ? "FIM_OPERACAO_CONCLUIDA" : "FIM_SESSAO_PARCIAL",
+        quantidade: finalGoodQty,
+        observacao: observation || null,
+        valor_anterior: {
+            quantidade_boa: Number(existingProg?.quantidade_boa) || 0,
+            finished: Boolean(existingProg?.finished),
+        },
+        valor_novo: {
+            execution_id,
+            total_time_seconds: totalExecutionSeconds,
+            quantidade_boa: finalGoodQty,
+            saldo_pendente: saldoPendente,
+            status_operacao: stageOperationStatus,
+            next_stage_released: nextStageIdInRoute,
+            order_status: newOrderStatus,
+        },
+    });
 
     // 8. Update real average time for the stage
     try {
@@ -4338,15 +5086,15 @@ app.post("/api/executions/:id/finish", async (req, res) => {
             .limit(20);
 
         if (recentExecs && recentExecs.length > 0) {
-            const calcType = stageInfo?.calculation_type || 'por_peca';
+            const calcTypeMetric = stageInfo?.calculation_type || "por_peca";
             const sumNormalizedTime = recentExecs.reduce((sum: number, e: any) => {
                 const qty = e.orders?.quantity || 1;
                 const time = e.total_time_seconds || 0;
-                
-                if (calcType === 'por_peca') {
-                    return sum + (time / qty);
-                } else if (calcType === 'por_lote') {
-                    return sum + (time / Math.ceil(qty / 10));
+
+                if (calcTypeMetric === "por_peca") {
+                    return sum + time / qty;
+                } else if (calcTypeMetric === "por_lote") {
+                    return sum + time / Math.ceil(qty / 10);
                 }
                 return sum + time; // por_pedido
             }, 0);
@@ -4362,7 +5110,7 @@ app.post("/api/executions/:id/finish", async (req, res) => {
                 .from("stages")
                 .update({
                     real_average_time: avg,
-                    execution_count: count || recentExecs.length
+                    execution_count: count || recentExecs.length,
                 })
                 .eq("id", execution.stage_id);
         }
@@ -4370,31 +5118,57 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         console.error("[API] Erro ao recalcular metricas de tempo da etapa:", metricError);
     }
 
-    return res.json({ success: true, total_time: totalExecutionSeconds, order_status: newOrderStatus });
+    return res.json({
+        success: true,
+        total_time: totalExecutionSeconds,
+        order_status: newOrderStatus,
+        status_operacao: stageOperationStatus,
+        saldo_pendente: saldoPendente,
+        next_stage_id: nextStageIdInRoute,
+    });
 });
 
 app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
     const orderId = Number(req.params.id);
     const stageId = Number(req.params.stageId);
+    const { motivo } = req.body || {};
+    const usuario = (req.headers["x-user-name"] as string) || "Supervisor/Admin";
 
     try {
-        const { data: execs } = await supabaseAdmin
+        // Regra 8: Preservar histórico de execuções e pausas! Apenas encerrar eventual sessão travada em aberto.
+        const { data: openExecs } = await supabaseAdmin
             .from("stage_executions")
             .select("id")
             .eq("order_id", orderId)
-            .eq("stage_id", stageId);
+            .eq("stage_id", stageId)
+            .neq("status", "Finalizado");
 
-        if (execs && execs.length > 0) {
-            const execIds = execs.map((e: any) => e.id);
-            await supabaseAdmin.from("pauses").delete().in("execution_id", execIds);
-            await supabaseAdmin.from("stage_executions").delete().in("id", execIds);
+        if (openExecs && openExecs.length > 0) {
+            const openIds = openExecs.map((e: any) => e.id);
+            await supabaseAdmin
+                .from("pauses")
+                .update({ end_pause: new Date().toISOString(), duration_seconds: 0 })
+                .in("execution_id", openIds)
+                .is("end_pause", null);
+            await supabaseAdmin
+                .from("stage_executions")
+                .update({ status: "Finalizado", end_time: new Date().toISOString() })
+                .in("id", openIds);
         }
+
+        const { data: prevProg } = await supabaseAdmin
+            .from("order_stage_progress")
+            .select("*")
+            .eq("order_id", orderId)
+            .eq("stage_id", stageId)
+            .maybeSingle();
 
         const progKey = `${orderId}_${stageId}`;
         const existingProg = _lossStageProgressStore.get(progKey);
         if (existingProg) {
             existingProg.finished = false;
             existingProg.quantidade_boa = 0;
+            existingProg.status_operacao = "LIBERADA";
             _lossStageProgressStore.set(progKey, existingProg);
         }
 
@@ -4406,7 +5180,7 @@ app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
 
         const { data: orderData } = await supabaseAdmin
             .from("orders")
-            .select("status")
+            .select("status, quantity")
             .eq("id", orderId)
             .single();
 
@@ -4415,17 +5189,27 @@ app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
             updatedStatus = "Entrada";
             await supabaseAdmin
                 .from("orders")
-                .update({ status: "Entrada", delivered_at: null })
+                .update({ status: "Entrada", delivered_at: null, pcp_status: "AGUARDANDO LIBERAÇÃO" })
                 .eq("id", orderId);
         } else if (orderData?.status === "Entregue") {
             updatedStatus = "Em Produção";
             await supabaseAdmin
                 .from("orders")
-                .update({ status: "Em Produção", delivered_at: null })
+                .update({ status: "Em Produção", delivered_at: null, pcp_status: "EM_PRODUCAO" })
                 .eq("id", orderId);
         }
 
-        return res.json({ success: true, order_status: updatedStatus });
+        await recordPcpAuditLog(supabaseAdmin, {
+            order_id: orderId,
+            stage_id: stageId,
+            usuario,
+            acao: "REABERTURA_ETAPA",
+            motivo: motivo || "Reabertura manual da etapa",
+            valor_anterior: prevProg || { finished: true },
+            valor_novo: { finished: false, quantidade_boa: 0, status_operacao: "LIBERADA", order_status: updatedStatus },
+        });
+
+        return res.json({ success: true, order_status: updatedStatus, status_operacao: "LIBERADA" });
     } catch (err: any) {
         console.error("[API] Erro ao reabrir etapa:", err);
         return res.status(500).json({ error: "Erro ao reabrir etapa" });
@@ -6648,90 +7432,83 @@ app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
 });
 
 
-app.all("/api/*", (req: any, res: any) => {
-    res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
-});
-
-
 // ============================================================================
-// M├ôDULO PCP - FASE 1
+// MÓDULO PCP - FASE 1 & AUDITORIA
 // ============================================================================
 
-app.get('/api/pcp-phase1/dashboard', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/dashboard', async (_req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+        const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+
+        const [
+            { count: emProducao },
+            { count: paraIniciar },
+            { count: bloqueados },
+            { data: necessidades },
+            { count: atrasados },
+        ] = await Promise.all([
+            supabaseAdmin
+                .from('orders')
+                .select('*', { count: 'exact', head: true })
+                .is('deleted_at', null)
+                .not('status', 'in', '("Cancelado","Entregue","Entrada","Rascunho")'),
+            supabaseAdmin
+                .from('orders')
+                .select('*', { count: 'exact', head: true })
+                .is('deleted_at', null)
+                .eq('status', 'Entrada')
+                .eq('pcp_is_blocked', false),
+            supabaseAdmin
+                .from('orders')
+                .select('*', { count: 'exact', head: true })
+                .is('deleted_at', null)
+                .eq('pcp_is_blocked', true),
+            supabaseAdmin
+                .from('pcp_producao_necessidades')
+                .select('qty_necessaria')
+                .gt('qty_necessaria', 0),
+            supabaseAdmin
+                .from('orders')
+                .select('*', { count: 'exact', head: true })
+                .is('deleted_at', null)
+                .not('status', 'in', '("Cancelado","Entregue")')
+                .lt('deadline', todayStr),
+        ]);
+
+        const pecasAProduzir = (necessidades || []).reduce(
+            (acc: number, item: any) => acc + (Number(item.qty_necessaria) || 0),
+            0
         );
-
-        // 1. Pedidos em producao (nao cancelados/entregues, com status != Entrada/Rascunho)
-        const { count: emProducao } = await supabase.from('orders')
-            .select('*', { count: 'exact', head: true })
-            .is('deleted_at', null)
-            .not('status', 'in', '("Cancelado","Entregue","Entrada","Rascunho")');
-
-        // 2. Pedidos para iniciar (Liberados, sem bloqueio, status Entrada)
-        const { count: paraIniciar } = await supabase.from('orders')
-            .select('*', { count: 'exact', head: true })
-            .is('deleted_at', null)
-            .eq('status', 'Entrada')
-            .eq('pcp_is_blocked', false);
-
-        // 3. Pedidos Bloqueados
-        const { count: bloqueados } = await supabase.from('orders')
-            .select('*', { count: 'exact', head: true })
-            .is('deleted_at', null)
-            .eq('pcp_is_blocked', true);
-
-        // 4. Pecas a produzir (Soma das necessidades liquidas)
-        const { data: necessidades } = await supabase.from('pcp_producao_necessidades')
-            .select('qty_necessaria')
-            .gt('qty_necessaria', 0);
-        const pecasAProduzir = (necessidades || []).reduce((acc: number, item: any) => acc + (item.qty_necessaria || 0), 0);
-
-        // 5. Pedidos Atrasados (deadline < today e nao entregues/cancelados)
-        const todayStr = new Date().toISOString().split('T')[0];
-        const { count: atrasados } = await supabase.from('orders')
-            .select('*', { count: 'exact', head: true })
-            .is('deleted_at', null)
-            .not('status', 'in', '("Cancelado","Entregue")')
-            .lt('deadline', todayStr);
 
         res.json({
             emProducao: emProducao || 0,
             paraIniciar: paraIniciar || 0,
             bloqueados: bloqueados || 0,
             pecasAProduzir: pecasAProduzir || 0,
-            atrasados: atrasados || 0
+            atrasados: atrasados || 0,
         });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/pcp-phase1/necessidades', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/necessidades', async (_req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const { data, error } = await supabase.from('pcp_producao_necessidades')
+        const { data, error } = await supabaseAdmin
+            .from('pcp_producao_necessidades')
             .select('*, orders(order_number, client_name, deadline, status, pcp_priority, pcp_is_blocked)')
             .order('qty_necessaria', { ascending: false });
         if (error) throw error;
-        res.json(data);
+        res.json(data || []);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/pcp-phase1/prioridades', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/prioridades', async (_req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const { data, error } = await supabase.from('orders')
+        const { data, error } = await supabaseAdmin
+            .from('orders')
             .select('*')
             .is('deleted_at', null)
             .not('status', 'in', '("Cancelado","Entregue")')
@@ -6739,24 +7516,21 @@ app.get('/api/pcp-phase1/prioridades', async (req: any, res: any) => {
             .order('deadline', { ascending: true })
             .limit(100);
         if (error) throw error;
-        res.json(data);
+        res.json(data || []);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/pcp-phase1/bloqueados', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/bloqueados', async (_req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const { data, error } = await supabase.from('pcp_blocks')
+        const { data, error } = await supabaseAdmin
+            .from('pcp_blocks')
             .select('*, orders(*)')
             .eq('is_active', true)
             .order('data_bloqueio', { ascending: false });
         if (error) throw error;
-        res.json(data);
+        res.json(data || []);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -6764,27 +7538,56 @@ app.get('/api/pcp-phase1/bloqueados', async (req: any, res: any) => {
 
 app.post('/api/pcp-phase1/ordens/:id/bloqueio', async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const orderId = req.params.id;
-        const { motivo, observacao, usuario } = req.body;
-        
-        await supabase.from('pcp_blocks').insert({
+        const orderId = Number(req.params.id);
+        const { motivo, observacao, usuario, stage_id } = req.body || {};
+        const actor = usuario || (req.headers['x-user-name'] as string) || 'PCP/Supervisor';
+
+        if (!motivo || !String(motivo).trim()) {
+            return res.status(400).json({ error: 'O motivo do bloqueio é obrigatório.' });
+        }
+
+        const { data: prevOrder } = await supabaseAdmin
+            .from('orders')
+            .select('id, order_number, pcp_is_blocked, pcp_status, status')
+            .eq('id', orderId)
+            .maybeSingle();
+
+        await supabaseAdmin.from('pcp_blocks').insert({
             order_id: orderId,
-            motivo,
-            observacao,
-            bloqueado_por: usuario,
-            is_active: true
+            motivo: String(motivo).trim(),
+            observacao: observacao || null,
+            bloqueado_por: actor,
+            is_active: true,
         });
 
-        await supabase.from('orders').update({
-            pcp_is_blocked: true,
-            pcp_status: 'BLOQUEADO'
-        }).eq('id', orderId);
+        await supabaseAdmin
+            .from('orders')
+            .update({
+                pcp_is_blocked: true,
+                pcp_status: 'BLOQUEADO',
+            })
+            .eq('id', orderId);
 
-        res.json({ success: true });
+        await recordPcpAuditLog(supabaseAdmin, {
+            order_id: orderId,
+            stage_id: stage_id ? Number(stage_id) : null,
+            usuario: actor,
+            acao: 'BLOQUEIO_PEDIDO',
+            motivo: String(motivo).trim(),
+            observacao: observacao || null,
+            valor_anterior: {
+                pcp_is_blocked: Boolean(prevOrder?.pcp_is_blocked),
+                pcp_status: prevOrder?.pcp_status || null,
+            },
+            valor_novo: {
+                pcp_is_blocked: true,
+                pcp_status: 'BLOQUEADO',
+                motivo: String(motivo).trim(),
+                observacao: observacao || null,
+            },
+        });
+
+        res.json({ success: true, status_operacao: 'BLOQUEADA' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -6792,23 +7595,49 @@ app.post('/api/pcp-phase1/ordens/:id/bloqueio', async (req: any, res: any) => {
 
 app.post('/api/pcp-phase1/ordens/:id/desbloqueio', async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const orderId = req.params.id;
-        const { usuario } = req.body;
-        
-        await supabase.from('pcp_blocks').update({
-            is_active: false,
-            desbloqueado_por: usuario,
-            data_desbloqueio: new Date().toISOString()
-        }).eq('order_id', orderId).eq('is_active', true);
+        const orderId = Number(req.params.id);
+        const { usuario, motivo } = req.body || {};
+        const actor = usuario || (req.headers['x-user-name'] as string) || 'PCP/Supervisor';
 
-        await supabase.from('orders').update({
-            pcp_is_blocked: false,
-            pcp_status: 'AGUARDANDO LIBERA├ç├âO'
-        }).eq('id', orderId);
+        const { data: prevOrder } = await supabaseAdmin
+            .from('orders')
+            .select('id, order_number, pcp_is_blocked, pcp_status, status')
+            .eq('id', orderId)
+            .maybeSingle();
+
+        await supabaseAdmin
+            .from('pcp_blocks')
+            .update({
+                is_active: false,
+                desbloqueado_por: actor,
+                data_desbloqueio: new Date().toISOString(),
+            })
+            .eq('order_id', orderId)
+            .eq('is_active', true);
+
+        const nextPcpStatus = prevOrder?.status === 'Em Produção' ? 'EM_PRODUCAO' : 'AGUARDANDO LIBERAÇÃO';
+        await supabaseAdmin
+            .from('orders')
+            .update({
+                pcp_is_blocked: false,
+                pcp_status: nextPcpStatus,
+            })
+            .eq('id', orderId);
+
+        await recordPcpAuditLog(supabaseAdmin, {
+            order_id: orderId,
+            usuario: actor,
+            acao: 'DESBLOQUEIO_PEDIDO',
+            motivo: motivo || 'Impedimento resolvido',
+            valor_anterior: {
+                pcp_is_blocked: Boolean(prevOrder?.pcp_is_blocked),
+                pcp_status: prevOrder?.pcp_status || 'BLOQUEADO',
+            },
+            valor_novo: {
+                pcp_is_blocked: false,
+                pcp_status: nextPcpStatus,
+            },
+        });
 
         res.json({ success: true });
     } catch (e: any) {
@@ -6816,38 +7645,150 @@ app.post('/api/pcp-phase1/ordens/:id/desbloqueio', async (req: any, res: any) =>
     }
 });
 
-app.post('/api/pcp-phase1/ordens/:id/prioridade_manual', async (req: any, res: any) => {
+app.post('/api/pcp-phase1/ordens/:id/prioridade_manual', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const orderId = req.params.id;
-        const { priority, score } = req.body;
+        const orderId = Number(req.params.id);
+        const { priority, score, motivo, usuario } = req.body || {};
+        const actor = usuario || (req.headers['x-user-name'] as string) || 'PCP';
 
-        await supabase.from('orders').update({
-            pcp_priority: priority,
-            pcp_priority_score: score
-        }).eq('id', orderId);
+        const { data: prevOrder } = await supabaseAdmin
+            .from('orders')
+            .select('id, order_number, pcp_priority, pcp_priority_score')
+            .eq('id', orderId)
+            .maybeSingle();
 
-        res.json({ success: true });
+        const newPriority = priority || 'CRÍTICA';
+        const newScore = score !== undefined ? Number(score) : newPriority === 'CRÍTICA' ? 1000 : newPriority === 'ALTA' ? 500 : 100;
+
+        await supabaseAdmin
+            .from('orders')
+            .update({
+                pcp_priority: newPriority,
+                pcp_priority_score: newScore,
+            })
+            .eq('id', orderId);
+
+        await recordPcpAuditLog(supabaseAdmin, {
+            order_id: orderId,
+            usuario: actor,
+            acao: 'ALTERACAO_PRIORIDADE_MANUAL',
+            motivo: motivo || `Prioridade manual alterada para ${newPriority}`,
+            valor_anterior: {
+                pcp_priority: prevOrder?.pcp_priority || 'NORMAL',
+                pcp_priority_score: prevOrder?.pcp_priority_score || 0,
+            },
+            valor_novo: {
+                pcp_priority: newPriority,
+                pcp_priority_score: newScore,
+                motivo: motivo || 'Definição manual pelo PCP',
+            },
+        });
+
+        res.json({ success: true, pcp_priority: newPriority, pcp_priority_score: newScore });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/pcp-phase1/config', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/config', async (_req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const { data, error } = await supabase.from('pcp_settings').select('*').single();
+        const { data, error } = await supabaseAdmin.from('pcp_settings').select('*').eq('id', 1).maybeSingle();
         if (error) throw error;
-        res.json(data);
+        if (data) return res.json(data);
+
+        const defaultSettings = {
+            id: 1,
+            peso_prazo: 50,
+            peso_volume: 20,
+            peso_complexidade: 15,
+            peso_atraso: 100,
+            dias_alerta_risco: 2,
+            updated_at: new Date().toISOString(),
+        };
+        try {
+            await supabaseAdmin.from('pcp_settings').upsert(defaultSettings, { onConflict: 'id' });
+        } catch (_) {}
+        return res.json(defaultSettings);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
+});
+
+app.get('/api/pcp-phase1/audit-log', async (req: any, res: any) => {
+    try {
+        const { order_id, limit } = req.query;
+        let query = supabaseAdmin
+            .from('pcp_audit_log')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(Math.min(200, Number(limit) || 50));
+
+        if (order_id) {
+            query = query.eq('order_id', Number(order_id));
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return res.json(data || []);
+    } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// Formal Expedition / Client Delivery endpoint (distinguishing Pronto na Fábrica vs Entregue ao Cliente)
+app.post('/api/orders/:id/expedir', isAdminOrComercial, async (req: any, res: any) => {
+    try {
+        const orderId = Number(req.params.id);
+        const usuario = (req.headers['x-user-name'] as string) || req.body?.usuario || 'Expedição';
+        const { observacao } = req.body || {};
+        const nowISO = new Date().toISOString();
+
+        const { data: currentOrder } = await supabaseAdmin
+            .from('orders')
+            .select('id, order_number, status, pcp_status, delivered_at')
+            .eq('id', orderId)
+            .maybeSingle();
+
+        if (!currentOrder) {
+            return res.status(404).json({ error: 'Pedido não encontrado.' });
+        }
+
+        const { error: updErr } = await supabaseAdmin
+            .from('orders')
+            .update({
+                status: 'Entregue',
+                pcp_status: 'EXPEDIDO_ENTREGUE',
+                delivered_at: nowISO,
+            })
+            .eq('id', orderId);
+
+        if (updErr) throw updErr;
+
+        await recordPcpAuditLog(supabaseAdmin, {
+            order_id: orderId,
+            usuario,
+            acao: 'EXPEDICAO_ENTREGA_CLIENTE',
+            observacao: observacao || 'Pedido expedido e entregue ao cliente',
+            valor_anterior: {
+                status: currentOrder.status,
+                pcp_status: currentOrder.pcp_status,
+                delivered_at: currentOrder.delivered_at,
+            },
+            valor_novo: {
+                status: 'Entregue',
+                pcp_status: 'EXPEDIDO_ENTREGUE',
+                delivered_at: nowISO,
+            },
+        });
+
+        return res.json({ success: true, status: 'Entregue', pcp_status: 'EXPEDIDO_ENTREGUE', delivered_at: nowISO });
+    } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+app.all("/api/*", (req: any, res: any) => {
+    res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
 });
 
 export default app;

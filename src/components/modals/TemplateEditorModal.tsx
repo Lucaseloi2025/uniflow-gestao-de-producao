@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { X, RefreshCw, CheckCircle } from 'lucide-react';
@@ -67,8 +67,8 @@ export const TemplateEditorModal = ({
                       }
 
                       setIsTemplateEditorOpen(false);
-                      fetchData,
-  currentUser();
+                      fetchData(); //
+                      // template updated
                     } catch (error) {
                       alert("Erro ao conectar com o servidor.");
                     } finally {

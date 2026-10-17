@@ -1,10 +1,32 @@
+export type OperationStatus =
+  | 'AGUARDANDO'
+  | 'LIBERADA'
+  | 'EM_ANDAMENTO'
+  | 'PAUSADA'
+  | 'PARCIAL'
+  | 'BLOQUEADA'
+  | 'CONCLUIDA'
+  | 'CANCELADA';
+
+export type UserRole =
+  | 'Admin'
+  | 'Administrador'
+  | 'PCP'
+  | 'Supervisor'
+  | 'Operador'
+  | 'Produção'
+  | 'Comercial'
+  | 'Visualização';
+
 export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'Admin' | 'Produção' | 'Comercial';
+  role: UserRole;
   hourly_cost: number;
   active: boolean;
+  default_stage_id?: number | null;
+  shift?: string;
 }
 
 export interface StageStatus {
@@ -12,9 +34,14 @@ export interface StageStatus {
   name: string;
   finished: boolean;
   in_progress?: boolean;
+  status_operacao?: OperationStatus;
   quantidade_boa?: number;
   quantidade_perdida?: number;
+  quantidade_retrabalho?: number;
+  quantidade_recebida?: number;
+  quantidade_transferida?: number;
   pendencia_reposicao?: number;
+  saldo_pendente?: number;
   quantidade_pedido?: number;
   calculation_type?: 'por_pedido' | 'por_peca' | 'por_lote';
 }
@@ -23,10 +50,15 @@ export interface OrderStageProgress {
   order_id: number;
   stage_id: number;
   quantidade_pedido: number;
+  quantidade_recebida?: number;
   quantidade_boa: number;
   quantidade_perdida: number;
+  quantidade_retrabalho?: number;
+  quantidade_transferida?: number;
   pendencia_reposicao: number;
+  saldo_pendente?: number;
   finished: boolean;
+  status_operacao?: OperationStatus;
 }
 
 export interface OrderLossLog {
@@ -208,7 +240,7 @@ export interface Order {
   print_type: 'Silk' | 'DTF' | 'Sublimação' | string;
   quantity: number;
   deadline: string;
-  status: 'Rascunho' | 'Entrada' | 'Em Produção' | 'Finalização' | 'Entregue' | 'Cancelado';
+  status: 'Rascunho' | 'Entrada' | 'Em Produção' | 'Finalização' | 'Pronto' | 'Entregue' | 'Cancelado';
   observations: string;
   art_url?: string;
   art_urls?: string[];
@@ -219,6 +251,7 @@ export interface Order {
   num_colors?: number;
   deleted_at?: string | null;
   cancelled_at?: string | null;
+  production_finished_at?: string | null;
   current_operator?: string | null;
   olist_order_id?: string;
   olist_order_number?: string;
@@ -227,6 +260,10 @@ export interface Order {
   dtf_location?: string;
   total_via_separacao?: number;
   total_via_corte?: number;
+  pcp_status?: string;
+  pcp_priority?: string;
+  pcp_priority_score?: number;
+  pcp_is_blocked?: boolean;
 }
 
 export interface OrderHistory {
@@ -320,6 +357,8 @@ export interface StageExecution {
   real_average_time?: number;
   execution_count?: number;
   calculation_type?: 'por_pedido' | 'por_peca' | 'por_lote';
+  stage_meta_diaria?: number | null;
+  order_quantity?: number;
 }
 
 export interface DeliveryReportData {

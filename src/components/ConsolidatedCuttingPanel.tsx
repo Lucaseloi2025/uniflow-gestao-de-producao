@@ -357,7 +357,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   };
 
   // State for cut plans (production floor control)
-  const [cutPlans, setCutPlans] = useState<any[]>([]);
+  const [, setSelectedGroupForPlanner] = useState<any>(null); const [cutPlans, setCutPlans] = useState<any[]>([]);
   const [isLoadingCutPlans, setIsLoadingCutPlans] = useState(false);
   const [committedQtys, setCommittedQtys] = useState<Map<string, number>>(new Map());
   const [cutPlanActionLoading, setCutPlanActionLoading] = useState<string | null>(null);
@@ -465,7 +465,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   // Action: confirm partial cut from modal
   const handleConfirmPartialCut = () => {
-    const totalCut = Object.values(itemCuts).reduce((sum, val) => sum + (val || 0), 0);
+    const totalCut = Object.values(itemCuts).reduce<number>((sum, val) => sum + Number(val || 0), 0);
     executeCompleteCut(partialCutPlan.id, totalCut, itemCuts);
     setPartialCutModalOpen(false);
     setPartialCutPlan(null);

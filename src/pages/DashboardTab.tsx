@@ -31,8 +31,11 @@ export const DashboardTab = ({
   setActiveTab,
   handleCleanOldDrafts,
   handleOpenDraftReview,
+  handleDeleteDraftOrder,
   setInfoModal,
   getOrderRisk,
+  printTypeFilter,
+  productTypeFilter,
   orders
 }: any) => {
   if (!stats) return null;

@@ -166,7 +166,7 @@ export const Conferencia: React.FC<ConferenciaProps> = ({ orders, currentUser, s
       const startData = await startRes.json();
       
       // Total de peças encontradas
-      const totalEncontrado = Object.values(checkedItems).reduce((sum, val) => sum + val, 0);
+      const totalEncontrado = Object.values(checkedItems).reduce<number>((sum, val) => sum + Number(val || 0), 0);
 
       // 2. Registrar progresso (peças boas)
       await fetch(`/api/orders/${selectedOrder.id}/stages/${conferenciaStage.id}/progress`, {

@@ -21,7 +21,9 @@
       ]
     },
     "allowImportingTsExtensions": true,
+    "forceConsistentCasingInFileNames": false,
     "noEmit": true
   },
+  "include": ["src/**/*", "api/**/*", "vite.config.ts"],
   "exclude": ["scratch", "node_modules"]
 }

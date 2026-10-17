@@ -6,6 +6,7 @@ import { calculateExecutionTimes } from '../lib/timerUtils';
 import type { StageExecution, Order } from '../types';
 
 interface RunningTaskBannerProps {
+  key?: React.Key;
   execution: StageExecution;
   onNavigate: () => void;
 }

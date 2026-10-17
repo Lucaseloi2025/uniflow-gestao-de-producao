@@ -321,6 +321,7 @@ export default function App() {
           )}
         </AnimatePresence>
         <Header
+          safeFetch={safeFetch}
           activeTab={activeTab}
           currentUser={currentUser}
           dateRange={dateRange}
@@ -346,7 +347,7 @@ export default function App() {
           setIsMobileMenuOpen={setIsMobileMenuOpen}
           setIsPrintModalOpen={setIsPrintModalOpen}
           setNewOrderRequiredStages={setNewOrderRequiredStages}
-            scanInputRef={scanInputRef}
+          scanInputRef={scanInputRef}
           setPrintTypeFilter={setPrintTypeFilter}
           setProductTypeFilter={setProductTypeFilter}
           setReportEndDate={setReportEndDate}
@@ -384,6 +385,7 @@ export default function App() {
             setActiveTab={setActiveTab}
             handleCleanOldDrafts={handleCleanOldDrafts}
             handleOpenDraftReview={handleOpenDraftReview}
+            handleDeleteDraftOrder={handleDeleteDraftOrder}
             setInfoModal={setInfoModal}
             getOrderRisk={getOrderRisk}
             printTypeFilter={printTypeFilter}
@@ -488,6 +490,7 @@ export default function App() {
   setReportStartDate={setReportStartDate}
   setReportUser={setReportUser}
   setSelectedOrder={setSelectedOrder}
+  orders={orders}
   stages={stages}
   users={users}
 />

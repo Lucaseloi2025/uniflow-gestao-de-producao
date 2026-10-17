@@ -92,7 +92,7 @@ export function useAppLogic() {
   const navigate = useNavigate();
   const location = useLocation();
   const rawTab = location.pathname.split('/')[1];
-  const activeTab = (rawTab || 'dashboard') as 'dashboard' | 'kanban' | 'orders' | 'cutting' | 'collaborators' | 'reports' | 'costs' | 'settings' | 'monitor';
+  const activeTab = (rawTab || 'dashboard') as string;
   const setActiveTab = (tab: string) => {
     navigate(tab === 'dashboard' ? '/' : '/' + tab);
   };
@@ -1759,6 +1759,11 @@ export function useAppLogic() {
 
   return {
     safeFetch,
+    confirmTimeoutRef,
+    scanInputRef,
+    applyTemplate,
+    getOrderRisk,
+    openEditOrderModal,
     actionLossQuantityInput,
     actionLossReasonDetailInput,
     actionLossReasonInput,
