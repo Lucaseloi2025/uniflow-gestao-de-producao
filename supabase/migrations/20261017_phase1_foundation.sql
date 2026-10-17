@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
   color TEXT,
   size TEXT,
   quantity INT NOT NULL DEFAULT 1,
-  route_stages INT[] DEFAULT '{}',
+  route_stages JSONB DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'AGUARDANDO',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -79,7 +79,7 @@ CREATE TRIGGER trg_order_items_updated_at
   BEFORE UPDATE ON public.order_items
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
--- Backfill seguro dos itens a partir de public.orders.items (JSONB)
+-- Backfill seguro dos itens a partir de public.orders.items (JSONB) usando apenas colunas reais de orders
 INSERT INTO public.order_items (
   order_id,
   item_index,
@@ -97,13 +97,20 @@ SELECT
   o.id AS order_id,
   (elem.ordinality - 1)::INT AS item_index,
   COALESCE(elem.value->>'sku', elem.value->>'codigo', '') AS sku,
-  COALESCE(elem.value->>'description', elem.value->>'descricao', o.model, '') AS description,
+  COALESCE(elem.value->>'description', elem.value->>'descricao', o.product_type, '') AS description,
   COALESCE(elem.value->>'product_type', elem.value->>'model', o.product_type, '') AS product_type,
-  COALESCE(elem.value->>'fabric', o.fabric, '') AS fabric,
-  COALESCE(elem.value->>'color', o.color, '') AS color,
-  COALESCE(elem.value->>'size', o.size, 'UN') AS size,
-  GREATEST(1, COALESCE((elem.value->>'quantity')::INT, (elem.value->>'quantidade')::INT, 1)) AS quantity,
-  COALESCE(o.required_stages, '{}'::INT[]) AS route_stages,
+  COALESCE(elem.value->>'fabric', elem.value->>'tecido', '') AS fabric,
+  COALESCE(elem.value->>'color', elem.value->>'cor', '') AS color,
+  COALESCE(elem.value->>'size', elem.value->>'tamanho', 'UN') AS size,
+  GREATEST(
+    1,
+    CASE
+      WHEN (elem.value->>'quantity') ~ '^\d+$' THEN (elem.value->>'quantity')::INT
+      WHEN (elem.value->>'quantidade') ~ '^\d+$' THEN (elem.value->>'quantidade')::INT
+      ELSE 1
+    END
+  ) AS quantity,
+  COALESCE(o.required_stages, '[]'::jsonb) AS route_stages,
   CASE WHEN o.status = 'Entregue' THEN 'CONCLUIDA' WHEN o.status = 'Cancelado' THEN 'CANCELADA' ELSE 'LIBERADA' END AS status
 FROM public.orders o
 CROSS JOIN LATERAL jsonb_array_elements(
@@ -190,7 +197,7 @@ ALTER TABLE public.pcp_audit_log
 CREATE INDEX IF NOT EXISTS idx_pcp_audit_log_order_id ON public.pcp_audit_log(order_id);
 CREATE INDEX IF NOT EXISTS idx_pcp_audit_log_created_at ON public.pcp_audit_log(created_at DESC);
 
--- 10. EVOLUÇÃO E INICIALIZAÇÃO PADRÃO DE PCP_SETTINGS
+-- 10. EVOLUÇÃO E INICIALIZAÇÃO PADRÃO DE PCP_SETTINGS (GARANTE COLUNAS ANTES DO INSERT)
 ALTER TABLE public.pcp_settings
   ADD COLUMN IF NOT EXISTS corte_capacidade_dia INT NOT NULL DEFAULT 200,
   ADD COLUMN IF NOT EXISTS costura_capacidade_dia INT NOT NULL DEFAULT 120,
