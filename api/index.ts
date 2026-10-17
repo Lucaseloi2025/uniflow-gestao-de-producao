@@ -468,26 +468,51 @@ async function recordPcpAuditLog(
   }
 ) {
   try {
+    const valorNovoObj = {
+      ...(typeof params.valor_novo === 'object' && params.valor_novo !== null ? params.valor_novo : { value: params.valor_novo }),
+      stage_id: params.stage_id ?? null,
+      user_id: params.user_id ?? null,
+      quantidade: params.quantidade ?? null,
+      motivo: params.motivo || params.observacao || null,
+      observacao: params.observacao ?? null,
+      origem: params.origem || 'WEB',
+      timestamp_brt: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00',
+    };
     const payload = {
       order_id: params.order_id ?? null,
-      acao: params.acao,
-      motivo: params.motivo || params.observacao || null,
       usuario: params.usuario || 'Sistema',
+      acao: params.acao,
+      entidade: 'orders',
       valor_anterior: params.valor_anterior ?? null,
-      valor_novo: {
-        ...(typeof params.valor_novo === 'object' && params.valor_novo !== null ? params.valor_novo : { value: params.valor_novo }),
-        stage_id: params.stage_id ?? null,
-        user_id: params.user_id ?? null,
-        quantidade: params.quantidade ?? null,
-        observacao: params.observacao ?? null,
-        origem: params.origem || 'WEB',
-        timestamp_brt: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00',
-      },
+      valor_novo: valorNovoObj,
       created_at: new Date().toISOString(),
     };
-    await sb.from('pcp_audit_log').insert(payload);
+    const { error } = await sb.from('pcp_audit_log').insert(payload);
+    if (error && params.order_id) {
+      const { error: histErr } = await sb.from('order_history').insert({
+        order_id: params.order_id,
+        usuario: params.usuario || 'Sistema',
+        acao: params.acao,
+        antes: params.valor_anterior ?? null,
+        depois: valorNovoObj,
+      });
+      if (histErr) {
+        await sb.from('stage_observations').insert({
+          order_id: params.order_id,
+          stage_id: params.stage_id || 1,
+          user_id: params.user_id || 1,
+          observation: `[AUDIT] ${JSON.stringify({
+            acao: params.acao,
+            usuario: params.usuario || 'Sistema',
+            motivo: params.motivo || null,
+            valor_anterior: params.valor_anterior ?? null,
+            valor_novo: valorNovoObj,
+          })}`,
+        });
+      }
+    }
   } catch (err) {
-    console.warn('[AuditLog] Falha não bloqueante ao gravar pcp_audit_log:', err);
+    console.warn('[AuditLog] Falha não bloqueante ao gravar auditoria:', err);
   }
 }
 
@@ -552,18 +577,6 @@ function _calculateLossReport(lossLogs: OrderLossLog[], orders: any[]=[], stages
   return { summary: { total_perdido:totalLost, pct_perda:ttp>0?Math.round(totalLost/ttp*1000)/10:0, total_pedidos_com_perda:orderLostMap.size, impacto_prazo_horas:impacto_pedidos.length>0?Math.round(impacto_pedidos.reduce((s,i)=>s+i.atraso_adicional_horas,0)/impacto_pedidos.length*10)/10:0 }, perdas_por_setor, perdas_por_motivo, impacto_pedidos };
 }
 
-// Mantido apenas como cache efêmero por requisição para enriquecimento síncrono de listagens;
-// A fonte oficial de verdade é SEMPRE o Supabase.
-const _lossStageProgressStore = new Map<string, OrderStageProgress>();
-let _corteAllocationsStore: any[] = [];
-
-async function _initLossStore(sb: any) {
-  try {
-    const { data } = await sb.from('corte_allocations').select('*');
-    if (data) _corteAllocationsStore = data;
-  } catch (_) {}
-}
-
 async function getLossReasons(sb: any): Promise<LossReasonSetting[]> {
   try {
     const { data } = await sb.from('loss_reason_settings').select('*').order('id', { ascending: true });
@@ -617,7 +630,6 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
   const dbProgMap = new Map<number, any>();
   (progRes.data || []).forEach((p: any) => {
     dbProgMap.set(Number(p.stage_id), p);
-    _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p);
   });
 
   const activeExecMap = new Map<number, string>();
@@ -689,15 +701,21 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
       finished: isFinished,
       status_operacao: statusOperacao,
     };
-    _lossStageProgressStore.set(`${orderId}_${stageId}`, progObj);
     result.push(progObj);
   }
 
   return result;
 }
 
-function enrichOrdersWithProgressSync(orders: any[]) {
+function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = []) {
   if (!orders?.length) return;
+  const dbProgByKey = new Map<string, any>();
+  for (const p of dbProgressRows || []) {
+    if (p && p.order_id !== undefined && p.stage_id !== undefined) {
+      dbProgByKey.set(`${p.order_id}_${p.stage_id}`, p);
+    }
+  }
+
   for (const order of orders) {
     if (!Array.isArray(order.stages_status)) order.stages_status = [];
     if (Array.isArray(order.required_stages)) {
@@ -714,28 +732,27 @@ function enrichOrdersWithProgressSync(orders: any[]) {
     order.stages_status = filteredStages.map((st: any, idx: number) => {
       const stageId = Number(st.id);
       const key = `${order.id}_${stageId}`;
-      let prog = _lossStageProgressStore.get(key);
-      const isFinished = Boolean(st.finished || prog?.finished);
-      if (!prog) {
-        prog = {
-          order_id: order.id,
-          stage_id: stageId,
-          quantidade_pedido: qty,
-          quantidade_boa: isFinished ? qty : 0,
-          quantidade_perdida: 0,
-          pendencia_reposicao: 0,
-          finished: isFinished,
-        };
-        _lossStageProgressStore.set(key, prog);
-      } else {
-        if (qty && prog.quantidade_pedido !== qty) {
-          prog.quantidade_pedido = qty;
-        }
-        if (isFinished && !prog.finished) {
-          prog.finished = true;
-          if (!prog.quantidade_boa) prog.quantidade_boa = prog.quantidade_pedido || qty;
-        }
-      }
+      const existingProg = dbProgByKey.get(key);
+      const isFinished = Boolean(st.finished || existingProg?.finished);
+      const prog: any = existingProg
+        ? {
+            ...existingProg,
+            quantidade_pedido: qty || existingProg.quantidade_pedido || 0,
+            finished: isFinished,
+            quantidade_boa:
+              isFinished && !existingProg.quantidade_boa
+                ? existingProg.quantidade_pedido || qty
+                : Number(existingProg.quantidade_boa) || 0,
+          }
+        : {
+            order_id: order.id,
+            stage_id: stageId,
+            quantidade_pedido: qty,
+            quantidade_boa: isFinished ? qty : 0,
+            quantidade_perdida: 0,
+            pendencia_reposicao: 0,
+            finished: isFinished,
+          };
 
       const goodQty = Number(prog.quantidade_boa) || 0;
       const lostQty = Number(prog.quantidade_perdida) || 0;
@@ -872,7 +889,6 @@ async function logProgress(
     status_operacao: statusOperacao,
   };
 
-  _lossStageProgressStore.set(`${orderId}_${stageId}`, prog);
   await safeUpsertOrderStageProgress(sb, prog);
 
   let nextStageProgress: OrderStageProgress | null = null;
@@ -894,7 +910,6 @@ async function logProgress(
       finished: Boolean(existingNext?.finished),
       status_operacao: existingNext?.finished ? 'CONCLUIDA' : (Number(existingNext?.quantidade_boa) || 0) > 0 ? 'PARCIAL' : 'LIBERADA',
     };
-    _lossStageProgressStore.set(`${orderId}_${nextStageId}`, nextStageProgress);
     await safeUpsertOrderStageProgress(sb, nextStageProgress);
   }
 
@@ -987,7 +1002,6 @@ async function logLoss(
     status_operacao: isStillFinished ? 'CONCLUIDA' : prevGood > 0 ? 'PARCIAL' : 'LIBERADA',
   };
 
-  _lossStageProgressStore.set(`${orderId}_${stageId}`, prog);
   await safeUpsertOrderStageProgress(sb, prog);
 
   const rs = retId || reasons.find(r => r.motivo.toLowerCase() === motivo.toLowerCase())?.etapa_reentrada_id || stageId;
@@ -1039,7 +1053,6 @@ async function logLoss(
     finished: false,
     status_operacao: reentryGood > 0 ? 'PARCIAL' : 'LIBERADA',
   };
-  _lossStageProgressStore.set(`${orderId}_${rs}`, rp);
   await safeUpsertOrderStageProgress(sb, rp);
 
   await recordPcpAuditLog(sb, {
@@ -1183,7 +1196,7 @@ const supabase = createClient(
     supabaseAnonKey
 );
 
-const supabaseAdmin = createClient(
+export const supabaseAdmin = createClient(
     supabaseUrl,
     supabaseServiceRoleKey || supabaseAnonKey
 );
@@ -2968,13 +2981,7 @@ app.get("/api/orders", async (req, res) => {
             .select("*")
             .in("order_id", targetOrderIds);
 
-        if (dbProgress) {
-            dbProgress.forEach((p: any) => {
-                _lossStageProgressStore.set(`${p.order_id}_${p.stage_id}`, p);
-            });
-        }
-
-        enrichOrdersWithProgressSync(data);
+        enrichOrdersWithProgressSync(data, dbProgress || []);
 
         // Fetch stage_observations for these orders to find the most recent observation of the active stage
         let observationsMap = new Map();
@@ -3471,16 +3478,21 @@ app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
 
     // Realoca├â┬º├â┬úo autom├â┬ítica de pe├â┬ºas cortadas liberadas pelo cancelamento
     try {
-        await _initLossStore(supabaseAdmin);
-        const { data: activeOrders } = await supabaseAdmin
-            .from("orders")
-            .select("*")
-            .is("deleted_at", null)
-            .not("status", "in", '("Entregue","Cancelado")')
-            .neq("id", orderId);
+        const [{ data: activeOrders }, { data: existingAllocations }] = await Promise.all([
+            supabaseAdmin
+                .from("orders")
+                .select("*")
+                .is("deleted_at", null)
+                .not("status", "in", '("Entregue","Cancelado")')
+                .neq("id", orderId),
+            supabaseAdmin
+                .from("corte_allocations")
+                .select("*")
+                .eq("order_id", orderId),
+        ]);
 
         if (activeOrders && activeOrders.length > 0) {
-            const reallocatedLogs = reallocateOnCancellation(orderId, activeOrders, _corteAllocationsStore);
+            const reallocatedLogs = reallocateOnCancellation(orderId, activeOrders, existingAllocations || []);
             if (reallocatedLogs.length > 0) {
                 for (const log of reallocatedLogs) {
                     const receivingOrder = activeOrders.find(o => o.id === log.order_id);
@@ -3522,7 +3534,6 @@ app.get("/api/orders/:id/history", isAdminOrComercial, async (req, res) => {
 // GET /api/cutting/consolidated-demand
 app.get("/api/cutting/consolidated-demand", async (_req, res) => {
     try {
-        await _initLossStore(supabaseAdmin);
         const { data: activeOrders, error } = await supabaseAdmin
             .from("orders")
             .select("*")
@@ -3545,11 +3556,10 @@ app.get("/api/cutting/consolidated-demand", async (_req, res) => {
 // POST /api/cutting/register-consolidated
 app.post("/api/cutting/register-consolidated", async (req, res) => {
     try {
-        await _initLossStore(supabaseAdmin);
         const { item_key, quantidade_cortada, user_id, user_name } = req.body;
 
         if (!item_key) {
-            return res.status(400).json({ error: "Item a cortar ├â┬® obrigat├â┬│rio." });
+            return res.status(400).json({ error: "Item a cortar é obrigatório." });
         }
         const cutQty = Number(quantidade_cortada);
         if (!cutQty || cutQty <= 0) {
@@ -3563,16 +3573,17 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
             .not("status", "in", '("Entregue","Cancelado")');
 
         if (fetchErr || !activeOrders) {
-            return res.status(500).json({ error: "Erro ao carregar pedidos para aloca├â┬º├â┬úo" });
+            return res.status(500).json({ error: "Erro ao carregar pedidos para alocação" });
         }
 
+        const allocationHistory: any[] = [];
         const result = allocateCuttingPieces(
             activeOrders,
             item_key,
             cutQty,
             user_name || "Operador",
             Number(user_id) || 1,
-            _corteAllocationsStore
+            allocationHistory
         );
 
         if (!result.success) {
@@ -3644,38 +3655,29 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
 // GET /api/cutting/allocations
 app.get("/api/cutting/allocations", async (_req, res) => {
     try {
-        await _initLossStore(supabaseAdmin);
         const { data, error } = await supabaseAdmin
             .from("corte_allocations")
             .select("*")
             .order("created_at", { ascending: false });
 
         if (error || !data) {
-            return res.json(_corteAllocationsStore);
+            return res.json([]);
         }
         return res.json(data);
     } catch (err: any) {
-        return res.json(_corteAllocationsStore);
+        return res.json([]);
     }
 });
-
-// In-memory fallback stores for RAMADO decisions, surplus pieces, approved plans & Optitex risks
-const _ramadoDecisionsStore: any[] = [];
-const _producaoExcedentesStore: any[] = [];
-const _approvedPlansStore: any[] = [];
-const _optitexRiscosStore: any[] = [];
 
 // POST /api/cutting/optitex-risco
 app.post("/api/cutting/optitex-risco", async (req, res) => {
     try {
         const record = req.body;
         if (!record || !record.model || !record.composicao) {
-            return res.status(400).json({ error: "Dados inv├â┬ílidos de risco Optitex." });
+            return res.status(400).json({ error: "Dados inválidos de risco Optitex." });
         }
         record.id = record.id || `opt-${Date.now()}`;
         record.created_at = record.created_at || new Date().toISOString();
-
-        _optitexRiscosStore.unshift(record);
 
         try {
             await supabaseAdmin.from("optitex_riscos_validados").upsert([record]);
@@ -3683,7 +3685,7 @@ app.post("/api/cutting/optitex-risco", async (req, res) => {
 
         return res.json({ success: true, record });
     } catch (err: any) {
-        return res.status(500).json({ error: "Erro ao salvar valida├â┬º├â┬úo do Optitex." });
+        return res.status(500).json({ error: "Erro ao salvar validação do Optitex." });
     }
 });
 
@@ -3696,11 +3698,11 @@ app.get("/api/cutting/optitex-riscos", async (_req, res) => {
             .order("created_at", { ascending: false });
 
         if (error || !data) {
-            return res.json(_optitexRiscosStore);
+            return res.json([]);
         }
         return res.json(data);
     } catch (err: any) {
-        return res.json(_optitexRiscosStore);
+        return res.json([]);
     }
 });
 
@@ -3710,13 +3712,7 @@ app.post("/api/cutting/approved-plans", async (req, res) => {
     try {
         const planRecord = req.body;
         if (!planRecord || !planRecord.id) {
-            return res.status(400).json({ error: "Plano inv├â┬ílido." });
-        }
-        const existingIdx = _approvedPlansStore.findIndex(p => p.id === planRecord.id);
-        if (existingIdx >= 0) {
-            _approvedPlansStore[existingIdx] = planRecord;
-        } else {
-            _approvedPlansStore.unshift(planRecord);
+            return res.status(400).json({ error: "Plano inválido." });
         }
 
         try {
@@ -3738,11 +3734,11 @@ app.get("/api/cutting/approved-plans", async (_req, res) => {
             .order("created_at", { ascending: false });
 
         if (error || !data) {
-            return res.json(_approvedPlansStore);
+            return res.json([]);
         }
         return res.json(data);
     } catch (err: any) {
-        return res.json(_approvedPlansStore);
+        return res.json([]);
     }
 });
 
@@ -3789,8 +3785,6 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
             created_at: new Date().toISOString()
         };
 
-        _ramadoDecisionsStore.unshift(decisionRecord);
-
         let insertedDecision: any = decisionRecord;
         try {
             const { data, error } = await supabaseAdmin
@@ -3802,10 +3796,10 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
                 insertedDecision = data;
             }
         } catch (e) {
-            console.warn("[API] Aviso ao salvar ramado_decisions no Supabase (usando fallback em mem├â┬│ria):", e);
+            console.warn("[API] Aviso ao salvar ramado_decisions no Supabase:", e);
         }
 
-        // Se a decis├â┬úo for APROVADO_OTIMIZADO e houver excedentes, salvar em producao_excedentes
+        // Se a decisão for APROVADO_OTIMIZADO e houver excedentes, salvar em producao_excedentes
         const surplusItems: any[] = [];
         if (decision === 'APROVADO_OTIMIZADO' && excedente_proposto && typeof excedente_proposto === 'object') {
             for (const [sz, qty] of Object.entries(excedente_proposto)) {
@@ -3822,7 +3816,6 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
                         destino: 'ESTOQUE',
                         created_at: new Date().toISOString()
                     };
-                    _producaoExcedentesStore.unshift(excItem);
                     surplusItems.push(excItem);
                 }
             }
@@ -3842,8 +3835,8 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
             excedentes_gerados: surplusItems
         });
     } catch (err: any) {
-        console.error("[API] Erro ao registrar decis├â┬úo RAMADO:", err);
-        return res.status(500).json({ error: "Erro ao registrar decis├â┬úo de excedente RAMADO" });
+        console.error("[API] Erro ao registrar decisão RAMADO:", err);
+        return res.status(500).json({ error: "Erro ao registrar decisão de excedente RAMADO" });
     }
 });
 
@@ -3856,11 +3849,11 @@ app.get("/api/cutting/ramado-decisions", async (_req, res) => {
             .order("created_at", { ascending: false });
 
         if (error || !data) {
-            return res.json(_ramadoDecisionsStore);
+            return res.json([]);
         }
         return res.json(data);
     } catch (err: any) {
-        return res.json(_ramadoDecisionsStore);
+        return res.json([]);
     }
 });
 
@@ -3873,11 +3866,11 @@ app.get("/api/cutting/producao-excedentes", async (_req, res) => {
             .order("created_at", { ascending: false });
 
         if (error || !data) {
-            return res.json(_producaoExcedentesStore);
+            return res.json([]);
         }
         return res.json(data);
     } catch (err: any) {
-        return res.json(_producaoExcedentesStore);
+        return res.json([]);
     }
 });
 
@@ -4456,13 +4449,12 @@ app.post("/api/executions/start", async (req, res) => {
                     .eq("id", orderIdNum)
                     .eq("status", "Entrada");
             }
-            const progKey = `${orderIdNum}_${stageIdNum}`;
-            const existingProg = _lossStageProgressStore.get(progKey);
-            if (existingProg) {
-                existingProg.finished = false;
-                existingProg.status_operacao = "EM_ANDAMENTO";
-                _lossStageProgressStore.set(progKey, existingProg);
-            }
+            const { data: existingProg } = await supabaseAdmin
+                .from("order_stage_progress")
+                .select("*")
+                .eq("order_id", orderIdNum)
+                .eq("stage_id", stageIdNum)
+                .maybeSingle();
             await safeUpsertOrderStageProgress(supabaseAdmin, {
                 order_id: orderIdNum,
                 stage_id: stageIdNum,
@@ -4491,7 +4483,7 @@ app.post("/api/executions/start", async (req, res) => {
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Pause-All: pausa todas as execu├â┬º├â┬Áes ativas (fim de expediente) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Pause-All: pausa todas as execuções ativas (fim de expediente) ────────
 app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
         const now = new Date();
@@ -4501,7 +4493,7 @@ app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res)
             .select("id")
             .eq("status", "Em andamento");
 
-        if (fetchErr) return checkError(fetchErr, res, "Erro ao buscar execu├â┬º├â┬Áes ativas");
+        if (fetchErr) return checkError(fetchErr, res, "Erro ao buscar execuções ativas");
         if (!activeExecs || activeExecs.length === 0) {
             return res.json({ success: true, paused: 0 });
         }
@@ -4516,15 +4508,15 @@ app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res)
                 .insert({ execution_id: exec.id, start_pause: now.toISOString() });
         }
 
-        console.log(`[API] Pause-all: ${activeExecs.length} execu├â┬º├â┬úo(├â┬Áes) pausada(s) por comando direto.`);
+        console.log(`[API] Pause-all: ${activeExecs.length} execução(ões) pausada(s) por comando direto.`);
         return res.json({ success: true, paused: activeExecs.length });
     } catch (err: any) {
         console.error("[API] Erro no pause-all:", err);
-        return res.status(500).json({ error: "Erro ao pausar todas as execu├â┬º├â┬Áes" });
+        return res.status(500).json({ error: "Erro ao pausar todas as execuções" });
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Reset-Production: zera todos os relat├â┬│rios e tempos mantendo os pedidos (Op├â┬º├â┬úo B) ├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Reset-Production: zera todos os relatórios e tempos mantendo os pedidos (Opção B) ──
 
 app.get("/api/admin/debug-orders", async (req, res) => {
     const { data: orders } = await supabaseAdmin.from("orders").select("id, client_name, stages_status").order("id", { ascending: false }).limit(5);
@@ -4559,10 +4551,6 @@ app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
 
         // 5. Resetar estoques de excedentes
         await supabaseAdmin.from("producao_excedentes").delete().gt("id", 0);
-
-        // 6. Limpar memórias locais do backend
-        _lossStageProgressStore.clear();
-        _corteAllocationsStore.length = 0;
 
         // 7. Resetar o tempo acumulado dos pedidos para 0
         await supabaseAdmin.from("orders").update({ total_time_seconds: 0 }).gt("id", 0);
@@ -4958,7 +4946,6 @@ app.post("/api/executions/:id/finish", async (req, res) => {
         finished: isStageFullyCompleted,
         status_operacao: stageOperationStatus,
     };
-    _lossStageProgressStore.set(`${execution.order_id}_${execution.stage_id}`, progRow);
     await safeUpsertOrderStageProgress(supabaseAdmin, progRow);
 
     // Liberar a próxima etapa da rota com a quantidade transferida (total ou parcial)
@@ -4993,7 +4980,6 @@ app.post("/api/executions/:id/finish", async (req, res) => {
             finished: Boolean(nextProgExisting?.finished),
             status_operacao: nextProgExisting?.finished ? "CONCLUIDA" : nextGood > 0 ? "PARCIAL" : "LIBERADA",
         };
-        _lossStageProgressStore.set(`${execution.order_id}_${nextStageIdInRoute}`, nextProgRow);
         await safeUpsertOrderStageProgress(supabaseAdmin, nextProgRow);
     }
 
@@ -5162,15 +5148,6 @@ app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
             .eq("order_id", orderId)
             .eq("stage_id", stageId)
             .maybeSingle();
-
-        const progKey = `${orderId}_${stageId}`;
-        const existingProg = _lossStageProgressStore.get(progKey);
-        if (existingProg) {
-            existingProg.finished = false;
-            existingProg.quantidade_boa = 0;
-            existingProg.status_operacao = "LIBERADA";
-            _lossStageProgressStore.set(progKey, existingProg);
-        }
 
         await supabaseAdmin
             .from("order_stage_progress")
@@ -5906,10 +5883,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
             return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
         }
 
-        // Sincronizar progresso de perdas/quantidade boa com o store local tempor├â┬írio
-        enrichOrdersWithProgressSync([rpcOrder]);
-
-        // Buscar execu├â┬º├â┬Áes reais e progresso gravados no banco para este pedido
+        // Buscar execuções reais e progresso gravados no banco para este pedido
         const [{ data: dbExecs }, { data: dbProg }] = await Promise.all([
             supabaseAdmin
                 .from("stage_executions")
@@ -5917,9 +5891,11 @@ app.get("/api/public/orders/:token", async (req, res) => {
                 .eq("order_id", order.id),
             supabaseAdmin
                 .from("order_stage_progress")
-                .select("stage_id, finished, quantidade_boa, quantidade_pedido")
+                .select("*")
                 .eq("order_id", order.id)
         ]);
+
+        enrichOrdersWithProgressSync([rpcOrder], dbProg || []);
 
         const finishedStageIds = new Set<number>();
         const inProgressStageIds = new Set<number>();
@@ -7717,19 +7693,62 @@ app.get('/api/pcp-phase1/config', async (_req: any, res: any) => {
 app.get('/api/pcp-phase1/audit-log', async (req: any, res: any) => {
     try {
         const { order_id, limit } = req.query;
+        const maxRows = Math.min(200, Number(limit) || 50);
         let query = supabaseAdmin
             .from('pcp_audit_log')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(Math.min(200, Number(limit) || 50));
+            .limit(maxRows);
 
         if (order_id) {
             query = query.eq('order_id', Number(order_id));
         }
 
         const { data, error } = await query;
-        if (error) throw error;
-        return res.json(data || []);
+        if (!error && data && data.length > 0) {
+            return res.json(data);
+        }
+
+        // Fallback to order_history so audit trail is always available even before RLS migration is applied
+        let histQuery = supabaseAdmin
+            .from('order_history')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(maxRows);
+        if (order_id) {
+            histQuery = histQuery.eq('order_id', Number(order_id));
+        }
+        const { data: histData } = await histQuery;
+        if (histData && histData.length > 0) {
+            return res.json(histData);
+        }
+
+        let obsQuery = supabaseAdmin
+            .from('stage_observations')
+            .select('*')
+            .ilike('observation', '[AUDIT]%')
+            .order('created_at', { ascending: false })
+            .limit(maxRows);
+        if (order_id) {
+            obsQuery = obsQuery.eq('order_id', Number(order_id));
+        }
+        const { data: obsData } = await obsQuery;
+        const parsedObs = (obsData || []).map((row: any) => {
+            try {
+                const payload = JSON.parse(String(row.observation || '').replace(/^\[AUDIT\]\s*/, ''));
+                return {
+                    id: row.id,
+                    order_id: row.order_id,
+                    stage_id: row.stage_id,
+                    user_id: row.user_id,
+                    ...payload,
+                    created_at: row.created_at,
+                };
+            } catch (_) {
+                return row;
+            }
+        });
+        return res.json(parsedObs);
     } catch (e: any) {
         return res.status(500).json({ error: e.message });
     }
