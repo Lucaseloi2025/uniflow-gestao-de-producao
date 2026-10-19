@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
@@ -51,12 +52,10 @@ export const TemplateEditorModal = ({
                     const method = editingTemplate ? 'PATCH' : 'POST';
 
                     try {
-                      const res = await fetch(url, {
+                      const res = await apiFetch(url, {
                         method,
                         headers: {
-                          'Content-Type': 'application/json',
-                          'x-user-role': currentUser?.role || ''
-                        },
+                          'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                       });
 

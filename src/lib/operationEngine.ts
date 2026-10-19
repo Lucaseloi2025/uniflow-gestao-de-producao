@@ -9,12 +9,10 @@ export type OperationStatus =
   | 'CANCELADA';
 
 export type UserRole =
-  | 'Admin'
   | 'Administrador'
   | 'PCP'
   | 'Supervisor'
   | 'Operador'
-  | 'Produção'
   | 'Comercial'
   | 'Visualização';
 
@@ -282,18 +280,7 @@ export function calculatePartialProductionAndTransfer(
   };
 }
 
-const ROLE_PERMISSIONS: Record<string, PermissionAction[]> = {
-  Admin: [
-    'manage_users',
-    'manage_pcp',
-    'override_priority',
-    'block_unblock_order',
-    'override_concurrent_session',
-    'execute_operation',
-    'edit_commercial_order',
-    'view_reports',
-    'reopen_stage',
-  ],
+const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
   Administrador: [
     'manage_users',
     'manage_pcp',
@@ -323,20 +310,18 @@ const ROLE_PERMISSIONS: Record<string, PermissionAction[]> = {
     'reopen_stage',
   ],
   Operador: ['execute_operation'],
-  Produção: ['execute_operation'],
   Comercial: ['edit_commercial_order', 'view_reports'],
   Visualização: ['view_reports'],
 };
 
 export function normalizeUserRole(rawRole?: string | null): UserRole {
   const r = (rawRole || '').trim();
-  if (r === 'Admin' || r === 'Administrador') return 'Admin';
-  if (r === 'PCP') return 'PCP';
-  if (r === 'Supervisor') return 'Supervisor';
-  if (r === 'Comercial') return 'Comercial';
-  if (r === 'Visualização' || r === 'Visualizacao') return 'Visualização';
-  if (r === 'Operador') return 'Operador';
-  return 'Produção';
+  if (r === 'Administrador' || r.toLowerCase() === 'admin') return 'Administrador';
+  if (r === 'PCP' || r.toLowerCase() === 'pcp') return 'PCP';
+  if (r === 'Supervisor' || r.toLowerCase() === 'supervisor') return 'Supervisor';
+  if (r === 'Comercial' || r.toLowerCase() === 'comercial') return 'Comercial';
+  if (r === 'Visualização' || r === 'Visualizacao' || r.toLowerCase() === 'viewer') return 'Visualização';
+  return 'Operador';
 }
 
 export function hasPermission(rawRole: string | undefined | null, action: PermissionAction): boolean {

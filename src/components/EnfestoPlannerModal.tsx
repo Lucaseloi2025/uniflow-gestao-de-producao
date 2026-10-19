@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Scissors,
@@ -278,7 +279,7 @@ export const EnfestoPlannerModal: React.FC<EnfestoPlannerModalProps> = ({
     setOptitexSavedCount(prev => prev + 1);
 
     try {
-      fetch('/api/cutting/optitex-risco', {
+      apiFetch('/api/cutting/optitex-risco', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(optRecord)
@@ -319,7 +320,7 @@ export const EnfestoPlannerModal: React.FC<EnfestoPlannerModalProps> = ({
     saveApprovedEnfestoPlan(approvedRecord);
 
     try {
-      await fetch('/api/cutting/approved-plans', {
+      await apiFetch('/api/cutting/approved-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(approvedRecord)

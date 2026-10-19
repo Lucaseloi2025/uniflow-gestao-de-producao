@@ -16,20 +16,13 @@ import {
 } from './enfestoUtils';
 import { extractItemDetails } from './cuttingUtils';
 
-console.log('=== Running Unit Tests for RAMADO Strategic Surplus & Optitex Efficiency Engine ===');
+import { describe, it, expect } from 'vitest';
 
-let passCount = 0;
-let failCount = 0;
-
-function assert(condition: boolean, testName: string) {
-  if (condition) {
-    console.log(`[PASS] ${testName}`);
-    passCount++;
-  } else {
-    console.error(`[FAIL] ${testName}`);
-    failCount++;
-  }
-}
+describe('enfestoUtils — Motor de Eficiência de Enfesto e Ramado', () => {
+  it('deve executar todos os testes de planejamento de enfesto e rendimento', () => {
+    function assert(condition: boolean, testName: string) {
+      expect(condition).toBe(true);
+    }
 
 // ── TEST SUITE 1: LAYER FACTOR ─────────────────────────────────────────────
 assert(getFatorCamadasPorPassada('TUBULAR') === 2, 'Test 1.1: TUBULAR should yield 2 effective layers per pass');
@@ -363,7 +356,5 @@ assert(tubSepStrategy !== undefined, 'Test 15.4b: Estratégia separada existe co
 assert(tubRecEnfCount < (tubSepStrategy?.enfestos.length || 99), 'Test 15.4c: Recomendada tem MENOS enfestos que a estratégia separada');
 assert(resTubGroup4.recomendada.resumo.total_faltante === 0, 'Test 15.4d: 0 peças faltantes na recomendada');
 
-console.log(`\nIntelligent Assistant Tests Summary: ${passCount} passed, ${failCount} failed.`);
-if (failCount > 0) {
-  process.exit(1);
-}
+  });
+});

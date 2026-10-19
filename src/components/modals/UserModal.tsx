@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { X, RefreshCw } from 'lucide-react';
+import { apiFetch } from '../../lib/apiFetch';
 
 export const UserModal = ({
   showUserModal,
@@ -42,19 +43,14 @@ export const UserModal = ({
                 const method = selectedUserForEdit ? 'PATCH' : 'POST';
 
                 try {
-                  const res = await fetch(url, {
+                  const res = await apiFetch(url, {
                     method,
                     headers: {
-                      'Content-Type': 'application/json',
-                      'x-user-role': currentUser?.role || '',
-                      'x-user-name': currentUser?.name || '',
-                    },
+                      'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       ...data,
                       hourly_cost: Number(data.hourly_cost),
-                      active: data.active === 'on' || !selectedUserForEdit,
-                    }),
-                  });
+                      active: data.active === 'on' || !selectedUserForEdit }) });
 
                   if (!res.ok) {
                     const errData = await res.json().catch(() => null);
@@ -110,18 +106,18 @@ export const UserModal = ({
                   <label className="text-[10px] font-bold text-zinc-500 uppercase">Função / Acesso</label>
                   <select
                     name="role"
-                    defaultValue={selectedUserForEdit?.role || 'Produção'}
+                    defaultValue={selectedUserForEdit?.role || 'Operador'}
                     className="w-full p-2 border border-zinc-200 rounded-lg text-sm bg-white"
                   >
-                    <option value="Admin">Administrador (Admin)</option>
-                    <option value="PCP">PCP (Planejamento e Controle)</option>
-                    <option value="Supervisor">Supervisor de Produção</option>
-                    <option value="Produção">Operador (Produção)</option>
+                    <option value="Administrador">Administrador</option>
+                    <option value="PCP">PCP</option>
+                    <option value="Supervisor">Supervisor</option>
+                    <option value="Operador">Operador</option>
                     <option value="Comercial">Comercial</option>
-                    <option value="Visualização">Visualização (Somente Leitura)</option>
+                    <option value="Visualização">Visualização</option>
                   </select>
                 </div>
-                {(currentUser?.role === 'Admin' || currentUser?.role === 'Administrador') && (
+                {currentUser?.role === 'Administrador' && (
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-500 uppercase">Custo/Hora (R$)</label>
                     <input

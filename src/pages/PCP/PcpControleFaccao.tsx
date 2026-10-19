@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Search, Scissors, CheckCircle, Package, Shirt, Users, Building, Plus, X, Edit, Trash2, DollarSign, Filter, Wallet } from 'lucide-react';
@@ -48,7 +49,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/cut-plans');
+      const res = await apiFetch('/api/cut-plans');
       const data = await res.json();
       if (Array.isArray(data)) {
         setPlans(data.filter(p => ['CUT_COMPLETED', 'IN_SEWING', 'SEWING_COMPLETED'].includes(p.status)));
@@ -62,22 +63,25 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
 
   const fetchFaccoes = async () => {
     try {
-      const { data } = await supabase.from('faccoes').select('*').order('name');
-      setFaccoes(data || []);
+      const res = await apiFetch('/api/pcp/faccoes');
+      const data = await res.json();
+      setFaccoes(Array.isArray(data) ? data : []);
     } catch (e) { console.error(e); }
   };
 
   const fetchAllPrices = async () => { 
     try { 
-      const {data} = await supabase.from('faccao_prices').select('*'); 
-      setAllPrices(data||[]); 
+      const res = await apiFetch('/api/pcp/faccao-prices');
+      const data = await res.json();
+      setAllPrices(Array.isArray(data) ? data : []); 
     } catch(e){} 
   };
 
   const loadPrices = async (faccaoId: number) => {
     try {
-      const { data } = await supabase.from('faccao_prices').select('*').eq('faccao_id', faccaoId).order('product_type');
-      setFaccaoPrices(data || []);
+      const res = await apiFetch(`/api/pcp/faccao-prices?faccao_id=${faccaoId}`);
+      const data = await res.json();
+      setFaccaoPrices(Array.isArray(data) ? data : []);
     } catch (e) { console.error(e); }
   };
 
@@ -86,9 +90,17 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
     setActionLoading(true);
     try {
       if (editingFaccao) {
-        await supabase.from('faccoes').update({ name: faccaoName, phone: faccaoPhone }).eq('id', editingFaccao.id);
+        await apiFetch(`/api/pcp/faccoes/${editingFaccao.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: faccaoName, phone: faccaoPhone })
+        });
       } else {
-        await supabase.from('faccoes').insert({ name: faccaoName, phone: faccaoPhone, active: true });
+        await apiFetch('/api/pcp/faccoes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: faccaoName, phone: faccaoPhone, active: true })
+        });
       }
       setFaccaoModalOpen(false);
       fetchFaccoes();
@@ -102,10 +114,14 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   const handleAddPrice = async () => {
     if (!newPriceModel.trim() || !newPriceValue) return;
     try {
-      await supabase.from('faccao_prices').insert({
-        faccao_id: selectedFaccaoForPrices.id,
-        product_type: newPriceModel.trim(),
-        price: parseFloat(newPriceValue.replace(',', '.'))
+      await apiFetch('/api/pcp/faccao-prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          faccao_id: selectedFaccaoForPrices.id,
+          product_type: newPriceModel.trim(),
+          price: parseFloat(newPriceValue.replace(',', '.'))
+        })
       });
       setNewPriceModel('');
       setNewPriceValue('');
@@ -118,7 +134,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
 
   const handleDeletePrice = async (id: number) => {
     try {
-      await supabase.from('faccao_prices').delete().eq('id', id);
+      await apiFetch(`/api/pcp/faccao-prices/${id}`, { method: 'DELETE' });
       loadPrices(selectedFaccaoForPrices.id);
       fetchAllPrices();
     } catch (e) {
@@ -136,7 +152,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
     if (!selectedFaccaoId) return alert('Selecione uma facção!');
     setActionLoading(true);
     try {
-      await fetch(`/api/cut-plans/${selectedPlan.id}/send-sewing`, {
+      await apiFetch(`/api/cut-plans/${selectedPlan.id}/send-sewing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -168,9 +184,9 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
   const handleConfirmReceive = async () => {
     setActionLoading(true);
     try {
-      const totalReturned = Object.values(itemReturns).reduce((sum, val) => sum + (val || 0), 0);
+      const totalReturned = Object.values(itemReturns).reduce<number>((sum, val) => sum + Number(val || 0), 0);
       
-      await fetch(`/api/cut-plans/${selectedPlan.id}/return-sewing`, {
+      await apiFetch(`/api/cut-plans/${selectedPlan.id}/return-sewing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -218,7 +234,7 @@ export const PcpControleFaccao = ({ currentUser }: any) => {
     try {
       const pendingPlans = plans.filter(p => p.faccao_id === billingFaccao.id && (p.status === 'SEWING_COMPLETED' || p.status === 'IN_SEWING') && p.qty_sewing_done > 0 && !p.sewing_paid);
       for (const p of pendingPlans) {
-        await supabase.from('cut_plans').update({ sewing_paid: true, sewing_paid_at: new Date().toISOString() }).eq('id', p.id);
+        await apiFetch(`/api/cut-plans/${p.id}/pay-sewing`, { method: 'PATCH' });
       }
       setBillingModalOpen(false);
       fetchData();

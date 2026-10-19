@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Search } from 'lucide-react';
@@ -13,7 +14,7 @@ export const PcpNecessidades = () => {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/pcp-phase1/necessidades'); const data = await res.json();
+      const res = await apiFetch('/api/pcp-phase1/necessidades'); const data = await res.json();
       if (Array.isArray(data)) setItems(data);
     } catch (e) {
       console.error(e);

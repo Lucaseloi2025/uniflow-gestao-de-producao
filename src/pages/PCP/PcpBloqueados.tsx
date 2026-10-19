@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Lock, Unlock } from 'lucide-react';
@@ -11,7 +12,7 @@ export const PcpBloqueados = ({ currentUser }: any) => {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/pcp-phase1/bloqueados'); const data = await res.json();
+      const res = await apiFetch('/api/pcp-phase1/bloqueados'); const data = await res.json();
       if (Array.isArray(data)) setBlocks(data);
     } catch (e) {
       console.error(e);
@@ -20,7 +21,7 @@ export const PcpBloqueados = ({ currentUser }: any) => {
 
   const handleDesbloquear = async (orderId: number) => {
     try {
-      await fetch('/api/pcp-phase1/ordens/' + orderId + '/desbloqueio', {
+      await apiFetch('/api/pcp-phase1/ordens/' + orderId + '/desbloqueio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usuario: currentUser?.name })

@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, isImage } from '../../lib/utils';
@@ -180,7 +181,7 @@ export const EditOrderModal = ({
                                 formData.append('art_files', e.target.files[i]);
                               }
                               try {
-                                const res = await fetch(`/api/orders/${selectedOrder.id}/images`, {
+                                const res = await apiFetch(`/api/orders/${selectedOrder.id}/images`, {
                                   method: 'POST',
                                   body: formData
                                 });

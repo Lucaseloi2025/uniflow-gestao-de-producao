@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -322,7 +323,7 @@ export function useAppLogic() {
           setCurrentUser(found);
         } else {
           console.warn(`[Auth] Usuário não encontrado na tabela 'users': ${userEmail}`);
-          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Produção', hourly_cost: 0, active: true });
+          setCurrentUser({ id: 0, name: session.user.email, email: session.user.email, role: 'Operador', hourly_cost: 0, active: true });
         }
       });
     } else {
@@ -336,8 +337,7 @@ export function useAppLogic() {
     setIsAuthLoading(true);
     const { error } = await supabase.auth.signInWithPassword({
       email: authEmail,
-      password: authPassword,
-    });
+      password: authPassword });
     if (error) setAuthError(error.message);
     setIsAuthLoading(false);
   };
@@ -349,19 +349,7 @@ export function useAppLogic() {
   const safeFetch = async (url: string, options?: RequestInit) => {
     try {
       // Automatically inject role and user-name headers if user is logged in
-      const roleHeaders: any = {};
-      if (currentUser?.role) {
-        roleHeaders['x-user-role'] = currentUser.role;
-        roleHeaders['x-user-name'] = currentUser.name;
-      }
-
-      const res = await fetch(url, {
-        ...options,
-        headers: {
-          ...roleHeaders,
-          ...(options?.headers || {})
-        }
-      });
+      const res = await apiFetch(url, options);
       if (!res.ok) {
         const errorText = await res.text();
         console.error(`Fetch error ${res.status}: ${errorText}`);
@@ -423,8 +411,7 @@ export function useAppLogic() {
           p_stage_id: selectedStageFilter ? Number(selectedStageFilter) : null,
           p_stage_status: selectedStageStatus || null,
           p_product_type: productTypeFilter || null,
-          p_print_type: printTypeFilter || null,
-        });
+          p_print_type: printTypeFilter || null });
 
         if (!Array.isArray(fallbackOrders) || fallbackOrders.length === 0) {
           const { data: directOrders } = await supabase
@@ -577,7 +564,7 @@ export function useAppLogic() {
   const handleSyncOlist = async () => {
     setIsSyncingOlist(true);
     try {
-      const res = await fetch('/api/integrations/olist/sync', {
+      const res = await apiFetch('/api/integrations/olist/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days: 1 })
@@ -633,12 +620,10 @@ export function useAppLogic() {
     if (!selectedDraftOrder) return;
     setIsConfirmingDraft(true);
     try {
-      const res = await fetch(`/api/orders/${selectedDraftOrder.id}/confirm-draft`, {
+      const res = await apiFetch(`/api/orders/${selectedDraftOrder.id}/confirm-draft`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-name': currentUser?.name || 'Vendedora'
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify(confirmDraftForm)
       });
       const data = await res.json();
@@ -658,10 +643,8 @@ export function useAppLogic() {
   const handleDeleteDraftOrder = async (draftId: number) => {
     if (!confirm('Tem certeza que deseja excluir este rascunho de pedido?')) return;
     try {
-      const res = await fetch(`/api/orders/drafts/${draftId}`, {
-        method: 'DELETE',
-        headers: { 'x-user-name': currentUser?.name || 'Vendedora' }
-      });
+      const res = await apiFetch(`/api/orders/drafts/${draftId}`, {
+        method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao excluir rascunho');
 
@@ -677,12 +660,10 @@ export function useAppLogic() {
   const handleCleanOldDrafts = async () => {
     if (!confirm('Deseja excluir os rascunhos de pedidos antigos com mais de 7 dias?')) return;
     try {
-      const res = await fetch('/api/orders/drafts/cleanup', {
+      const res = await apiFetch('/api/orders/drafts/cleanup', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-name': currentUser?.name || 'Vendedora'
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify({ days: 7 })
       });
       const data = await res.json();
@@ -824,12 +805,10 @@ export function useAppLogic() {
   };
 
   const handleUpdateDeadline = async (orderId: number, newDeadline: string) => {
-    await fetch(`/api/orders/${orderId}`, {
+    await apiFetch(`/api/orders/${orderId}`, {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || ''
-      },
+        'Content-Type': 'application/json' },
       body: JSON.stringify({ deadline: newDeadline })
     });
     fetchData();
@@ -848,13 +827,10 @@ export function useAppLogic() {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_complete: nextStatus } : o));
 
     try {
-      const res = await fetch(`/api/orders/${orderId}/dtf`, {
+      const res = await apiFetch(`/api/orders/${orderId}/dtf`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || '',
-          'x-user-name': currentUser?.name || 'Admin'
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify({ dtf_complete: nextStatus })
       });
       if (!res.ok) {
@@ -879,13 +855,10 @@ export function useAppLogic() {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, dtf_location: location } : o));
 
     try {
-      const res = await fetch(`/api/orders/${orderId}/dtf`, {
+      const res = await apiFetch(`/api/orders/${orderId}/dtf`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || '',
-          'x-user-name': currentUser?.name || 'Admin'
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify({ dtf_location: location })
       });
       if (!res.ok) {
@@ -917,13 +890,8 @@ export function useAppLogic() {
 
     setIsDeletingOrder(true);
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
-        method: 'DELETE',
-        headers: {
-          'x-user-role': currentUser?.role || '',
-          'x-user-name': currentUser?.name || 'Admin'
-        }
-      });
+      const res = await apiFetch(`/api/orders/${orderId}`, {
+        method: 'DELETE' });
 
       if (res.ok) {
         setSelectedOrder(null);
@@ -949,12 +917,12 @@ export function useAppLogic() {
   const handleGenerateTrackingLink = async (order: Order) => {
     setIsGeneratingLink(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/tracking-token`, {
+      const res = await apiFetch(`/api/orders/${order.id}/tracking-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || 'Produção',
-          'x-user-name': currentUser?.name || 'Operador',
+          
+          
         }
       });
       const data = await res.json();
@@ -979,13 +947,8 @@ export function useAppLogic() {
 
     setIsCancellingOrder(true);
     try {
-      const res = await fetch(`/api/orders/${orderId}/cancel`, {
-        method: 'PATCH',
-        headers: {
-          'x-user-role': currentUser?.role || '',
-          'x-user-name': currentUser?.name || 'Admin'
-        }
-      });
+      const res = await apiFetch(`/api/orders/${orderId}/cancel`, {
+        method: 'PATCH' });
       if (res.ok) {
         fetchData();
         if (selectedOrder && selectedOrder.id === orderId) {
@@ -1016,8 +979,7 @@ export function useAppLogic() {
       }),
       num_colors: order.num_colors || 1,
       art_urls: order.art_urls || (order.art_url ? [order.art_url] : []),
-      art_url: order.art_url,
-    });
+      art_url: order.art_url });
 
     // Open modal immediately to prevent "nothing happens" feeling
     setShowEditOrderModal(true);
@@ -1050,12 +1012,12 @@ export function useAppLogic() {
         extraHeaders['x-confirm-finalized'] = 'true';
       }
 
-      const res = await fetch(`/api/orders/${selectedOrder.id}`, {
+      const res = await apiFetch(`/api/orders/${selectedOrder.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || '',
-          'x-user-name': currentUser?.name || 'Admin',
+          
+          
           ...extraHeaders
         },
         body: JSON.stringify(editOrderForm)
@@ -1103,7 +1065,7 @@ export function useAppLogic() {
     }
 
     try {
-      const res = await fetch(`/api/orders/${orderId}/images`, {
+      const res = await apiFetch(`/api/orders/${orderId}/images`, {
         method: 'POST',
         body: formData
       });
@@ -1138,12 +1100,10 @@ export function useAppLogic() {
     const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
     if (!confirmStart) return;
     
-    const res = await fetch('/api/executions/start', {
+    const res = await apiFetch('/api/executions/start', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || ''
-      },
+        'Content-Type': 'application/json' },
       body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser!.id })
     });
     if (res.ok) {
@@ -1177,20 +1137,16 @@ export function useAppLogic() {
 
     try {
       await Promise.all([
-        fetch(`/api/stages/${stageA.id}`, {
+        apiFetch(`/api/stages/${stageA.id}`, {
           method: 'PATCH',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-role': currentUser?.role || ''
-          },
+            'Content-Type': 'application/json' },
           body: JSON.stringify({ sort_order: stageA.sort_order })
         }),
-        fetch(`/api/stages/${stageB.id}`, {
+        apiFetch(`/api/stages/${stageB.id}`, {
           method: 'PATCH',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-role': currentUser?.role || ''
-          },
+            'Content-Type': 'application/json' },
           body: JSON.stringify({ sort_order: stageB.sort_order })
         })
       ]);
@@ -1219,12 +1175,10 @@ export function useAppLogic() {
     if (!selectedOrder) return;
     setIsActionLoading(true);
     try {
-      const pauseRes = await fetch(`/api/executions/${executionId}/pause`, {
+      const pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify({ observation: '' })
       });
       if (pauseRes.ok) {
@@ -1245,12 +1199,10 @@ export function useAppLogic() {
     if (!selectedOrder) return;
     setIsActionLoading(true);
     try {
-      const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
+      const finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify({ force: true, observation: '' })
       });
       if (finishRes.ok) {
@@ -1296,11 +1248,13 @@ export function useAppLogic() {
 
     setIsActionLoading(true);
     try {
-      const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/reopen`, {
+      const res = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/reopen`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-role': currentUser?.role || ''
+          
+          
+          
         }
       });
       if (res.ok) {
@@ -1349,12 +1303,10 @@ export function useAppLogic() {
     try {
       // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
       if (actionQuantityInput > 0) {
-        const progRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
+        const progRes = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-role': currentUser?.role || ''
-          },
+            'Content-Type': 'application/json' },
           body: JSON.stringify({
             incremento: actionQuantityInput,
             user_id: currentUser?.id || 1,
@@ -1370,12 +1322,10 @@ export function useAppLogic() {
 
       // 2. Se informou peças perdidas > 0, registra a perda
       if (actionLossQuantityInput > 0) {
-        const lossRes = await fetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
+        const lossRes = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-role': currentUser?.role || ''
-          },
+            'Content-Type': 'application/json' },
           body: JSON.stringify({
             quantidade_perdida: actionLossQuantityInput,
             motivo: actionLossReasonInput,
@@ -1394,12 +1344,10 @@ export function useAppLogic() {
 
       // 3. Executa a Pausa ou a Finalização
       if (type === 'pause') {
-        await fetch(`/api/executions/${executionId}/pause`, {
+        await apiFetch(`/api/executions/${executionId}/pause`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-role': currentUser?.role || ''
-          },
+            'Content-Type': 'application/json' },
           body: JSON.stringify({ observation: actionObservationInput })
         });
         setExecutionActionModal(null);
@@ -1407,12 +1355,10 @@ export function useAppLogic() {
         fetchData();
         fetchActiveExecution();
       } else if (type === 'finish') {
-        const finishRes = await fetch(`/api/executions/${executionId}/finish`, {
+        const finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-role': currentUser?.role || ''
-          },
+            'Content-Type': 'application/json' },
           body: JSON.stringify({ force: true, observation: actionObservationInput })
         });
 
@@ -1441,10 +1387,8 @@ export function useAppLogic() {
   };
 
   const handleResumeStage = async (executionId: number) => {
-    await fetch(`/api/executions/${executionId}/resume`, {
-      method: 'POST',
-      headers: { 'x-user-role': currentUser?.role || '' }
-    });
+    await apiFetch(`/api/executions/${executionId}/resume`, {
+      method: 'POST' });
     if (selectedOrder) {
       await fetchExecutions(selectedOrder.id);
     }
@@ -1460,12 +1404,10 @@ export function useAppLogic() {
 
   const handleSaveProgress = async () => {
     if (!selectedOrder || !progressStageId || progressIncrementInput <= 0) return;
-    const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${progressStageId}/progress`, {
+    const res = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${progressStageId}/progress`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || ''
-      },
+        'Content-Type': 'application/json' },
       body: JSON.stringify({
         incremento: progressIncrementInput,
         user_id: currentUser?.id || 1,
@@ -1500,12 +1442,10 @@ export function useAppLogic() {
       showToast("Por favor, informe o detalhamento do motivo 'Outro'.");
       return;
     }
-    const res = await fetch(`/api/orders/${selectedOrder.id}/stages/${lossStageId}/loss`, {
+    const res = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${lossStageId}/loss`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || ''
-      },
+        'Content-Type': 'application/json' },
       body: JSON.stringify({
         quantidade_perdida: lossQtyInput,
         motivo: lossReasonInput,
@@ -1528,12 +1468,10 @@ export function useAppLogic() {
   };
 
   const handleSaveLossReasonsMapping = async (updatedReasons: LossReasonSetting[]) => {
-    const res = await fetch('/api/loss-reasons', {
+    const res = await apiFetch('/api/loss-reasons', {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || ''
-      },
+        'Content-Type': 'application/json' },
       body: JSON.stringify({ reasons: updatedReasons })
     });
     if (res.ok) {
@@ -1545,12 +1483,10 @@ export function useAppLogic() {
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
-    await fetch(`/api/orders/${orderId}/status`, {
+    await apiFetch(`/api/orders/${orderId}/status`, {
       method: 'PATCH',
       headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': currentUser?.role || ''
-      },
+        'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
     });
     fetchData();
@@ -1558,10 +1494,10 @@ export function useAppLogic() {
 
   useEffect(() => {
     fetchData();
-    if (currentUser?.role === 'Admin') {
+    if (currentUser?.role === 'Administrador') {
       fetchConfig();
     }
-    if (activeTab === 'settings' && currentUser?.role === 'Admin') {
+    if (activeTab === 'settings' && currentUser?.role === 'Administrador') {
       fetchUsers();
       fetchCollaboratorGoals();
     }

@@ -297,7 +297,7 @@ export const Header = ({
               </div>
             )}
             {activeTab === 'dashboard' ? (
-              currentUser?.role === 'Admin' ? (
+              currentUser?.role === 'Administrador' ? (
                 <button
                   onClick={() => setActiveTab('settings')}
                   className="w-full lg:w-auto bg-zinc-900 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-sm"

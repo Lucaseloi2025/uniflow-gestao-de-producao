@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { ApprovedEnfestoPlan } from '../lib/enfestoUtils';
 import { Printer, X, Scissors, PackageCheck, AlertTriangle } from 'lucide-react';
 
@@ -36,9 +37,17 @@ export const PrintableEnfestoSheetModal: React.FC<PrintableEnfestoSheetModalProp
 
   const isRecorte = plan.model.toLowerCase().includes('recorte') || (plan.color && plan.color.toLowerCase().includes('recorte'));
 
-  return (
-    <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col my-auto animate-in zoom-in-95 duration-150">
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 overflow-y-auto print:absolute print:inset-0 print:z-0 print:bg-white print:p-0 print:block print:overflow-visible">
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          #root { display: none !important; }
+          .print\\:hidden { display: none !important; }
+          body { background-color: white !important; margin: 0; padding: 0; }
+          @page { margin: 1cm; size: A4 portrait; }
+        }
+      `}} />
+      <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-300 overflow-hidden flex flex-col my-auto animate-in zoom-in-95 duration-150 print:shadow-none print:rounded-none print:w-full print:max-w-none print:border-none print:my-0">
         
         {/* Modal Controls Header (Screen only) */}
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
@@ -254,6 +263,7 @@ export const PrintableEnfestoSheetModal: React.FC<PrintableEnfestoSheetModalProp
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

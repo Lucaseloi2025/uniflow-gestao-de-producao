@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { motion } from 'motion/react';
 import { Printer, X, Calendar, Users, Layers, Clock, TrendingUp, DollarSign, Package, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -211,8 +212,16 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
     window.print();
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-0 md:p-6 print:absolute print:inset-0 print:z-0 print:bg-white print:p-0 print:block print:overflow-visible">
+      <style dangerouslySetInnerHTML={{__html: `
+        @media print {
+          #root { display: none !important; }
+          .print\\:hidden { display: none !important; }
+          body { background-color: white !important; margin: 0; padding: 0; }
+          @page { margin: 1cm; size: auto; }
+        }
+      `}} />
       {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -539,7 +548,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
           </div>
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

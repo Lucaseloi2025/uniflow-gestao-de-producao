@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Scissors,
@@ -255,7 +256,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
       const local = getApprovedEnfestoPlans();
       let remote: ApprovedEnfestoPlan[] = [];
       try {
-        const res = await fetch('/api/cutting/approved-plans');
+        const res = await apiFetch('/api/cutting/approved-plans');
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) remote = data;
@@ -277,7 +278,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (window.confirm(`Tem certeza que deseja excluir o plano de enfesto aprovado para "${model}"?`)) {
       deleteApprovedEnfestoPlan(planId);
       try {
-        await fetch(`/api/cutting/approved-plans/${planId}`, { method: 'DELETE' });
+        await apiFetch(`/api/cutting/approved-plans/${planId}`, { method: 'DELETE' });
       } catch (e) {}
       await fetchApprovedPlans();
       onRefresh();
@@ -288,7 +289,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const fetchAllocationLogs = async () => {
     setIsLoadingLogs(true);
     try {
-      const res = await fetch('/api/cutting/allocations');
+      const res = await apiFetch('/api/cutting/allocations');
       if (res.ok) {
         const data = await res.json();
         setAllocationLogs(data || []);
@@ -367,7 +368,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
 
   const fetchCommittedQtys = async () => {
     try {
-      const res = await fetch('/api/cut-plans/committed-quantities?t=' + Date.now());
+      const res = await apiFetch('/api/cut-plans/committed-quantities?t=' + Date.now());
       if (res.ok) {
         const data = await res.json();
         const map = new Map<string, number>();
@@ -382,7 +383,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
   const fetchCutPlans = async () => {
     setIsLoadingCutPlans(true);
     try {
-      const res = await fetch('/api/cut-plans');
+      const res = await apiFetch('/api/cut-plans');
       if (res.ok) {
         const data = await res.json();
         setCutPlans(Array.isArray(data) ? data : []);
@@ -399,7 +400,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (!window.confirm(`Liberar plano ${planNumber} para corte? As quantidades serão removidas da Central de Corte.`)) return;
     setCutPlanActionLoading(`release-${planId}`);
     try {
-      const res = await fetch(`/api/cut-plans/${planId}/release`, {
+      const res = await apiFetch(`/api/cut-plans/${planId}/release`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_name: currentUser?.name || 'Operador' })
@@ -424,7 +425,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     try {
       const body: any = { qty_cut_actual: qty, user_name: currentUser?.name || 'Operador' };
       if (itemQuantities) body.item_quantities = itemQuantities;
-      const res = await fetch(`/api/cut-plans/${planId}/complete-cut`, {
+      const res = await apiFetch(`/api/cut-plans/${planId}/complete-cut`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -476,7 +477,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (!window.confirm(`Enviar plano ${planNumber} para costura?`)) return;
     setCutPlanActionLoading(`sewing-${planId}`);
     try {
-      const res = await fetch(`/api/cut-plans/${planId}/send-sewing`, {
+      const res = await apiFetch(`/api/cut-plans/${planId}/send-sewing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_name: currentUser?.name || 'Operador' })
@@ -502,7 +503,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (isNaN(qty) || qty <= 0) { alert('Quantidade inválida.'); return; }
     setCutPlanActionLoading(`return-sewing-${planId}`);
     try {
-      const res = await fetch(`/api/cut-plans/${planId}/return-sewing`, {
+      const res = await apiFetch(`/api/cut-plans/${planId}/return-sewing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qty_returned: qty, user_name: currentUser?.name || 'Operador' })
@@ -542,7 +543,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
         }))
       );
 
-      const res = await fetch('/api/cut-plans', {
+      const res = await apiFetch('/api/cut-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -575,7 +576,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     if (reason === null) return; // user pressed cancel
     setCutPlanActionLoading(`cancel-${planId}`);
     try {
-      const res = await fetch(`/api/cut-plans/${planId}/cancel`, {
+      const res = await apiFetch(`/api/cut-plans/${planId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason, user_name: currentUser?.name || 'Operador' })
@@ -702,7 +703,7 @@ export const ConsolidatedCuttingPanel: React.FC<ConsolidatedCuttingPanelProps> =
     const selectedOperator = users.find(u => u.id === selectedOperatorId) || currentUser;
 
     try {
-      const res = await fetch('/api/cutting/register-consolidated', {
+      const res = await apiFetch('/api/cutting/register-consolidated', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

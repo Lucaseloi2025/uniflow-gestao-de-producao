@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
@@ -74,10 +75,9 @@ export const NewOrderModal = ({
                     }
 
                     try {
-                      const res = await fetch('/api/orders', {
+                      const res = await apiFetch('/api/orders', {
                         method: 'POST',
-                        headers: { 'x-user-role': currentUser?.role || '' },
-                        body: formData
+                                                body: formData
                       });
 
                       if (!res.ok) {
@@ -210,7 +210,7 @@ export const NewOrderModal = ({
                     <div className="mt-4 mb-2">
                       <div className="flex justify-between items-center mb-2">
                         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Templates Rápidos</label>
-                        {currentUser?.role === 'Admin' && (
+                        {currentUser?.role === 'Administrador' && (
                           <button
                             type="button"
                             onClick={() => {

@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -18,9 +18,29 @@
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+
+  /* Reset dimensions for full-page print */
+  html, body, #root {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   
   /* Esconde elementos de navegação e UI que não devem ser impressos */
-  aside, main, header, .no-print {
+  aside,
+  header,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Quando o container de impressão (.print-container) estiver ativo, esconde o main */
+  .has-print-container main,
+  body:has(.print-container) main {
     display: none !important;
   }
   
@@ -41,7 +61,7 @@
   }
 
   /* Sobrescreve restrições de layout do App que podem cortar o conteúdo na impressão */
-  .flex, .h-screen, .overflow-hidden {
+  .flex, .h-screen, .overflow-hidden, .overflow-y-auto {
     display: block !important;
     height: auto !important;
     overflow: visible !important;
@@ -50,6 +70,11 @@
   /* Quebra de página para evitar tabelas fatiadas bizarramente */
   tr {
     page-break-inside: avoid;
+  }
+
+  @page {
+    margin: 1cm;
+    size: auto;
   }
 }
 

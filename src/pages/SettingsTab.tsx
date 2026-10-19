@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
@@ -70,12 +71,10 @@ export const SettingsTab = ({
                   meta_custo_por_peca: Number(formData.get('meta_custo_por_peca'))
                 };
 
-                await fetch('/api/config', {
+                await apiFetch('/api/config', {
                   method: 'PATCH',
                   headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-role': currentUser?.role || ''
-                  },
+                    'Content-Type': 'application/json' },
                   body: JSON.stringify(data)
                 });
                 fetchData();
@@ -155,9 +154,9 @@ export const SettingsTab = ({
                 const weekday = formData.get('auto_pause_time_weekday') as string;
                 const friday = formData.get('auto_pause_time_friday') as string;
                 const lunch = formData.get('auto_pause_time_lunch') as string;
-                const res = await fetch('/api/config', {
+                const res = await apiFetch('/api/config', {
                   method: 'PATCH',
-                  headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
+                  headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ auto_pause_time_weekday: weekday, auto_pause_time_friday: friday, auto_pause_time_lunch: lunch })
                 });
                 if (res.ok) {
@@ -247,12 +246,10 @@ export const SettingsTab = ({
                 <button
                   onClick={async () => {
                     if (!newStageName) return;
-                    await fetch('/api/stages', {
+                    await apiFetch('/api/stages', {
                       method: 'POST',
                       headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-role': currentUser?.role || ''
-                      },
+                        'Content-Type': 'application/json' },
                       body: JSON.stringify({ 
                         name: newStageName, 
                         ideal_time: newStageTime * 60,
@@ -319,12 +316,10 @@ export const SettingsTab = ({
                           <button
                             onClick={async () => {
                               if (editingStageName) {
-                                await fetch(`/api/stages/${stage.id}`, {
+                                await apiFetch(`/api/stages/${stage.id}`, {
                                   method: 'PATCH',
                                   headers: {
-                                    'Content-Type': 'application/json',
-                                    'x-user-role': currentUser?.role || ''
-                                  },
+                                    'Content-Type': 'application/json' },
                                   body: JSON.stringify({ 
                                     name: editingStageName, 
                                     ideal_time: editingStageTime * 60,
@@ -408,10 +403,8 @@ export const SettingsTab = ({
                         <button
                           onClick={async () => {
                             if (confirm(`Tem certeza que deseja excluir a etapa "${stage.name}"?`)) {
-                              await fetch(`/api/stages/${stage.id}`, {
-                                method: 'DELETE',
-                                headers: { 'x-user-role': currentUser?.role || '' }
-                              });
+                              await apiFetch(`/api/stages/${stage.id}`, {
+                                method: 'DELETE' });
                               fetchData();
                             }
                           }}
@@ -476,9 +469,9 @@ export const SettingsTab = ({
                                   <button
                                     onClick={async () => {
                                       if (!editVal) return;
-                                      await fetch('/api/collaborator-goals', {
+                                      await apiFetch('/api/collaborator-goals', {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json', 'x-user-role': currentUser?.role || '' },
+                                        headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ user_id: user.id, stage_id: stage.id, meta_diaria: Number(editVal) })
                                       });
                                       setGoalEditValues(v => { const n = { ...v }; delete n[key]; return n; });
@@ -490,10 +483,8 @@ export const SettingsTab = ({
                                     <button
                                       onClick={async () => {
                                         if (!override.id) return;
-                                        await fetch(`/api/collaborator-goals/${override.id}`, {
-                                          method: 'DELETE',
-                                          headers: { 'x-user-role': currentUser?.role || '' }
-                                        });
+                                        await apiFetch(`/api/collaborator-goals/${override.id}`, {
+                                          method: 'DELETE' });
                                         fetchCollaboratorGoals();
                                       }}
                                       className="px-2 py-1 bg-rose-50 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-100 transition-colors"
@@ -560,7 +551,7 @@ export const SettingsTab = ({
                   <ClipboardList size={20} />
                   Gerenciar Templates de Pedido
                 </h3>
-                {currentUser?.role === 'Admin' && (
+                {currentUser?.role === 'Administrador' && (
                   <button
                     onClick={() => {
                       setEditingTemplate(null);
@@ -579,7 +570,7 @@ export const SettingsTab = ({
                   <div key={template.id} className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl hover:border-zinc-300 transition-all group">
                     <div className="flex justify-between items-start mb-2">
                       <h4 className="font-bold text-sm text-zinc-900">{template.name}</h4>
-                      {currentUser?.role === 'Admin' && (
+                      {currentUser?.role === 'Administrador' && (
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => {
@@ -594,10 +585,8 @@ export const SettingsTab = ({
                           <button
                             onClick={async () => {
                               if (confirm(`Excluir template "${template.name}"?`)) {
-                                await fetch(`/api/order-templates/${template.id}`, {
-                                  method: 'DELETE',
-                                  headers: { 'x-user-role': currentUser?.role || '' }
-                                });
+                                await apiFetch(`/api/order-templates/${template.id}`, {
+                                  method: 'DELETE' });
                                 fetchData();
                               }
                             }}
@@ -651,12 +640,12 @@ export const SettingsTab = ({
                     }
 
                     try {
-                      const res = await fetch('/api/admin/reset-production', {
+                      const res = await apiFetch('/api/admin/reset-production', {
                         method: 'POST',
                         headers: {
                           'Content-Type': 'application/json',
-                          'x-user-role': currentUser?.role || '',
-                          'x-user-name': currentUser?.name || 'Admin'
+                          
+                          
                         }
                       });
 

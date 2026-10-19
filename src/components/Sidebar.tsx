@@ -94,7 +94,7 @@ export const Sidebar = ({
 
         <div className="mt-8 mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">GERENCIAL</div>
 
-        {currentUser?.role === 'Admin' && (
+        {currentUser?.role === 'Administrador' && (
           <SidebarItem
             icon={Users}
             label="Colaboradores"
@@ -110,7 +110,7 @@ export const Sidebar = ({
           onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
         />
 
-        {currentUser?.role === 'Admin' && (
+        {currentUser?.role === 'Administrador' && (
           <SidebarItem
             icon={Activity}
             label="Monitor"
@@ -119,7 +119,7 @@ export const Sidebar = ({
           />
         )}
 
-        {currentUser?.role === 'Admin' && (
+        {currentUser?.role === 'Administrador' && (
           <SidebarItem
             icon={DollarSign}
             label="Custos"

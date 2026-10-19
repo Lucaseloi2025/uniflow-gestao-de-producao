@@ -305,7 +305,7 @@ export const Orders = ({
                         )}
                       </td>
                       <td className={cn("px-6 py-4 text-sm", isOverdue && "text-rose-600 font-bold")}>
-                        {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') ? (
+                        {(currentUser?.role === 'Administrador' || currentUser?.role === 'Comercial') ? (
                           <input
                             type="date"
                             defaultValue={order.deadline ? order.deadline.split('T')[0] : ''}

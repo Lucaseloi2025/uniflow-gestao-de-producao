@@ -1,3 +1,4 @@
+import { apiFetch } from './apiFetch';
 import { supabase } from './supabase';
 import type { StockCache } from '../types';
 
@@ -55,7 +56,7 @@ export async function syncStockForProducts(
       const chunk = uniqueProducts.slice(i, i + chunkSize);
 
       // Call backend proxy - token optional, backend uses OAuth as fallback
-      const response = await fetch('/api/stock/sync', {
+      const response = await apiFetch('/api/stock/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: token || '', products: chunk })

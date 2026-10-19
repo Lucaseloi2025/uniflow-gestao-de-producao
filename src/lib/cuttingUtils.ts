@@ -257,6 +257,13 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
     else if (/piquet|pique/i.test(rawFabric)) fabric = 'Piquet';
     else if (/pv\b/i.test(rawFabric)) fabric = 'PV';
     else fabric = rawFabric;
+  } else if (rawDesc) {
+    if (/dry\s*comfort/i.test(rawDesc)) fabric = 'Dry Comfort';
+    else if (/dry\s*fit/i.test(rawDesc)) fabric = 'Dry Fit';
+    else if (/poliamida/i.test(rawDesc)) fabric = 'Poliamida';
+    else if (/algod[aã]o/i.test(rawDesc)) fabric = 'Algodão';
+    else if (/piquet|pique/i.test(rawDesc)) fabric = 'Piquet';
+    else if (/pv\b/i.test(rawDesc)) fabric = 'PV';
   }
 
   // 2. Extração ESTRITA da COR técnica (sem adivinhar pelo nome quando ausente)
@@ -265,6 +272,16 @@ export function extractItemDetails(item: any, defaultProductType: string = 'Vest
   if (rawColor && !/^(cor\s+)?n[aã]o\s+informad[ao]$/i.test(rawColor)) {
     const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(rawColor));
     color = matchCat ? matchCat.name : rawColor;
+  } else if (rawDesc) {
+    if (/recorte/i.test(rawDesc)) {
+      const colorsFound = COLOR_PATTERNS.filter(c => c.pattern.test(rawDesc)).map(c => c.name.toUpperCase());
+      if (colorsFound.length > 0) {
+        color = colorsFound.join(' / ');
+      }
+    } else {
+      const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(rawDesc));
+      if (matchCat) color = matchCat.name;
+    }
   }
 
   // 3. Extração do TAMANHO

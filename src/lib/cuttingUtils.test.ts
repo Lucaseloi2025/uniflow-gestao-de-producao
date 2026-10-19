@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import {
   aggregateCuttingDemand,
   allocateCuttingPieces,
@@ -9,20 +10,11 @@ import {
 } from './cuttingUtils';
 import type { CorteAllocationLog } from '../types';
 
-function runCuttingTests() {
-  console.log("=== Running Unit Tests for cuttingUtils (Painel de Corte Consolidado) ===");
-  let passed = 0;
-  let failed = 0;
-
-  const assertEqual = (actual: any, expected: any, testName: string) => {
-    if (actual === expected || JSON.stringify(actual) === JSON.stringify(expected)) {
-      console.log(`[PASS] ${testName}`);
-      passed++;
-    } else {
-      console.error(`[FAIL] ${testName}: Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-      failed++;
-    }
-  };
+describe('cuttingUtils — Painel de Corte Consolidado', () => {
+  it('deve executar com sucesso todos os cenários de corte, alocação e demanda', () => {
+    const assertEqual = (actual: any, expected: any, testName: string) => {
+      expect(actual).toEqual(expected);
+    };
 
   const logsStore: CorteAllocationLog[] = [];
 
@@ -389,12 +381,6 @@ Infantil
   assertEqual(cutPlanExport.text, expectedText, "Cen.5.19: Texto para Optitex CutPlan no formato limpo especificado");
   const containsTSVHeaders = cutPlanExport.tsv.startsWith('Modelo\tTamanho\tQuantidade');
   assertEqual(containsTSVHeaders, true, "Cen.5.20: Formato TSV inclui cabeçalho correto para colagem");
-
-  console.log(`\nCutting Tests Summary: ${passed} passed, ${failed} failed.`);
-  if (failed > 0) {
-    process.exit(1);
-  }
-}
-
-runCuttingTests();
+  });
+});
 

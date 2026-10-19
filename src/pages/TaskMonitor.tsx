@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
@@ -13,9 +14,7 @@ export const TaskMonitor = ({ onShowInfo }: { onShowInfo?: (title: string, desc:
 
   const fetchMonitorData = async () => {
     try {
-      const res = await fetch('/api/executions/monitor', {
-        headers: { 'x-user-role': 'Admin' }
-      });
+      const res = await apiFetch('/api/executions/monitor');
       if (res.ok) {
         const data = await res.json();
         setMonitorData(data);

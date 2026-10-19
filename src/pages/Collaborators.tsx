@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
 import { User as UserIcon, Edit2 } from 'lucide-react';
@@ -21,7 +21,7 @@ export const Collaborators = ({ users, currentUser, setSelectedUserForEdit, setS
                       <h4 className="font-bold text-zinc-900">{user.name}</h4>
                       <div className="flex items-center gap-3 text-xs text-zinc-500">
                         <span className="flex items-center gap-1"><UserIcon size={12} /> {user.email}</span>
-                        {currentUser?.role === 'Admin' && (
+                        {currentUser?.role === 'Administrador' && (
                           <>
                             <span>•</span>
                             <span>R$ {user.hourly_cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h</span>
@@ -31,7 +31,7 @@ export const Collaborators = ({ users, currentUser, setSelectedUserForEdit, setS
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Badge variant={user.role === 'Admin' ? 'info' : 'default'}>{user.role}</Badge>
+                    <Badge variant={user.role === 'Administrador' ? 'info' : 'default'}>{user.role}</Badge>
                     <button
                       onClick={() => {
                         setSelectedUserForEdit(user);

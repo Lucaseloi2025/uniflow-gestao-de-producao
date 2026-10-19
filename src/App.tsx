@@ -115,13 +115,13 @@ const Costs = lazy(() => import('./pages/Costs').then(m => ({ default: m.Costs }
 const Collaborators = lazy(() => import('./pages/Collaborators').then(m => ({ default: m.Collaborators })));
 const ConsolidatedCuttingPanel = lazy(() => import('./components/ConsolidatedCuttingPanel').then(m => ({ default: m.ConsolidatedCuttingPanel })));
 const DashboardTab = lazy(() => import('./pages/DashboardTab').then(m => ({ default: m.DashboardTab })));
-const PcpDashboard = lazy(() => import('./pages/pcp/PcpDashboard').then(m => ({ default: m.PcpDashboard })));
-const PcpNecessidades = lazy(() => import('./pages/pcp/PcpNecessidades').then(m => ({ default: m.PcpNecessidades })));
-const PcpPrioridades = lazy(() => import('./pages/pcp/PcpPrioridades').then(m => ({ default: m.PcpPrioridades })));
-const PcpBloqueados = lazy(() => import('./pages/pcp/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
-const PcpSettings = lazy(() => import('./pages/pcp/PcpSettings').then(m => ({ default: m.PcpSettings })));
-const PcpControleFaccao = lazy(() => import('./pages/pcp/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao }))); 
-const Conferencia = lazy(() => import('./pages/pcp/Conferencia').then(m => ({ default: m.Conferencia })));
+const PcpDashboard = lazy(() => import('./pages/PCP/PcpDashboard').then(m => ({ default: m.PcpDashboard })));
+const PcpNecessidades = lazy(() => import('./pages/PCP/PcpNecessidades').then(m => ({ default: m.PcpNecessidades })));
+const PcpPrioridades = lazy(() => import('./pages/PCP/PcpPrioridades').then(m => ({ default: m.PcpPrioridades })));
+const PcpBloqueados = lazy(() => import('./pages/PCP/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
+const PcpSettings = lazy(() => import('./pages/PCP/PcpSettings').then(m => ({ default: m.PcpSettings })));
+const PcpControleFaccao = lazy(() => import('./pages/PCP/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao }))); 
+const Conferencia = lazy(() => import('./pages/PCP/Conferencia').then(m => ({ default: m.Conferencia })));
 const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
@@ -248,10 +248,18 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-[#F8F9FA] font-sans text-zinc-900 overflow-hidden">
-      {(printOpen || isPrintModalOpen) && (
-        <PrintContainer activeTab={activeTab} orders={orders} stages={stages} selectedStageFilter={selectedStageFilter} printTypeFilter={printTypeFilter} productTypeFilter={productTypeFilter} searchTerm={searchTerm} selectedStageStatus={selectedStageStatus} />
-      )}
+    <div className={`flex h-screen bg-[#F8F9FA] font-sans text-zinc-900 overflow-hidden ${(activeTab === 'orders' || activeTab === 'kanban') ? 'has-print-container' : ''}`}>
+      <PrintContainer
+        activeTab={activeTab}
+        orders={orders}
+        stages={stages}
+        selectedStageFilter={selectedStageFilter}
+        printTypeFilter={printTypeFilter}
+        productTypeFilter={productTypeFilter}
+        searchTerm={searchTerm}
+        selectedStageStatus={selectedStageStatus}
+        isPrintModalOpen={isPrintModalOpen}
+      />
 
       {/* Mobile Overlay */}
       <AnimatePresence>
@@ -496,7 +504,7 @@ export default function App() {
 />
         )}
 
-        {activeTab === 'costs' && currentUser?.role === 'Admin' && (
+        {activeTab === 'costs' && currentUser?.role === 'Administrador' && (
           <Costs COLORS={COLORS} 
   currentUser={currentUser}
   fetchReports={fetchReports}
@@ -520,7 +528,7 @@ export default function App() {
 />
         )}
 
-        {activeTab === 'monitor' && currentUser?.role === 'Admin' && (
+        {activeTab === 'monitor' && currentUser?.role === 'Administrador' && (
           <div className="max-w-7xl mx-auto pb-12">
             <div className="mb-6">
               <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
@@ -606,7 +614,7 @@ export default function App() {
             reportData={reportData}
             operationalReportData={operationalReportData}
             goalsProductivityData={goalsProductivityData}
-            isAdmin={currentUser?.role === 'Admin'}
+            isAdmin={currentUser?.role === 'Administrador'}
           />
         )}
       </AnimatePresence>

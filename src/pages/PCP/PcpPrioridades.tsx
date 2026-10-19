@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/Badge';
@@ -11,7 +12,7 @@ export const PcpPrioridades = () => {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/pcp-phase1/prioridades'); const data = await res.json();
+      const res = await apiFetch('/api/pcp-phase1/prioridades'); const data = await res.json();
       if (Array.isArray(data)) setOrders(data);
     } catch (e) {
       console.error(e);

@@ -150,7 +150,7 @@ export const OrderDetailsDrawer = ({
                         />
                       </div>
 
-                      {((currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado') && (
+                      {((currentUser?.role === 'Administrador' || currentUser?.role === 'Comercial') && selectedOrder.status !== 'Cancelado') && (
                         <>
                           <button
                             onClick={() => openEditOrderModal(selectedOrder)}
@@ -192,7 +192,7 @@ export const OrderDetailsDrawer = ({
                         <FileText size={13} />
                         <span className="hidden xl:inline">Histórico</span>
                       </button>
-                      {(currentUser?.role === 'Admin' || currentUser?.role === 'Comercial') && (
+                      {(currentUser?.role === 'Administrador' || currentUser?.role === 'Comercial') && (
                         <button
                           onClick={() => handleDeleteOrder(selectedOrder.id)}
                           disabled={isDeletingOrder}
@@ -238,7 +238,7 @@ export const OrderDetailsDrawer = ({
                                 </div>
                                 <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100 shadow-sm col-span-2">
                                   <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Prazo Entrega</p>
-                                  {(currentUser.role === 'Admin' || currentUser.role === 'Comercial') ? (
+                                  {(currentUser.role === 'Administrador' || currentUser.role === 'Comercial') ? (
                                     <input
                                       type="date"
                                       defaultValue={selectedOrder.deadline.split('T')[0]}

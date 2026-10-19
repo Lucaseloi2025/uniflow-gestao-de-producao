@@ -7,4 +7,23 @@ coverage/
 .env*
 !.env.example
 scratch/
+*.cjs
+push_*.ps1
+restore*.ps1
+fix_*.ps1
+fix.js
+*.txt
+*.zip
+*.sha256
+*.block.tsx
+*_block.tsx
+old_app_github.tsx
+remote_useAppLogic.ts
+temp_old_app*.tsx
+temp.json
+commit.json
+words.txt
+supabase/.temp/
+.agents/
+
 

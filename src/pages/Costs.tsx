@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
@@ -81,9 +82,9 @@ export const Costs = ({
                           onChange={(e) => setMetaCustoPeca(Number(e.target.value) || 0)}
                           onBlur={async () => {
                             try {
-                              await fetch('/api/config', {
+                              await apiFetch('/api/config', {
                                 method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json', 'x-user-role': 'Admin' },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ meta_custo_por_peca: metaCustoPeca || 0 })
                               });
                             } catch (err) {

@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Target, AlertTriangle, AlertCircle, Clock, Package, CheckCircle2, Activity } from 'lucide-react';
@@ -11,7 +12,7 @@ export const PcpDashboard = ({ currentUser }: any) => {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/pcp-phase1/dashboard'); const result = await res.json();
+      const res = await apiFetch('/api/pcp-phase1/dashboard'); const result = await res.json();
       if (result) setData(result);
     } catch (e) {
       console.error(e);

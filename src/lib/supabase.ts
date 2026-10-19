@@ -1,11 +1,38 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Vite expõe variáveis de ambiente com prefixo VITE_ via import.meta.env.
-// Fallback para as variáveis hardcoded do projeto para garantir funcionamento em produção.
-const supabaseUrl = ((import.meta as any).env?.VITE_SUPABASE_URL as string)
-    || 'https://dkyvzxmocppbydtpsgyu.supabase.co';
+export function resolveSupabaseConfig(env: {
+    PROD?: boolean;
+    MODE?: string;
+    VITE_SUPABASE_URL?: string;
+    VITE_SUPABASE_ANON_KEY?: string;
+}) {
+    const isProd = Boolean(env.PROD || env.MODE === 'production');
+    const url = env.VITE_SUPABASE_URL?.trim();
+    const anonKey = env.VITE_SUPABASE_ANON_KEY?.trim();
 
-const supabaseAnonKey = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string)
-    || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRreXZ6eG1vY3BwYnlkdHBzZ3l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzU0NDksImV4cCI6MjA4NzU1MTQ0OX0.2s2RJevOZr2Na0bigWqR5rxt5bNtB6GIS6-N_TlpFgk';
+    if (isProd) {
+        if (!url || !anonKey) {
+            throw new Error(
+                '[FATAL PRODUCTION CONFIG ERROR] VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY devem ser configuradas obrigatoriamente no ambiente de produção. Fallback para localhost é estritamente proibido em produção.'
+            );
+        }
+        return { supabaseUrl: url, supabaseAnonKey: anonKey };
+    }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // Desenvolvimento / Testes locais
+    return {
+        supabaseUrl: url || 'http://127.0.0.1:54321',
+        supabaseAnonKey: anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock-anon-key-local-only',
+    };
+}
+
+const config = resolveSupabaseConfig({
+    PROD: (import.meta as any).env?.PROD,
+    MODE: (import.meta as any).env?.MODE,
+    VITE_SUPABASE_URL: ((import.meta as any).env?.VITE_SUPABASE_URL as string)?.trim(),
+    VITE_SUPABASE_ANON_KEY: ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string)?.trim(),
+});
+
+export const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+

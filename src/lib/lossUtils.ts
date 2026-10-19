@@ -50,7 +50,7 @@ export function getDefaultLossReasons(stages: { id: number; name: string; sort_o
 }
 
 /**
-  * Filters and sums incremental good pieces recorded on a specific date (YYYY-MM-DD in local time).
+  * Filters and sums incremental good pieces recorded on a specific date (YYYY-MM-DD in America/Sao_Paulo).
   */
 export function sumDailyPieceIncrements(
   logs: { created_at: string; quantidade_boa_incremento: number; stage_id?: number; user_id?: number }[],
@@ -63,7 +63,13 @@ export function sumDailyPieceIncrements(
     if (userId !== undefined && userId !== null && log.user_id !== userId) return sum;
     
     const d = new Date(log.created_at);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (isNaN(d.getTime())) return sum;
+    const dateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
     
     if (dateStr === targetDateStr) {
       return sum + (log.quantidade_boa_incremento || 0);

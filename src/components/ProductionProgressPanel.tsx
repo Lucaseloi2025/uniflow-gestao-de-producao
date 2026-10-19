@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiFetch';
 ﻿import React, { useEffect, useState } from 'react';
 import { Scissors, Shirt, CheckCircle2, Clock, AlertTriangle, Package } from 'lucide-react';
 
@@ -60,7 +61,7 @@ export const ProductionProgressPanel: React.FC<ProductionProgressPanelProps> = (
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/orders/${orderId}/production-status`);
+      const res = await apiFetch(`/api/orders/${orderId}/production-status`);
       if (!res.ok) throw new Error('Erro ao carregar andamento produtivo');
       const data = await res.json();
       setItems(Array.isArray(data) ? data : []);

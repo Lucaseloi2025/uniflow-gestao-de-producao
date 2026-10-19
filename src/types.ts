@@ -9,12 +9,10 @@ export type OperationStatus =
   | 'CANCELADA';
 
 export type UserRole =
-  | 'Admin'
   | 'Administrador'
   | 'PCP'
   | 'Supervisor'
   | 'Operador'
-  | 'Produção'
   | 'Comercial'
   | 'Visualização';
 

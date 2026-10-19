@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/apiFetch';
 import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Save } from 'lucide-react';
@@ -11,7 +12,7 @@ export const PcpSettings = () => {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/pcp-phase1/config'); const data = await res.json();
+      const res = await apiFetch('/api/pcp-phase1/config'); const data = await res.json();
       if (data) setConfig(data);
     } catch (e) {
       console.error(e);

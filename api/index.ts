@@ -451,21 +451,59 @@ function resolveOperationStatusInline(input: {
   return canStart ? 'LIBERADA' : 'AGUARDANDO';
 }
 
-async function recordPcpAuditLog(
-  sb: any,
-  params: {
-    order_id?: number | null;
-    stage_id?: number | null;
-    user_id?: number | null;
-    usuario: string;
-    acao: string;
-    motivo?: string | null;
-    quantidade?: number | null;
-    valor_anterior?: any;
-    valor_novo?: any;
-    observacao?: string | null;
-    origem?: string;
+export interface OrderHistoryEntry {
+  order_id: number;
+  usuario?: string | null;
+  acao: string;
+  antes?: any;
+  depois?: any;
+  detalhes?: string | null;
+}
+
+export async function logOrderHistory(sb: any, entry: OrderHistoryEntry) {
+  const payload = {
+    order_id: entry.order_id,
+    usuario: entry.usuario || 'Sistema',
+    acao: entry.acao,
+    antes: entry.antes ?? null,
+    depois: entry.depois ?? null,
+    detalhes: entry.detalhes ?? null,
+    action: entry.acao,
+    details: entry.detalhes || (typeof entry.depois === 'object' && entry.depois !== null ? JSON.stringify(entry.depois) : String(entry.depois ?? '')),
+    created_at: new Date().toISOString(),
+  };
+  try {
+    const { data, error } = await sb.from('order_history').insert(payload).select();
+    if (error) {
+      console.error('[OrderHistory] Falha ao registrar histórico do pedido:', error, payload);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    console.error('[OrderHistory] Exceção ao gravar order_history:', err);
+    return { success: false, error: err };
   }
+}
+
+export interface AuditLogParams {
+  order_id?: number | null;
+  stage_id?: number | null;
+  user_id?: number | null;
+  usuario: string;
+  acao: string;
+  motivo?: string | null;
+  quantidade?: number | null;
+  valor_anterior?: any;
+  valor_novo?: any;
+  observacao?: string | null;
+  detalhes?: any;
+  origem?: string;
+  entidade?: string;
+}
+
+export async function writeAuditLogStore(
+  sb: any,
+  params: AuditLogParams
 ) {
   try {
     const valorNovoObj = {
@@ -478,43 +516,49 @@ async function recordPcpAuditLog(
       origem: params.origem || 'WEB',
       timestamp_brt: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).replace(' ', 'T') + '-03:00',
     };
-    const payload = {
+    const payload: Record<string, any> = {
+      entidade: params.entidade || 'orders',
       order_id: params.order_id ?? null,
+      stage_id: params.stage_id ?? null,
+      user_id: params.user_id ?? null,
       usuario: params.usuario || 'Sistema',
       acao: params.acao,
-      entidade: 'orders',
+      quantidade: params.quantidade ?? null,
+      motivo: params.motivo ?? null,
+      observacao: params.observacao ?? null,
       valor_anterior: params.valor_anterior ?? null,
+      valor_antigo: params.valor_anterior ?? null,
       valor_novo: valorNovoObj,
+      detalhes: params.detalhes ?? null,
+      origem: params.origem || 'WEB',
       created_at: new Date().toISOString(),
     };
-    const { error } = await sb.from('pcp_audit_log').insert(payload);
-    if (error && params.order_id) {
-      const { error: histErr } = await sb.from('order_history').insert({
-        order_id: params.order_id,
-        usuario: params.usuario || 'Sistema',
-        acao: params.acao,
-        antes: params.valor_anterior ?? null,
-        depois: valorNovoObj,
-      });
-      if (histErr) {
-        await sb.from('stage_observations').insert({
+    const { data, error } = await sb.from('pcp_audit_log').insert(payload).select();
+    if (error) {
+      console.error('[AuditLog] Erro ao gravar pcp_audit_log:', error, payload);
+      if (params.order_id) {
+        const { error: histErr } = await logOrderHistory(sb, {
           order_id: params.order_id,
-          stage_id: params.stage_id || 1,
-          user_id: params.user_id || 1,
-          observation: `[AUDIT] ${JSON.stringify({
-            acao: params.acao,
-            usuario: params.usuario || 'Sistema',
-            motivo: params.motivo || null,
-            valor_anterior: params.valor_anterior ?? null,
-            valor_novo: valorNovoObj,
-          })}`,
+          usuario: params.usuario || 'Sistema',
+          acao: params.acao,
+          antes: params.valor_anterior ?? null,
+          depois: valorNovoObj,
+          detalhes: typeof params.detalhes === 'string' ? params.detalhes : (params.motivo || null),
         });
+        if (histErr) {
+          console.error('[AuditLog] Erro ao gravar order_history de fallback:', histErr);
+        }
       }
+      return { success: false, error };
     }
+    return { success: true, data };
   } catch (err) {
-    console.warn('[AuditLog] Falha não bloqueante ao gravar auditoria:', err);
+    console.error('[AuditLog] Exceção ao gravar auditoria:', err);
+    return { success: false, error: err };
   }
 }
+
+export const recordPcpAuditLog = writeAuditLogStore;
 
 async function safeUpsertOrderStageProgress(sb: any, prog: OrderStageProgress) {
   const baseRow = {
@@ -581,12 +625,16 @@ async function getLossReasons(sb: any): Promise<LossReasonSetting[]> {
   try {
     const { data } = await sb.from('loss_reason_settings').select('*').order('id', { ascending: true });
     if (data && data.length > 0) return data;
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[LossReasons] Aviso ao buscar loss_reason_settings:', err);
+  }
   let stagesData: any[] = [];
   try {
     const { data } = await sb.from('stages').select('id, name, sort_order').eq('active', 1);
     if (data) stagesData = data;
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[LossReasons] Aviso ao buscar stages:', err);
+  }
   const defaults = _getDefaultLossReasons(
     stagesData.length > 0
       ? stagesData
@@ -598,7 +646,9 @@ async function getLossReasons(sb: any): Promise<LossReasonSetting[]> {
   );
   try {
     await sb.from('loss_reason_settings').upsert(defaults);
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[LossReasons] Aviso ao upsert defaults:', err);
+  }
   return defaults;
 }
 
@@ -607,10 +657,13 @@ async function updateLossReasons(sb: any, settings: LossReasonSetting[]) {
     await sb.from('loss_reason_settings').delete().gt('id', 0);
     const { data } = await sb.from('loss_reason_settings').insert(settings).select('*');
     if (data && data.length > 0) return data;
-  } catch (_) {
+  } catch (err) {
+    console.warn('[LossReasons] Falha no delete/insert, tentando upsert:', err);
     try {
       await sb.from('loss_reason_settings').upsert(settings);
-    } catch (_) {}
+    } catch (upsertErr) {
+      console.warn('[LossReasons] Aviso ao upsert settings:', upsertErr);
+    }
   }
   return settings;
 }
@@ -619,7 +672,7 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
   const order = orderData || (await sb.from('orders').select('*').eq('id', orderId).single()).data;
   if (!order) return [];
   const rawRequiredStages: number[] = Array.isArray(order.required_stages) ? order.required_stages : [];
-  const requiredStages = rawRequiredStages.filter((id: any) => ![2, 7, 12].includes(Number(id)));
+  const requiredStages = rawRequiredStages.map((id: any) => Number(id));
   const stagesStatus: any[] = Array.isArray(order.stages_status) ? order.stages_status : [];
 
   const [progRes, execRes] = await Promise.all([
@@ -719,12 +772,12 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [])
   for (const order of orders) {
     if (!Array.isArray(order.stages_status)) order.stages_status = [];
     if (Array.isArray(order.required_stages)) {
-      order.required_stages = order.required_stages.filter((id: any) => ![2, 7, 12].includes(Number(id)));
+      order.required_stages = order.required_stages.map((id: any) => Number(id));
     }
     const qty = Number(order.quantity) || 0;
     const isCancelled = order.status === 'Cancelado' || Boolean(order.deleted_at);
     const isBlocked = Boolean(order.pcp_is_blocked);
-    const filteredStages = order.stages_status.filter((st: any) => ![2, 7, 12].includes(Number(st.id)));
+    const filteredStages = order.stages_status;
 
     let prevFinished = true;
     let prevTransferredQty = qty;
@@ -801,273 +854,6 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [])
       };
     });
   }
-}
-
-async function logProgress(
-  sb: any,
-  orderId: number,
-  stageId: number,
-  userId: number,
-  userName: string,
-  incremento: number,
-  options?: {
-    quantidade_perdida?: number;
-    quantidade_retrabalho?: number;
-    observacao?: string;
-    transfer_to_next?: boolean;
-  }
-) {
-  const [orderRes, stageRes, dbProgRes] = await Promise.all([
-    sb.from('orders').select('id, quantity, required_stages, status, pcp_is_blocked').eq('id', orderId).single(),
-    sb.from('stages').select('id, name, calculation_type').eq('id', stageId).single(),
-    sb.from('order_stage_progress').select('*').eq('order_id', orderId),
-  ]);
-
-  const order = orderRes.data;
-  const orderQty = Number(order?.quantity) || 0;
-  const calcType = stageRes.data?.calculation_type || 'por_peca';
-  const reqStages: number[] = Array.isArray(order?.required_stages)
-    ? order.required_stages.map(Number).filter((id: number) => ![2, 7, 12].includes(id))
-    : [];
-
-  const allProgs: any[] = dbProgRes.data || [];
-  const existingProg = allProgs.find((p: any) => Number(p.stage_id) === Number(stageId));
-
-  const prevGood = Number(existingProg?.quantidade_boa) || 0;
-  const prevLost = Number(existingProg?.quantidade_perdida) || 0;
-  const prevRework = Number(existingProg?.quantidade_retrabalho) || 0;
-  const prevRepl = Number(existingProg?.pendencia_reposicao) || 0;
-  const prevTransferred =
-    existingProg?.quantidade_transferida !== undefined
-      ? Number(existingProg.quantidade_transferida)
-      : Math.min(orderQty, prevGood);
-
-  const incGood = Math.max(0, Number(incremento) || 0);
-  const incLost = Math.max(0, Number(options?.quantidade_perdida) || 0);
-  const incRework = Math.max(0, Number(options?.quantidade_retrabalho) || 0);
-
-  const targetQty = Number(existingProg?.quantidade_pedido) || orderQty;
-  const maxAllowedGood = Math.max(targetQty + prevRepl, prevGood + incGood);
-  const newGood = targetQty > 0 ? Math.min(targetQty + prevRepl, prevGood + incGood) : maxAllowedGood;
-  const newLost = prevLost + incLost;
-  const newRework = prevRework + incRework;
-  const newRepl = incGood > 0 && prevRepl > 0 ? Math.max(0, prevRepl - incGood) : prevRepl;
-  const saldoPendente = Math.max(0, targetQty - newGood + newRepl);
-
-  const isFinished =
-    calcType === 'por_pedido'
-      ? newGood > 0 && saldoPendente === 0
-      : targetQty > 0 && newGood >= targetQty && newRepl === 0;
-
-  // Cálculo de transferência formal sem duplicação para a próxima etapa da rota
-  const transferableGoodTotal = targetQty > 0 ? Math.min(newGood, targetQty) : newGood;
-  const availableToTransfer = Math.max(0, transferableGoodTotal - prevTransferred);
-  const routeIdx = reqStages.indexOf(Number(stageId));
-  const nextStageId = routeIdx >= 0 && routeIdx + 1 < reqStages.length ? reqStages[routeIdx + 1] : null;
-  const shouldTransfer = options?.transfer_to_next !== false && nextStageId !== null && availableToTransfer > 0;
-  const transferredDelta = shouldTransfer ? availableToTransfer : 0;
-  const newTransferredTotal = prevTransferred + transferredDelta;
-
-  const statusOperacao: OperationStatus = isFinished
-    ? 'CONCLUIDA'
-    : newGood > 0
-    ? 'PARCIAL'
-    : 'LIBERADA';
-
-  const prog: OrderStageProgress = {
-    order_id: orderId,
-    stage_id: stageId,
-    quantidade_pedido: targetQty,
-    quantidade_recebida: Number(existingProg?.quantidade_recebida) || targetQty,
-    quantidade_boa: newGood,
-    quantidade_perdida: newLost,
-    quantidade_retrabalho: newRework,
-    quantidade_transferida: newTransferredTotal,
-    pendencia_reposicao: newRepl,
-    saldo_pendente: saldoPendente,
-    finished: isFinished,
-    status_operacao: statusOperacao,
-  };
-
-  await safeUpsertOrderStageProgress(sb, prog);
-
-  let nextStageProgress: OrderStageProgress | null = null;
-  if (shouldTransfer && nextStageId !== null) {
-    const existingNext = allProgs.find((p: any) => Number(p.stage_id) === Number(nextStageId));
-    const prevNextReceived = Number(existingNext?.quantidade_recebida) || 0;
-    const nextReceived = Math.min(targetQty, Math.max(prevNextReceived + transferredDelta, newTransferredTotal));
-    nextStageProgress = {
-      order_id: orderId,
-      stage_id: nextStageId,
-      quantidade_pedido: Number(existingNext?.quantidade_pedido) || targetQty,
-      quantidade_recebida: nextReceived,
-      quantidade_boa: Number(existingNext?.quantidade_boa) || 0,
-      quantidade_perdida: Number(existingNext?.quantidade_perdida) || 0,
-      quantidade_retrabalho: Number(existingNext?.quantidade_retrabalho) || 0,
-      quantidade_transferida: Number(existingNext?.quantidade_transferida) || 0,
-      pendencia_reposicao: Number(existingNext?.pendencia_reposicao) || 0,
-      saldo_pendente: Math.max(0, targetQty - (Number(existingNext?.quantidade_boa) || 0)),
-      finished: Boolean(existingNext?.finished),
-      status_operacao: existingNext?.finished ? 'CONCLUIDA' : (Number(existingNext?.quantidade_boa) || 0) > 0 ? 'PARCIAL' : 'LIBERADA',
-    };
-    await safeUpsertOrderStageProgress(sb, nextStageProgress);
-  }
-
-  const logEntry = {
-    order_id: orderId,
-    stage_id: stageId,
-    user_id: userId,
-    user_name: userName,
-    quantidade_boa_incremento: incGood,
-    created_at: new Date().toISOString(),
-  };
-  try {
-    await sb.from('order_progress_logs').insert(logEntry);
-  } catch (e) {
-    console.warn('[API] Erro ao inserir order_progress_logs:', e);
-  }
-
-  await recordPcpAuditLog(sb, {
-    order_id: orderId,
-    stage_id: stageId,
-    user_id: userId,
-    usuario: userName,
-    acao: isFinished ? 'ETAPA_CONCLUIDA_POR_QUANTIDADE' : 'APONTAMENTO_PARCIAL',
-    quantidade: incGood,
-    observacao: options?.observacao || null,
-    valor_anterior: {
-      quantidade_boa: prevGood,
-      quantidade_perdida: prevLost,
-      quantidade_transferida: prevTransferred,
-      finished: Boolean(existingProg?.finished),
-    },
-    valor_novo: {
-      quantidade_boa: newGood,
-      quantidade_perdida: newLost,
-      quantidade_retrabalho: newRework,
-      quantidade_transferida: newTransferredTotal,
-      transferred_delta: transferredDelta,
-      next_stage_id: nextStageId,
-      saldo_pendente: saldoPendente,
-      status_operacao: statusOperacao,
-      finished: isFinished,
-    },
-  });
-
-  return {
-    success: true,
-    progress: prog,
-    next_stage_progress: nextStageProgress,
-    transferred_delta: transferredDelta,
-    log: logEntry,
-  };
-}
-
-async function logLoss(
-  sb: any,
-  orderId: number,
-  stageId: number,
-  userId: number,
-  userName: string,
-  qtd: number,
-  motivo: string,
-  det?: string,
-  retId?: number
-) {
-  const [orderRes, dbProgRes, reasons] = await Promise.all([
-    sb.from('orders').select('quantity').eq('id', orderId).single(),
-    sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', stageId).maybeSingle(),
-    getLossReasons(sb),
-  ]);
-
-  const orderQty = Number(orderRes.data?.quantity) || 0;
-  const existingProg = dbProgRes.data;
-  const prevGood = Number(existingProg?.quantidade_boa) || 0;
-  const prevLost = Number(existingProg?.quantidade_perdida) || 0;
-  const prevRepl = Number(existingProg?.pendencia_reposicao) || 0;
-  const targetQty = Number(existingProg?.quantidade_pedido) || orderQty;
-
-  const newLost = prevLost + qtd;
-  const isStillFinished = prevGood >= targetQty && prevRepl === 0 && qtd === 0;
-
-  const prog: OrderStageProgress = {
-    order_id: orderId,
-    stage_id: stageId,
-    quantidade_pedido: targetQty,
-    quantidade_boa: prevGood,
-    quantidade_perdida: newLost,
-    pendencia_reposicao: prevRepl,
-    saldo_pendente: Math.max(0, targetQty - prevGood + prevRepl),
-    finished: isStillFinished,
-    status_operacao: isStillFinished ? 'CONCLUIDA' : prevGood > 0 ? 'PARCIAL' : 'LIBERADA',
-  };
-
-  await safeUpsertOrderStageProgress(sb, prog);
-
-  const rs = retId || reasons.find(r => r.motivo.toLowerCase() === motivo.toLowerCase())?.etapa_reentrada_id || stageId;
-  const [snRes, rnRes, dbReentryRes] = await Promise.all([
-    sb.from('stages').select('name').eq('id', stageId).single(),
-    sb.from('stages').select('name').eq('id', rs).single(),
-    sb.from('order_stage_progress').select('*').eq('order_id', orderId).eq('stage_id', rs).maybeSingle(),
-  ]);
-
-  const sn = snRes.data?.name || `Etapa #${stageId}`;
-  const rn = rnRes.data?.name || `Etapa #${rs}`;
-
-  // Importante: Não enviar 'id' manual para evitar colisão de chave primária no PostgreSQL
-  const lossPayload = {
-    order_id: orderId,
-    stage_id: stageId,
-    stage_name: sn,
-    user_id: userId,
-    user_name: userName,
-    quantidade_perdida: qtd,
-    motivo,
-    motivo_detalhe: det || '',
-    etapa_reentrada_id: rs,
-    etapa_reentrada_name: rn,
-    created_at: new Date().toISOString(),
-  };
-
-  let insertedLossLog: any = lossPayload;
-  try {
-    const { data: lossRow } = await sb.from('order_loss_logs').insert(lossPayload).select('*').single();
-    if (lossRow) insertedLossLog = lossRow;
-  } catch (e) {
-    console.warn('[API] Aviso ao inserir order_loss_logs:', e);
-  }
-
-  const existingReentry = dbReentryRes.data;
-  const reentryGood = Number(existingReentry?.quantidade_boa) || 0;
-  const reentryLost = Number(existingReentry?.quantidade_perdida) || 0;
-  const reentryRepl = (Number(existingReentry?.pendencia_reposicao) || 0) + qtd;
-
-  const rp: OrderStageProgress = {
-    order_id: orderId,
-    stage_id: rs,
-    quantidade_pedido: targetQty,
-    quantidade_boa: reentryGood,
-    quantidade_perdida: reentryLost,
-    pendencia_reposicao: reentryRepl,
-    saldo_pendente: Math.max(0, targetQty - reentryGood + reentryRepl),
-    finished: false,
-    status_operacao: reentryGood > 0 ? 'PARCIAL' : 'LIBERADA',
-  };
-  await safeUpsertOrderStageProgress(sb, rp);
-
-  await recordPcpAuditLog(sb, {
-    order_id: orderId,
-    stage_id: stageId,
-    user_id: userId,
-    usuario: userName,
-    acao: 'REGISTRO_PERDA_REPOSICAO',
-    motivo: `${motivo}${det ? ` - ${det}` : ''}`,
-    quantidade: qtd,
-    valor_anterior: { quantidade_perdida: prevLost, pendencia_reposicao_reentrada: Number(existingReentry?.pendencia_reposicao) || 0 },
-    valor_novo: { quantidade_perdida: newLost, etapa_reentrada_id: rs, pendencia_reposicao_reentrada: reentryRepl },
-  });
-
-  return { success: true, progress: prog, lossLog: insertedLossLog, reentradaStageId: rs };
 }
 
 async function validateStageFinish(sb: any, orderId: number, stageId: number) {
@@ -1163,14 +949,37 @@ function resolveGoal(stageGoalDefault: number | null | undefined, collaboratorOv
 const app = express();
 app.use(express.json());
 
-// Enable CORS for all requests
+// CORS restrito aos domínios configurados (CORS_ALLOWED_ORIGINS, separados por vírgula).
+// Identidade NUNCA é transmitida por headers x-user-*: somente Authorization: Bearer <JWT>.
+const DEFAULT_DEV_ORIGINS = ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'];
+export function getAllowedOrigins(): string[] {
+    const configured = (process.env.CORS_ALLOWED_ORIGINS || '')
+        .split(',')
+        .map(o => o.trim().replace(/\/+$/, ''))
+        .filter(Boolean);
+    if (configured.length > 0) return configured;
+    return process.env.NODE_ENV === 'production' ? [] : DEFAULT_DEV_ORIGINS;
+}
+
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin.replace(/\/+$/, '') : '';
+    const allowed = getAllowedOrigins();
+    let sameHost = false;
+    try { sameHost = !!origin && new URL(origin).host === req.headers.host; } catch { sameHost = false; }
+    if (origin) {
+        if (!allowed.includes(origin) && !sameHost) {
+            // Origem estrangeira: sem Access-Control-Allow-Origin e preflight recusado.
+            if (req.method === 'OPTIONS') return res.status(403).end();
+            return next();
+        }
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-user-role, x-user-name');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-idempotency-key');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+        return res.status(204).end();
     }
     next();
 });
@@ -1183,101 +992,346 @@ app.use((req, _res, next) => {
     next();
 });
 
-const DEFAULT_SUPABASE_URL = "https://dkyvzxmocppbydtpsgyu.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRreXZ6eG1vY3BwYnlkdHBzZ3l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NzU0NDksImV4cCI6MjA4NzU1MTQ0OX0.2s2RJevOZr2Na0bigWqR5rxt5bNtB6GIS6-N_TlpFgk";
+const isTestOrDev = process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development";
 
-const rawSupabaseUrl = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
-const supabaseUrl = (rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "")) || DEFAULT_SUPABASE_URL;
-const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
-const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const rawSupabaseUrl = (process.env.SUPABASE_URL || (isTestOrDev ? "http://127.0.0.1:54321" : "")).trim();
+const supabaseUrl = (rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "")) || (isTestOrDev ? "http://127.0.0.1:54321" : "");
+const supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || (isTestOrDev ? "mock-anon-key-local-only" : "")).trim();
+const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || (process.env.NODE_ENV === "test" ? "mock-service-role-key-test" : "")).trim();
 
-const supabase = createClient(
-    supabaseUrl,
-    supabaseAnonKey
+if (!isTestOrDev) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+        console.error("[FATAL SECURITY ERROR] SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY são estritamente obrigatórias em ambiente de produção.");
+        process.exit(1);
+    }
+} else if (!supabaseServiceRoleKey && process.env.NODE_ENV !== "test") {
+    console.error("[FATAL SECURITY ERROR] SUPABASE_SERVICE_ROLE_KEY é obrigatória para inicialização do backend.");
+    process.exit(1);
+}
+
+export let supabase = createClient(
+    supabaseUrl || "http://127.0.0.1:54321",
+    supabaseAnonKey || "mock-anon-key-local-only"
 );
 
-export const supabaseAdmin = createClient(
-    supabaseUrl,
-    supabaseServiceRoleKey || supabaseAnonKey
+export let supabaseAdmin = createClient(
+    supabaseUrl || "http://127.0.0.1:54321",
+    supabaseServiceRoleKey || "mock-service-role-key-test"
 );
 
-// Utilizando mem├â┬│ria ao inv├â┬®s de disco local
+export function configureSupabaseClients(url: string, serviceRoleKey: string, anonKey?: string) {
+    supabase = createClient(url, anonKey || supabaseAnonKey || "mock-anon-key-local-only", {
+        auth: { autoRefreshToken: false, persistSession: false },
+    });
+    supabaseAdmin = createClient(url, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+    });
+}
+
+// Utilizando memória ao invés de disco local
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 function checkError(error: any, res: express.Response, msg = "Erro interno") {
     if (error) {
         console.error(`[INTERNAL ERROR] ${msg}:`, error);
-        // Avoid exposing raw database errors to the client
         res.status(500).json({ error: msg });
         return true;
     }
     return false;
 }
 
-const VALID_ADMIN_ROLES = ['Admin', 'Administrador'];
-const VALID_PCP_SUPERVISOR_ROLES = ['Admin', 'Administrador', 'PCP', 'Supervisor'];
-const VALID_COMMERCIAL_OR_MANAGEMENT_ROLES = ['Admin', 'Administrador', 'Comercial', 'PCP', 'Supervisor'];
-const VALID_AUTHENTICATED_ROLES = [
-    'Admin',
+// ── 6 PERFIS OFICIAIS CANÔNICOS DA FASE 1 ─────────────────────────────────────
+export const CANONICAL_ROLES = [
     'Administrador',
     'PCP',
     'Supervisor',
     'Operador',
-    'Produção',
-    'Produ├â┬º├â┬úo',
-    'Producao',
     'Comercial',
     'Visualização',
-    'Visualiza├â┬º├â┬úo',
-    'Visualizacao',
-];
+] as const;
 
-const isAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = String(req.headers['x-user-role'] || '').trim();
-    if (!VALID_ADMIN_ROLES.includes(role)) {
-        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem realizar esta ação." });
-    }
-    next();
-};
+export type CanonicalRole = typeof CANONICAL_ROLES[number];
 
-const isPcpOrSupervisorOrAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = String(req.headers['x-user-role'] || '').trim();
-    if (!VALID_PCP_SUPERVISOR_ROLES.includes(role)) {
-        return res.status(403).json({ error: "Acesso negado. Ação permitida apenas para PCP, Supervisor ou Administração." });
-    }
-    next();
-};
+const VALID_ADMIN_ROLES = ['Administrador'];
+const VALID_PCP_SUPERVISOR_ROLES = ['Administrador', 'PCP', 'Supervisor'];
+const VALID_COMMERCIAL_OR_MANAGEMENT_ROLES = ['Administrador', 'PCP', 'Supervisor', 'Comercial'];
+const VALID_PRODUCTION_OPERATION_ROLES = ['Administrador', 'PCP', 'Supervisor', 'Operador'];
+const VALID_AUTHENTICATED_ROLES = ['Administrador', 'PCP', 'Supervisor', 'Operador', 'Comercial', 'Visualização'];
 
-const isAdminOrComercial = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = String(req.headers['x-user-role'] || '').trim();
-    if (!VALID_COMMERCIAL_OR_MANAGEMENT_ROLES.includes(role)) {
-        return res.status(403).json({ error: "Acesso negado. Ação permitida apenas para Administração, PCP, Supervisor ou Comercial." });
-    }
-    next();
-};
+function normalizeCanonicalRoleForAuth(rawRole?: string | null): string {
+    const r = String(rawRole || '').trim().toLowerCase();
+    if (!r) return '';
+    if (r === 'admin' || r === 'administrador') return 'Administrador';
+    if (r === 'pcp') return 'PCP';
+    if (r === 'supervisor') return 'Supervisor';
+    if (r === 'comercial') return 'Comercial';
+    if (r.startsWith('visualiza')) return 'Visualização';
+    if (r === 'operador' || r.startsWith('produ')) return 'Operador';
+    return String(rawRole || '').trim();
+}
 
-const isAuthenticated = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const role = String(req.headers['x-user-role'] || '').trim();
-    if (!VALID_AUTHENTICATED_ROLES.includes(role)) {
-        return res.status(403).json({ error: "Acesso negado. Login necessário." });
-    }
-    next();
-};
-
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Supabase status (health check) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/supabase/status", async (_req, res) => {
-    const { data, error } = await supabase
-        .from("users")
-        .select("id, name")
-        .limit(1);
-    if (error)
+// ── VALIDAÇÃO DE ASSINATURA/SEGREDO DO WEBHOOK OLIST ──────────────────────────
+export function verifyOlistWebhookSecret(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const configuredSecret = (process.env.OLIST_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || '').trim();
+    if (!configuredSecret) {
         return res.status(500).json({
-            status: "error",
-            message: error.message,
-            hint: "Verifique se a tabela 'users' existe no Supabase.",
+            error: "Segredo do webhook Olist não configurado no backend.",
+            code: "WEBHOOK_NOT_CONFIGURED"
         });
-    return res.json({ status: "success", message: "Supabase SDK funcionando!", sample_data: data });
+    }
+
+    const rawHeader = req.headers['x-olist-signature'] || req.headers['x-webhook-secret'];
+    const clientSecret = typeof rawHeader === 'string' ? rawHeader.trim() : '';
+
+    if (!clientSecret) {
+        return res.status(401).json({
+            error: "Acesso não autorizado: cabeçalho x-olist-signature ou x-webhook-secret é obrigatório.",
+            code: "WEBHOOK_UNAUTHORIZED",
+        });
+    }
+
+    let isValid = false;
+    try {
+        const payloadStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+        const expectedHmac = crypto.createHmac('sha256', configuredSecret).update(payloadStr).digest('hex');
+        const sigBuf = Buffer.from(clientSecret.toLowerCase());
+        const expectedHmacBuf = Buffer.from(expectedHmac.toLowerCase());
+
+        if (sigBuf.length === expectedHmacBuf.length && crypto.timingSafeEqual(sigBuf, expectedHmacBuf)) {
+            isValid = true;
+        }
+    } catch {
+        isValid = false;
+    }
+
+    if (!isValid) {
+        try {
+            const clientBuf = Buffer.from(clientSecret);
+            const secretBuf = Buffer.from(configuredSecret);
+            if (clientBuf.length === secretBuf.length && crypto.timingSafeEqual(clientBuf, secretBuf)) {
+                isValid = true;
+            }
+        } catch {
+            isValid = false;
+        }
+    }
+
+    if (!isValid) {
+        return res.status(401).json({
+            error: "Acesso não autorizado ao webhook: assinatura ou segredo ausente ou inválido.",
+            code: "WEBHOOK_UNAUTHORIZED",
+        });
+    }
+
+    next();
+}
+
+// ── MIDDLEWARE DE AUTENTICAÇÃO REAL E MATRIZ RBAC ESTRITA ─────────────────────
+async function verifyAuthAndRole(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+    allowedRoles: string[],
+    forbiddenMessage: string
+) {
+    try {
+        const authHeader = String(req.headers['authorization'] || '').trim();
+        const headerRoleRaw = String(req.headers['x-user-role'] || '').trim();
+        const headerUserId = req.headers['x-user-id'] ? Number(req.headers['x-user-id']) : null;
+        const headerEmail = String(req.headers['x-user-email'] || '').trim();
+        const headerName = String(req.headers['x-user-name'] || '').trim();
+        const bodyUserId = req.body && req.body.user_id ? Number(req.body.user_id) : null;
+
+        // 1. OBRIGATÓRIO: Header Authorization com Bearer JWT válido do Supabase
+        if (!authHeader) {
+            return res.status(401).json({
+                error: "Não autenticado. Header Authorization com Bearer token é obrigatório.",
+                code: "UNAUTHENTICATED",
+            });
+        }
+
+        if (!authHeader.toLowerCase().startsWith('bearer ')) {
+            return res.status(401).json({
+                error: "Formato de token inválido. Esperado 'Bearer <token>'.",
+                code: "INVALID_TOKEN",
+            });
+        }
+
+        const token = authHeader.slice(7).trim();
+        if (!token) {
+            return res.status(401).json({
+                error: "Token de autenticação vazio.",
+                code: "INVALID_TOKEN",
+            });
+        }
+
+        // Rejeição estrita de tokens legados ou inseguros
+        if (token.startsWith('procomfort_uid:') || token.startsWith('insecure_') || token.startsWith('fake_')) {
+            return res.status(401).json({
+                error: "Token inseguro ou formato legado revogado. Autentique-se via Supabase Auth.",
+                code: "INVALID_TOKEN",
+            });
+        }
+
+        // 2. Validação estrita do JWT exclusivamente através do Supabase Auth
+        let authData: any = null;
+        let authErr: any = null;
+        try {
+            const res = await supabaseAdmin.auth.getUser(token);
+            authData = res?.data;
+            authErr = res?.error;
+        } catch (e: any) {
+            authErr = e;
+        }
+
+        if (!authData?.user && (supabase as any)?.auth?.getUser) {
+            try {
+                const mockRes = await (supabase as any).auth.getUser(token);
+                if (mockRes?.data?.user) {
+                    authData = mockRes.data;
+                    authErr = mockRes.error;
+                }
+            } catch (mockAuthErr) {
+                authErr = mockAuthErr;
+            }
+        }
+
+        if (authErr || !authData?.user) {
+            return res.status(401).json({
+                error: "Token JWT inválido, revogado ou expirado.",
+                code: "INVALID_TOKEN",
+            });
+        }
+
+        const authUser = authData.user;
+        const authUserId = authUser.id; // UUID oficial do Supabase Auth
+        const authEmail = authUser.email;
+
+        // 3. Obtenção da identidade exclusivamente pelo auth_user_id UUID no banco public.users
+        let dbUser: any = null;
+        if (authUserId) {
+            const { data } = await supabaseAdmin
+                .from('users')
+                .select('*')
+                .eq('auth_user_id', authUserId)
+                .maybeSingle();
+            dbUser = data;
+        }
+
+        if (!dbUser) {
+            return res.status(401).json({
+                error: "Usuário autenticado não possui vínculo com o cadastro oficial de colaboradores.",
+                code: "USER_NOT_FOUND",
+            });
+        }
+
+        if (Number(dbUser.active) === 0 || dbUser.active === false) {
+            return res.status(403).json({
+                error: "Acesso bloqueado: conta de usuário inativa.",
+                code: "USER_INACTIVE",
+            });
+        }
+
+        // 4. DETECÇÃO E BLOQUEIO DE TENTATIVAS DE FALSIFICAÇÃO (ANTI-SPOOFING)
+        if (headerUserId !== null && Number(headerUserId) !== Number(dbUser.id)) {
+            return res.status(403).json({
+                error: "Tentativa de falsificação detectada: o cabeçalho x-user-id diverge do usuário autenticado pelo token.",
+                code: "IDENTITY_SPOOFING_DETECTED",
+            });
+        }
+
+        if (bodyUserId !== null && Number(bodyUserId) !== Number(dbUser.id)) {
+            return res.status(403).json({
+                error: "Tentativa de falsificação detectada: o campo user_id no corpo diverge do usuário autenticado pelo token.",
+                code: "IDENTITY_SPOOFING_DETECTED",
+            });
+        }
+
+        if (headerEmail && headerEmail.toLowerCase() !== String(dbUser.email || '').toLowerCase()) {
+            return res.status(403).json({
+                error: "Tentativa de falsificação detectada: o cabeçalho x-user-email diverge do usuário autenticado pelo token.",
+                code: "IDENTITY_SPOOFING_DETECTED",
+            });
+        }
+
+        if (headerName && headerName.toLowerCase() !== String(dbUser.name || '').trim().toLowerCase()) {
+            return res.status(403).json({
+                error: "Tentativa de falsificação detectada: o cabeçalho x-user-name diverge do usuário autenticado pelo token.",
+                code: "IDENTITY_SPOOFING_DETECTED",
+            });
+        }
+
+        const dbCanonicalRole = normalizeCanonicalRoleForAuth(dbUser.role);
+        const headerCanonicalRole = normalizeCanonicalRoleForAuth(headerRoleRaw);
+
+        if (headerCanonicalRole && dbCanonicalRole && headerCanonicalRole !== dbCanonicalRole) {
+            return res.status(403).json({
+                error: `Tentativa de falsificação de perfil detectada: o cabeçalho x-user-role (${headerRoleRaw}) diverge do perfil oficial (${dbUser.role}).`,
+                code: "ROLE_SPOOFING_DETECTED",
+            });
+        }
+
+        // 5. Autoridade exclusiva do banco: a identidade fica somente em req.user
+        if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+            req.body.user_id = dbUser.id;
+        }
+        (req as any).user = dbUser;
+        (req as any).authUser = dbUser;
+
+        // 6. Validar papel na matriz RBAC
+        const canonicalAllowed = allowedRoles.map(normalizeCanonicalRoleForAuth);
+        if (!canonicalAllowed.includes(dbCanonicalRole)) {
+            return res.status(403).json({
+                error: forbiddenMessage,
+                code: "INSUFFICIENT_ROLE",
+            });
+        }
+
+        next();
+    } catch (err: any) {
+        console.error("[AUTH] Erro ao validar permissões:", err);
+        return res.status(500).json({ error: "Erro interno na validação de segurança." });
+    }
+}
+
+export const VALID_AUDIT_READER_ROLES = ['Administrador', 'PCP'];
+
+export const isAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_ADMIN_ROLES, "Acesso negado. Apenas administradores podem realizar esta ação.");
+
+export const isAuditReader = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_AUDIT_READER_ROLES, "Acesso negado. Apenas Administrador e PCP podem consultar a auditoria.");
+
+export const isPcpOrSupervisorOrAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_PCP_SUPERVISOR_ROLES, "Acesso negado. Ação permitida apenas para PCP, Supervisor ou Administração.");
+
+export const isAdminOrComercial = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_COMMERCIAL_OR_MANAGEMENT_ROLES, "Acesso negado. Ação permitida apenas para Administração, PCP, Supervisor ou Comercial.");
+
+export const canOperateProduction = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_PRODUCTION_OPERATION_ROLES, "Acesso negado. Seu perfil não possui permissão para executar apontamentos de produção.");
+
+export const isAuthenticated = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_AUTHENTICATED_ROLES, "Acesso negado. Login necessário.");
+
+// ──────────────── Supabase status (health check) ────────────────────────────────────────────────────────────
+export function getActorId(req: express.Request): number | null {
+    const id = Number((req as any).authUser?.id ?? (req as any).user?.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+export function getActorName(req: express.Request, fallback = "Sistema"): string {
+    return String((req as any).authUser?.name ?? (req as any).user?.name ?? fallback);
+}
+
+app.get("/api/supabase/status", async (_req, res) => {
+    const { error } = await supabaseAdmin
+        .from("stages")
+        .select("id", { count: "exact", head: true });
+    if (error)
+        return res.status(500).json({ status: "error", message: "Banco indisponível." });
+    return res.json({ status: "success", message: "Supabase SDK funcionando!" });
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Production Utils (Centralized Finished Pieces Calculation) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
@@ -1477,9 +1531,9 @@ function _calculateFinishedPiecesByPeriod(
 }
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Dashboard Stats ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/dashboard/stats", async (req, res) => {
+app.get("/api/dashboard/stats", isAuthenticated, async (req, res) => {
     const { startDate, endDate, product_type, print_type } = req.query;
-    const { data, error } = await supabase.rpc("get_dashboard_stats_v2", {
+    const { data, error } = await supabaseAdmin.rpc("get_dashboard_stats_v2", {
         p_start_date: startDate || null,
         p_end_date: endDate || null,
         p_product_type: product_type || null,
@@ -1516,9 +1570,10 @@ app.get("/api/dashboard/stats", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config & Goals ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/config", async (req, res) => {
-    const isAdminUser = req.headers["x-user-role"] === "Admin";
-    const { data, error } = await supabase.from("config_producao").select("*").single();
+app.get("/api/config", isAuthenticated, async (req, res) => {
+    const userRole = (req as any).user?.role;
+    const isAdminUser = userRole === "Administrador";
+    const { data, error } = await supabaseAdmin.from("config_producao").select("*").single();
     if (checkError(error, res)) return;
     if (!isAdminUser && data) {
         delete data.meta_custo_por_peca;
@@ -1539,21 +1594,31 @@ app.patch("/api/config", isAdmin, async (req, res) => {
     if (auto_pause_time_weekday !== undefined) updates.auto_pause_time_weekday = auto_pause_time_weekday;
     if (auto_pause_time_friday !== undefined) updates.auto_pause_time_friday = auto_pause_time_friday;
     if (auto_pause_time_lunch !== undefined) updates.auto_pause_time_lunch = auto_pause_time_lunch;
-    const { data, error } = await supabase
+    if (Object.keys(updates).length === 0) {
+        const { data: currentConfig, error: readErr } = await supabaseAdmin
+            .from("config_producao")
+            .select("*")
+            .limit(1)
+            .maybeSingle();
+        if (checkError(readErr, res)) return;
+        return res.json(currentConfig || {});
+    }
+    const { data, error } = await supabaseAdmin
         .from("config_producao")
         .update(updates)
         .eq("id", 1)
         .select()
-        .single();
+        .maybeSingle();
     if (checkError(error, res)) return;
-    return res.json(data);
+    return res.json(data || {});
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Reports ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/reports", async (req, res) => {
-    const isAdminUser = req.headers["x-user-role"] === "Admin";
+app.get("/api/reports", isAuthenticated, async (req, res) => {
+    const userRole = (req as any).user?.role;
+    const isAdminUser = userRole === "Administrador";
     const { period, user_id, stage_id, startDate, endDate, print_type } = req.query;
-    const { data, error } = await supabase.rpc("get_reports", {
+    const { data, error } = await supabaseAdmin.rpc("get_reports", {
         p_period: period || "day",
         p_user_id: user_id ? Number(user_id) : null,
         p_stage_id: stage_id ? Number(stage_id) : null,
@@ -2192,7 +2257,9 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                     .delete()
                     .or(`order_number.eq.${orderNumber},olist_order_id.eq.${detail.id}`)
                     .not("deleted_at", "is", null);
-            } catch (_) {}
+            } catch (delErr) {
+                console.warn('[OlistSync] Aviso ao limpar pedidos deletados:', delErr);
+            }
 
             let { data: createdOrder, error: insertErr } = await supabaseAdmin
                 .from("orders")
@@ -2223,15 +2290,14 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                 existingOlistIds.add(olistId);
                 importedOrders.push(createdOrder);
 
-                try {
-                    await supabaseAdmin.from("order_history").insert({
-                        order_id: createdOrder.id,
-                        usuario: "Olist Integrator (Auto)",
-                        acao: "importou_olist",
-                        antes: null,
-                        depois: { olist_id: detail.id, status: "Rascunho", items: detail.itens }
-                    });
-                } catch (_) {}
+                await logOrderHistory(supabaseAdmin, {
+                    order_id: createdOrder.id,
+                    usuario: "Olist Integrator (Auto)",
+                    acao: "importou_olist",
+                    antes: null,
+                    depois: { olist_id: detail.id, status: "Rascunho", items: detail.itens },
+                    detalhes: "Importação automática via Olist",
+                });
             }
         } catch (itemErr: any) {
             console.error(`[OlistSync] Falha ao processar pedido Olist #${olistId}:`, itemErr);
@@ -2355,7 +2421,7 @@ app.use(async (req, res, next) => {
 });
 
 // Temporary debug endpoint to see what orders the Tiny API returns
-app.get("/api/integrations/olist/debug", async (_req, res) => {
+app.get("/api/integrations/olist/debug", isAdmin, async (_req, res) => {
     try {
         const token = await _getEffectiveOlistToken();
         if (!token) {
@@ -2384,7 +2450,7 @@ app.get("/api/integrations/olist/debug", async (_req, res) => {
     }
 });
 
-app.post("/api/integrations/olist/sync", async (req, res) => {
+app.post("/api/integrations/olist/sync", isAdminOrComercial, async (req, res) => {
     try {
         const tokenOverride = await _getEffectiveOlistToken();
         const days = req.body?.days !== undefined ? Number(req.body.days) : 1; // Default to 1 (de hoje em diante)
@@ -2392,11 +2458,11 @@ app.post("/api/integrations/olist/sync", async (req, res) => {
         return res.json({ success: true, ...result });
     } catch (err: any) {
         console.error("[OlistSync API Error]:", err);
-        return res.json({ success: false, error: err.message || "Erro na sincroniza├â┬º├â┬úo com Olist ERP" });
+        return res.json({ success: false, error: err.message || "Erro na sincronização com Olist ERP" });
     }
 });
 
-app.post("/api/integrations/olist/reprocess-normalization", async (_req, res) => {
+app.post("/api/integrations/olist/reprocess-normalization", isAdmin, async (_req, res) => {
     try {
         const { data: orders, error } = await supabaseAdmin
             .from("orders")
@@ -2465,18 +2531,14 @@ app.post("/api/integrations/olist/reprocess-normalization", async (_req, res) =>
                     .update({ items: updatedItems })
                     .eq("id", order.id);
 
-                try {
-                    await supabaseAdmin.from("order_history").insert({
-                        order_id: order.id,
-                        acao: "reprocessou_normalizacao",
-                        detalhes: "Reprocessamento autom├â┬ítico da normaliza├â┬º├â┬úo de modelos, tecidos, cores e tamanhos",
-                        usuario: "Sistema (Reprocessamento Olist)",
-                        antes: { items: itemsRaw },
-                        depois: { items: updatedItems }
-                    });
-                } catch (hErr) {
-                    console.warn(`[ReprocessHistory] Warning: ${hErr}`);
-                }
+                await logOrderHistory(supabaseAdmin, {
+                    order_id: order.id,
+                    acao: "reprocessou_normalizacao",
+                    detalhes: "Reprocessamento automático da normalização de modelos, tecidos, cores e tamanhos",
+                    usuario: "Sistema (Reprocessamento Olist)",
+                    antes: { items: itemsRaw },
+                    depois: { items: updatedItems }
+                });
             }
         }
 
@@ -2485,15 +2547,15 @@ app.post("/api/integrations/olist/reprocess-normalization", async (_req, res) =>
             total_orders_analyzed: orders.length,
             reprocessed_count: reprocessedCount,
             updated_orders: detailsList,
-            message: `Reprocessamento conclu├â┬¡do com sucesso. ${reprocessedCount} pedido(s) atualizado(s).`
+            message: `Reprocessamento concluído com sucesso. ${reprocessedCount} pedido(s) atualizado(s).`
         });
     } catch (err: any) {
         console.error("[ReprocessNormalization API Error]:", err);
-        return res.status(500).json({ success: false, error: err.message || "Erro no reprocessamento da normaliza├â┬º├â┬úo" });
+        return res.status(500).json({ success: false, error: err.message || "Erro no reprocessamento da normalização" });
     }
 });
 
-app.post("/api/webhooks/olist", async (req, res) => {
+app.post("/api/webhooks/olist", verifyOlistWebhookSecret, async (req, res) => {
     try {
         console.log("[Olist Webhook] Recebido webhook do Olist/Tiny ERP:", req.body);
         const result = await _syncOlistOrders();
@@ -2504,7 +2566,7 @@ app.post("/api/webhooks/olist", async (req, res) => {
     }
 });
 
-app.get("/api/orders/drafts", async (_req, res) => {
+app.get("/api/orders/drafts", isAdminOrComercial, async (_req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from("orders")
@@ -2520,10 +2582,10 @@ app.get("/api/orders/drafts", async (_req, res) => {
     }
 });
 
-app.delete("/api/orders/drafts/:id", async (req, res) => {
+app.delete("/api/orders/drafts/:id", isAdminOrComercial, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
-        const usuario = (req.headers["x-user-name"] as string) || "Usu├â┬írio";
+        const usuario = getActorName(req, "Usuário");
         const now = new Date().toISOString();
 
         const { error } = await supabaseAdmin
@@ -2533,15 +2595,15 @@ app.delete("/api/orders/drafts/:id", async (req, res) => {
             .eq("status", "Rascunho");
 
         if (checkError(error, res, "Erro ao excluir rascunho")) return;
-        return res.json({ success: true, message: "Rascunho exclu├â┬¡do com sucesso" });
+        return res.json({ success: true, message: "Rascunho excluído com sucesso" });
     } catch (err: any) {
         return res.status(500).json({ error: err.message });
     }
 });
 
-app.post("/api/orders/drafts/cleanup", async (req, res) => {
+app.post("/api/orders/drafts/cleanup", isAdminOrComercial, async (req, res) => {
     try {
-        const usuario = (req.headers["x-user-name"] as string) || "Usu├â┬írio";
+        const usuario = getActorName(req, "Usuário");
         const now = new Date().toISOString();
         const forceAll = req.body?.all === true;
 
@@ -2565,10 +2627,10 @@ app.post("/api/orders/drafts/cleanup", async (req, res) => {
     }
 });
 
-app.post("/api/orders/:id/confirm-draft", async (req, res) => {
+app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
-        const usuario = (req.headers["x-user-name"] as string) || "Vendedora";
+        const usuario = getActorName(req, "Vendedora");
         const { print_type, product_type, deadline, observations, required_stages, num_colors } = req.body;
 
         if (!print_type) {
@@ -2586,8 +2648,7 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
         }
 
         const rawStages = required_stages || currentOrder.required_stages || [1, 17, 8];
-        const filteredStages = Array.isArray(rawStages) ? rawStages.filter((id: any) => ![2, 7, 12].includes(Number(id))) : [];
-        const stagesArray = filteredStages.length > 0 ? filteredStages : [1, 17, 8];
+        const stagesArray = Array.isArray(rawStages) && rawStages.length > 0 ? rawStages.map((id: any) => Number(id)) : [1, 17, 8];
 
         const updates: any = {
             status: "Entrada",
@@ -2609,15 +2670,14 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
 
         if (checkError(updateErr, res, "Erro ao liberar pedido para produ├â┬º├â┬úo")) return;
 
-        try {
-            await supabaseAdmin.from("order_history").insert({
-                order_id: orderId,
-                usuario,
-                acao: "confirmou_rascunho",
-                antes: currentOrder,
-                depois: updatedOrder
-            });
-        } catch (_) {}
+        await logOrderHistory(supabaseAdmin, {
+            order_id: orderId,
+            usuario,
+            acao: "confirmou_rascunho",
+            antes: currentOrder,
+            depois: updatedOrder,
+            detalhes: "Confirmação de rascunho de pedido",
+        });
 
         return res.json({ success: true, order: updatedOrder });
     } catch (err: any) {
@@ -2627,8 +2687,8 @@ app.post("/api/orders/:id/confirm-draft", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Order Templates ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/order-templates", async (_req, res) => {
-    const { data, error } = await supabase
+app.get("/api/order-templates", isAuthenticated, async (_req, res) => {
+    const { data, error } = await supabaseAdmin
         .from("order_templates")
         .select("*");
     if (checkError(error, res)) return;
@@ -2637,7 +2697,7 @@ app.get("/api/order-templates", async (_req, res) => {
 
 app.post("/api/order-templates", isAdmin, async (req, res) => {
     const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from("order_templates")
         .insert({
             name,
@@ -2655,7 +2715,7 @@ app.post("/api/order-templates", isAdmin, async (req, res) => {
 
 app.patch("/api/order-templates/:id", isAdmin, async (req, res) => {
     const { name, product_type, print_type, quantity, observations, required_stages } = req.body;
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from("order_templates")
         .update({
             name,
@@ -2671,7 +2731,7 @@ app.patch("/api/order-templates/:id", isAdmin, async (req, res) => {
 });
 
 app.delete("/api/order-templates/:id", isAdmin, async (req, res) => {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from("order_templates")
         .delete()
         .eq("id", Number(req.params.id));
@@ -2680,10 +2740,10 @@ app.delete("/api/order-templates/:id", isAdmin, async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Delivery Forecast ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/orders/delivery-forecast", async (_req, res) => {
+app.get("/api/orders/delivery-forecast", isAuthenticated, async (_req, res) => {
     try {
         // 1. Active orders (not delivered, not cancelled, not deleted)
-        const { data: rawOrders, error: ordersErr } = await supabase
+        const { data: rawOrders, error: ordersErr } = await supabaseAdmin
             .from("orders")
             .select("id, order_number, client_name, quantity, deadline, status, required_stages, print_type, product_type, created_at")
             .is("deleted_at", null)
@@ -2694,7 +2754,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         if (!rawOrders || rawOrders.length === 0) return res.json([]);
 
         // 2. All stages sorted
-        const { data: allStages, error: stagesErr } = await supabase
+        const { data: allStages, error: stagesErr } = await supabaseAdmin
             .from("stages")
             .select("id, name, sort_order, ideal_time, real_average_time, execution_count, calculation_type")
             .eq("active", 1)
@@ -2703,7 +2763,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         if (stagesErr) throw stagesErr;
 
         // 3. Capacity config
-        const { data: configRows } = await supabase
+        const { data: configRows } = await supabaseAdmin
             .from("config_producao")
             .select("jornada_horas, operadores_ativos, eficiencia_percentual")
             .limit(1);
@@ -2860,13 +2920,13 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
 
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Orders ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", isAuthenticated, async (req, res) => {
     const { search, stage_id, stage_status, product_type, print_type, include_delivered } = req.query;
     let data: any[] | null = null;
     let error: any = null;
 
     try {
-        const rpcRes = await supabase.rpc("get_orders_with_stages", {
+        const rpcRes = await supabaseAdmin.rpc("get_orders_with_stages", {
             p_search: search || null,
             p_stage_id: stage_id ? Number(stage_id) : null,
             p_stage_status: stage_status || null,
@@ -2891,7 +2951,9 @@ app.get("/api/orders", async (req, res) => {
                 data = fallbackData;
                 error = null;
             }
-        } catch (_) {}
+        } catch (fbErr) {
+            console.warn('[API] Aviso na busca fallback de pedidos:', fbErr);
+        }
     }
 
     if (checkError(error, res, "Erro ao buscar pedidos")) return;
@@ -3010,7 +3072,6 @@ app.get("/api/orders", async (req, res) => {
         for (const order of data) {
             if (Array.isArray(order.stages_status)) {
                 order.stages_status = order.stages_status
-                    .filter((st: any) => ![2, 7, 12].includes(Number(st.id)))
                     .map((st: any) => {
                         const execState = execStateByOrderStage.get(`${order.id}_${Number(st.id)}`);
                         if (execState === "Finalizado") {
@@ -3074,7 +3135,7 @@ app.get("/api/orders", async (req, res) => {
     return res.json(data);
 });
 
-app.get("/api/orders/:id/stage-observations", async (req, res) => {
+app.get("/api/orders/:id/stage-observations", isAuthenticated, async (req, res) => {
     const orderId = Number(req.params.id);
     const { data, error } = await supabaseAdmin
         .from("stage_observations")
@@ -3095,7 +3156,7 @@ app.get("/api/orders/:id/stage-observations", async (req, res) => {
     return res.json(enriched);
 });
 
-app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
+app.post("/api/orders", isAdminOrComercial, upload.array("art_files", 10), async (req, res) => {
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors } = req.body;
     const order_number = `PED-${Date.now().toString().slice(-6)}`;
     const art_urls: string[] = [];
@@ -3135,7 +3196,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
     }
 
     // 2. Estimate time
-    const { data: estimateData } = await supabase
+    const { data: estimateData } = await supabaseAdmin
         .from("orders")
         .select("total_time_seconds")
         .eq("product_type", product_type)
@@ -3151,7 +3212,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
         : 3600;
 
     // 3. Create order
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from("orders")
         .insert({
             order_number,
@@ -3178,7 +3239,7 @@ app.post("/api/orders", upload.array("art_files", 10), async (req, res) => {
 // Soft delete ├óÔé¼ÔÇØ mant├â┬®m hist├â┬│rico de execu├â┬º├â┬Áes intacto
 app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     const { id } = req.params;
-    const usuario = (req.headers["x-user-name"] as string) || "Admin";
+    const usuario = getActorName(req, "Administrador");
 
     // 1. Fetch current order before soft-deleting
     const { data: order, error: fetchErr } = await supabaseAdmin
@@ -3187,8 +3248,8 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
         .eq("id", Number(id))
         .single();
 
-    if (fetchErr || !order) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
-    if (order.deleted_at) return res.status(400).json({ error: "Pedido j├â┬í foi exclu├â┬¡do" });
+    if (fetchErr || !order) return res.status(404).json({ error: "Pedido não encontrado" });
+    if (order.deleted_at) return res.status(400).json({ error: "Pedido já foi excluído" });
 
     // 2. Soft delete ├óÔé¼ÔÇØ only update deleted_at and deleted_by
     const now = new Date().toISOString();
@@ -3200,19 +3261,20 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     if (checkError(updateErr, res, "Erro ao excluir pedido")) return;
 
     // 3. Log to order_history
-    await supabaseAdmin.from("order_history").insert({
+    await logOrderHistory(supabaseAdmin, {
         order_id: Number(id),
         usuario,
         acao: "excluiu",
         antes: order,
         depois: null,
+        detalhes: "Exclusão lógica do pedido",
     });
 
-    console.log(`[API] Pedido ${id} marcado como exclu├â┬¡do (soft delete) por ${usuario}`);
+    console.log(`[API] Pedido ${id} marcado como excluído (soft delete) por ${usuario}`);
     return res.json({ success: true });
 });
 
-app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, res) => {
+app.post("/api/orders/:id/images", isAdminOrComercial, upload.array("art_files", 10), async (req, res) => {
     const { id } = req.params;
     const files = (req as any).files;
 
@@ -3221,14 +3283,14 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
     }
 
     // 1. Get current order images
-    const { data: order, error: fetchError } = await supabase
+    const { data: order, error: fetchError } = await supabaseAdmin
         .from("orders")
         .select("art_urls, art_url")
         .eq("id", Number(id))
         .single();
 
     if (fetchError || !order) {
-        return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+        return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
     const current_urls = order.art_urls || [];
@@ -3268,7 +3330,7 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
     const updated_urls = [...current_urls, ...new_urls];
 
     // 3. Update order
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
         .from("orders")
         .update({
             art_urls: updated_urls,
@@ -3281,7 +3343,7 @@ app.post("/api/orders/:id/images", upload.array("art_files", 10), async (req, re
     return res.json({ success: true, art_urls: updated_urls });
 });
 
-app.patch("/api/orders/:id/status", async (req, res) => {
+app.patch("/api/orders/:id/status", isPcpOrSupervisorOrAdmin, async (req, res) => {
     const { status } = req.body;
     const updates: any = { status };
     if (status === 'Entregue') {
@@ -3289,7 +3351,7 @@ app.patch("/api/orders/:id/status", async (req, res) => {
     } else {
         updates.delivered_at = null;
     }
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from("orders")
         .update(updates)
         .eq("id", Number(req.params.id));
@@ -3297,8 +3359,8 @@ app.patch("/api/orders/:id/status", async (req, res) => {
     return res.json({ success: true });
 });
 
-// Update DTF checklist status and drawer location (accessible to anyone)
-app.patch("/api/orders/:id/dtf", async (req, res) => {
+// Update DTF checklist status and drawer location
+app.patch("/api/orders/:id/dtf", canOperateProduction, async (req, res) => {
     const orderId = Number(req.params.id);
     const { dtf_complete, dtf_location } = req.body;
 
@@ -3320,58 +3382,22 @@ app.patch("/api/orders/:id/dtf", async (req, res) => {
     if (dtf_complete !== undefined) updates.dtf_complete = dtf_complete;
     if (dtf_location !== undefined) updates.dtf_location = dtf_location;
 
-    let updateErr: any = null;
-    try {
-        const { error } = await supabaseAdmin
-            .from("orders")
-            .update(updates)
-            .eq("id", orderId);
-        updateErr = error;
-    } catch (e: any) {
-        updateErr = e;
-    }
+    const { error: updateErr } = await supabaseAdmin
+        .from("orders")
+        .update(updates)
+        .eq("id", orderId);
 
-    if (updateErr) {
-        // If dtf_location column is missing in Supabase, fallback gracefully to observations
-        if (updates.dtf_location !== undefined) {
-            console.warn(`[DTF UPDATE FALLBACK] Column dtf_location missing in Supabase for order ${orderId}. Saving in observations as fallback.`);
-            
-            if (updates.dtf_complete !== undefined) {
-                await supabaseAdmin.from("orders").update({ dtf_complete: updates.dtf_complete }).eq("id", orderId);
-            }
-
-            const existingObs = currentOrder.observations || "";
-            let newObs = existingObs;
-            if (existingObs.includes("[Gaveteiro:")) {
-                newObs = existingObs.replace(/\[Gaveteiro:[^\]]*\]/, updates.dtf_location ? `[Gaveteiro: ${updates.dtf_location}]` : "").trim();
-            } else if (updates.dtf_location) {
-                newObs = existingObs ? `${existingObs} [Gaveteiro: ${updates.dtf_location}]` : `[Gaveteiro: ${updates.dtf_location}]`;
-            }
-            await supabaseAdmin.from("orders").update({ observations: newObs }).eq("id", orderId);
-
-            const usuario = (req.headers["x-user-name"] as string) || "Operador";
-            await supabaseAdmin.from("order_history").insert({
-                order_id: orderId,
-                usuario,
-                acao: "editou",
-                antes: { dtf_complete: currentOrder.dtf_complete, observations: existingObs },
-                depois: { ...updates, observations: newObs },
-            });
-
-            return res.json({ success: true, fallback: true });
-        }
-
-        if (checkError(updateErr, res, "Erro ao atualizar status ou gaveteiro do DTF")) return;
-    }
+    if (checkError(updateErr, res, "Erro ao atualizar status ou gaveteiro do DTF")) return;
 
     // 3. Log to order_history
-    const usuario = (req.headers["x-user-name"] as string) || "Operador";
-    await supabaseAdmin.from("order_history").insert({
+    const usuario = getActorName(req, "Operador");
+    await logOrderHistory(supabaseAdmin, {
         order_id: orderId,
         usuario,
         acao: "editou",
         antes: { dtf_complete: currentOrder.dtf_complete, dtf_location: currentOrder.dtf_location },
         depois: updates,
+        detalhes: "Edição de status/localização DTF",
     });
 
     return res.json({ success: true });
@@ -3380,7 +3406,7 @@ app.patch("/api/orders/:id/dtf", async (req, res) => {
 // Full order edit with validation and audit log
 app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     const orderId = Number(req.params.id);
-    const usuario = (req.headers["x-user-name"] as string) || "Admin";
+    const usuario = getActorName(req, "Administrador");
     const confirmFinalized = req.headers["x-confirm-finalized"] === "true";
 
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url, dtf_complete, dtf_location } = req.body;
@@ -3434,88 +3460,45 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
     if (checkError(updateErr, res, "Erro ao atualizar pedido")) return;
 
     // 4. Log to order_history
-    await supabaseAdmin.from("order_history").insert({
+    await logOrderHistory(supabaseAdmin, {
         order_id: orderId,
         usuario,
         acao: "editou",
         antes: currentOrder,
         depois: { ...currentOrder, ...updates },
+        detalhes: "Atualização cadastral do pedido",
     });
 
     return res.json({ success: true });
 });
 
-// Cancel order ├óÔé¼ÔÇØ keeps history, removes from capacity calculations
+// Cancel order — atomic transactional RPC with history, allocations, and audit
 app.patch("/api/orders/:id/cancel", isAdminOrComercial, async (req, res) => {
-    const orderId = Number(req.params.id);
-    const usuario = (req.headers["x-user-name"] as string) || "Admin";
-
-    const { data: currentOrder, error: fetchErr } = await supabaseAdmin
-        .from("orders")
-        .select("*")
-        .eq("id", orderId)
-        .single();
-
-    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
-    if (currentOrder.deleted_at) return res.status(400).json({ error: "Pedido exclu├â┬¡do n├â┬úo pode ser cancelado" });
-    if (currentOrder.status === "Cancelado") return res.status(400).json({ error: "Pedido j├â┬í est├â┬í cancelado" });
-
-    const now = new Date().toISOString();
-    const { error: updateErr } = await supabaseAdmin
-        .from("orders")
-        .update({ status: "Cancelado", cancelled_at: now, cancelled_by: usuario })
-        .eq("id", orderId);
-
-    if (checkError(updateErr, res, "Erro ao cancelar pedido")) return;
-
-    await supabaseAdmin.from("order_history").insert({
-        order_id: orderId,
-        usuario,
-        acao: "cancelou",
-        antes: currentOrder,
-        depois: { ...currentOrder, status: "Cancelado", cancelled_at: now, cancelled_by: usuario },
-    });
-
-    // Realoca├â┬º├â┬úo autom├â┬ítica de pe├â┬ºas cortadas liberadas pelo cancelamento
     try {
-        const [{ data: activeOrders }, { data: existingAllocations }] = await Promise.all([
-            supabaseAdmin
-                .from("orders")
-                .select("*")
-                .is("deleted_at", null)
-                .not("status", "in", '("Entregue","Cancelado")')
-                .neq("id", orderId),
-            supabaseAdmin
-                .from("corte_allocations")
-                .select("*")
-                .eq("order_id", orderId),
-        ]);
-
-        if (activeOrders && activeOrders.length > 0) {
-            const reallocatedLogs = reallocateOnCancellation(orderId, activeOrders, existingAllocations || []);
-            if (reallocatedLogs.length > 0) {
-                for (const log of reallocatedLogs) {
-                    const receivingOrder = activeOrders.find(o => o.id === log.order_id);
-                    if (receivingOrder) {
-                        await supabaseAdmin
-                            .from("orders")
-                            .update({
-                                items: receivingOrder.items,
-                                stages_status: receivingOrder.stages_status
-                            })
-                            .eq("id", receivingOrder.id);
-                    }
-                }
-                try {
-                    await supabaseAdmin.from("corte_allocations").insert(reallocatedLogs);
-                } catch (_) {}
-            }
+        const orderId = Number(req.params.id);
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Sessão inválida ou sem identificação de usuário." });
         }
-    } catch (reallocErr) {
-        console.warn("[API] Erro na realoca├â┬º├â┬úo de corte p├â┬│s-cancelamento:", reallocErr);
+        const { reason, idempotency_key } = req.body || {};
+        const { data, error } = await supabaseAdmin.rpc("pcp_tx_cancel_order", {
+            p_order_id: orderId,
+            p_user_id: actorId,
+            p_reason: reason || null,
+            p_idempotency_key: idempotency_key || null
+        });
+        if (error) {
+            console.error("[API] Erro ao cancelar pedido via RPC:", error);
+            const isNotFound = error.message?.includes('ORDER_NOT_FOUND');
+            const isBadRequest = error.message?.includes('ORDER_DELETED') || error.message?.includes('USER_ID_REQUIRED');
+            const status = isNotFound ? 404 : (isBadRequest ? 400 : 500);
+            return res.status(status).json({ error: error.message });
+        }
+        return res.json(data || { success: true });
+    } catch (err: any) {
+        console.error("[API] Erro interno ao cancelar pedido:", err);
+        return res.status(500).json({ error: err.message || "Erro interno ao processar cancelamento" });
     }
-
-    return res.json({ success: true });
 });
 
 // Order history / audit log
@@ -3532,7 +3515,7 @@ app.get("/api/orders/:id/history", isAdminOrComercial, async (req, res) => {
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Consolidated Cutting Panel APIs ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 
 // GET /api/cutting/consolidated-demand
-app.get("/api/cutting/consolidated-demand", async (_req, res) => {
+app.get("/api/cutting/consolidated-demand", isAuthenticated, async (_req, res) => {
     try {
         const { data: activeOrders, error } = await supabaseAdmin
             .from("orders")
@@ -3554,9 +3537,14 @@ app.get("/api/cutting/consolidated-demand", async (_req, res) => {
 });
 
 // POST /api/cutting/register-consolidated
-app.post("/api/cutting/register-consolidated", async (req, res) => {
+app.post("/api/cutting/register-consolidated", canOperateProduction, async (req, res) => {
     try {
-        const { item_key, quantidade_cortada, user_id, user_name } = req.body;
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Identificação do operador obrigatória na sessão.", code: "USER_ID_REQUIRED" });
+        }
+
+        const { item_key, quantidade_cortada, idempotency_key, allocations } = req.body || {};
 
         if (!item_key) {
             return res.status(400).json({ error: "Item a cortar é obrigatório." });
@@ -3566,186 +3554,145 @@ app.post("/api/cutting/register-consolidated", async (req, res) => {
             return res.status(400).json({ error: "Quantidade cortada deve ser maior que 0." });
         }
 
-        const { data: activeOrders, error: fetchErr } = await supabaseAdmin
-            .from("orders")
-            .select("*")
-            .is("deleted_at", null)
-            .not("status", "in", '("Entregue","Cancelado")');
+        const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || null;
 
-        if (fetchErr || !activeOrders) {
-            return res.status(500).json({ error: "Erro ao carregar pedidos para alocação" });
+        const { data: rpcResult, error: rpcErr } = await supabaseAdmin.rpc("pcp_tx_register_consolidated_cutting", {
+            p_item_key: item_key,
+            p_quantidade_cortada: cutQty,
+            p_idempotency_key: effectiveKey,
+            p_user_id: actorId,
+            p_allocations: allocations || null
+        });
+
+        if (rpcErr) {
+            console.error("[API] Erro na RPC pcp_tx_register_consolidated_cutting:", rpcErr);
+            return res.status(400).json({ error: rpcErr.message || "Erro ao registrar corte consolidado via RPC." });
         }
 
-        const allocationHistory: any[] = [];
-        const result = allocateCuttingPieces(
-            activeOrders,
-            item_key,
-            cutQty,
-            user_name || "Operador",
-            Number(user_id) || 1,
-            allocationHistory
-        );
-
-        if (!result.success) {
-            return res.status(400).json({ error: "N├â┬úo h├â┬í demanda pendente para o item especificado." });
-        }
-
-        // Atualizar pedidos impactados (items JSONB & stages_status) no banco
-        for (const orderId of result.affected_order_ids) {
-            const updatedOrder = activeOrders.find(o => o.id === orderId);
-            if (updatedOrder) {
-                try {
-                    await supabaseAdmin
-                        .from("orders")
-                        .update({
-                            items: updatedOrder.items,
-                            stages_status: updatedOrder.stages_status
-                        })
-                        .eq("id", orderId);
-                } catch (e) {
-                    console.warn(`[API] Aviso ao atualizar items/stages_status do pedido #${orderId}:`, e);
-                }
-
-                // Atualizar order_stage_progress da etapa Corte (stage_id = 2)
-                const corteStage = (updatedOrder.stages_status || []).find((s: any) => s.id === 2);
-                if (corteStage) {
-                    const progPayload = {
-                        order_id: orderId,
-                        stage_id: 2,
-                        quantidade_pedido: corteStage.quantidade_pedido || updatedOrder.total_via_corte || updatedOrder.quantity || 1,
-                        quantidade_boa: corteStage.quantidade_boa || 0,
-                        quantidade_perdida: corteStage.quantidade_perdida || 0,
-                        pendencia_reposicao: 0,
-                        finished: !!corteStage.finished
-                    };
-                    await safeUpsertOrderStageProgress(supabaseAdmin, progPayload);
-
-                    // Registrar log de progresso no Supabase
-                    const logEntry = {
-                        order_id: orderId,
-                        stage_id: 2,
-                        user_id: Number(user_id) || 1,
-                        user_name: user_name || "Operador",
-                        quantidade_boa_incremento: corteStage.quantidade_boa,
-                        created_at: new Date().toISOString()
-                    };
-                    try {
-                        await supabaseAdmin.from("order_progress_logs").insert(logEntry);
-                    } catch (e) {}
-                }
-            }
-        }
-
-        // Salvar novos registros de aloca├â┬º├â┬úo em corte_allocations
-        if (result.allocations.length > 0) {
-            try {
-                await supabaseAdmin.from("corte_allocations").insert(result.allocations);
-            } catch (e) {
-                console.warn("[API] Aviso ao salvar logs em corte_allocations:", e);
-            }
-        }
-
-        return res.json(result);
+        return res.json(rpcResult);
     } catch (err: any) {
         console.error("[API] Erro ao registrar corte consolidado:", err);
-        return res.status(500).json({ error: "Erro ao registrar produ├â┬º├â┬úo consolidada de corte" });
+        return res.status(500).json({ error: "Erro ao registrar produção consolidada de corte." });
     }
 });
 
 // GET /api/cutting/allocations
-app.get("/api/cutting/allocations", async (_req, res) => {
+app.get("/api/cutting/allocations", isAuthenticated, async (_req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from("corte_allocations")
             .select("*")
             .order("created_at", { ascending: false });
 
-        if (error || !data) {
-            return res.json([]);
+        if (error) {
+            console.error("[API] Erro ao buscar alocações de corte:", error);
+            return res.status(500).json({ error: "Erro ao buscar alocações de corte." });
         }
-        return res.json(data);
+        return res.json(data || []);
     } catch (err: any) {
-        return res.json([]);
+        return res.status(500).json({ error: "Erro interno ao buscar alocações de corte." });
     }
 });
 
 // POST /api/cutting/optitex-risco
-app.post("/api/cutting/optitex-risco", async (req, res) => {
+app.post("/api/cutting/optitex-risco", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Identificação do operador obrigatória na sessão.", code: "USER_ID_REQUIRED" });
+        }
+
         const record = req.body;
         if (!record || !record.model || !record.composicao) {
             return res.status(400).json({ error: "Dados inválidos de risco Optitex." });
         }
         record.id = record.id || `opt-${Date.now()}`;
         record.created_at = record.created_at || new Date().toISOString();
+        record.user_id = actorId;
 
-        try {
-            await supabaseAdmin.from("optitex_riscos_validados").upsert([record]);
-        } catch (e) {}
+        const { data, error } = await supabaseAdmin.from("optitex_riscos_validados").upsert([record]).select("*").single();
+        if (error) {
+            console.error("[API] Erro ao salvar optitex_riscos_validados:", error);
+            return res.status(500).json({ error: error.message || "Erro ao salvar validação do Optitex." });
+        }
 
-        return res.json({ success: true, record });
+        return res.json({ success: true, record: data || record });
     } catch (err: any) {
-        return res.status(500).json({ error: "Erro ao salvar validação do Optitex." });
+        return res.status(500).json({ error: "Erro ao processar validação do Optitex." });
     }
 });
 
 // GET /api/cutting/optitex-riscos
-app.get("/api/cutting/optitex-riscos", async (_req, res) => {
+app.get("/api/cutting/optitex-riscos", isAuthenticated, async (_req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from("optitex_riscos_validados")
             .select("*")
             .order("created_at", { ascending: false });
 
-        if (error || !data) {
-            return res.json([]);
+        if (error) {
+            console.error("[API] Erro ao buscar riscos Optitex:", error);
+            return res.status(500).json({ error: "Erro ao buscar riscos Optitex." });
         }
-        return res.json(data);
+        return res.json(data || []);
     } catch (err: any) {
-        return res.json([]);
+        return res.status(500).json({ error: "Erro interno ao buscar riscos Optitex." });
     }
 });
 
-
 // POST /api/cutting/approved-plans
-app.post("/api/cutting/approved-plans", async (req, res) => {
+app.post("/api/cutting/approved-plans", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Identificação do operador obrigatória na sessão.", code: "USER_ID_REQUIRED" });
+        }
+
         const planRecord = req.body;
         if (!planRecord || !planRecord.id) {
             return res.status(400).json({ error: "Plano inválido." });
         }
+        planRecord.user_id = actorId;
+        planRecord.approved_at = planRecord.approved_at || new Date().toISOString();
 
-        try {
-            await supabaseAdmin.from("approved_enfesto_plans").upsert([planRecord]);
-        } catch (e) {}
+        const { data, error } = await supabaseAdmin.from("approved_enfesto_plans").upsert([planRecord]).select("*").single();
+        if (error) {
+            console.error("[API] Erro ao salvar approved_enfesto_plans:", error);
+            return res.status(500).json({ error: error.message || "Erro ao salvar plano aprovado." });
+        }
 
-        return res.json({ success: true, plan: planRecord });
+        return res.json({ success: true, plan: data || planRecord });
     } catch (err: any) {
-        return res.status(500).json({ error: "Erro ao salvar plano aprovado." });
+        return res.status(500).json({ error: "Erro ao processar plano aprovado." });
     }
 });
 
 // GET /api/cutting/approved-plans
-app.get("/api/cutting/approved-plans", async (_req, res) => {
+app.get("/api/cutting/approved-plans", isAuthenticated, async (_req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from("approved_enfesto_plans")
             .select("*")
             .order("created_at", { ascending: false });
 
-        if (error || !data) {
-            return res.json([]);
+        if (error) {
+            console.error("[API] Erro ao buscar planos aprovados:", error);
+            return res.status(500).json({ error: "Erro ao buscar planos aprovados." });
         }
-        return res.json(data);
+        return res.json(data || []);
     } catch (err: any) {
-        return res.json([]);
+        return res.status(500).json({ error: "Erro interno ao buscar planos aprovados." });
     }
 });
 
-
 // POST /api/cutting/ramado-decision
-app.post("/api/cutting/ramado-decision", async (req, res) => {
+app.post("/api/cutting/ramado-decision", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Identificação do operador obrigatória na sessão.", code: "USER_ID_REQUIRED" });
+        }
+
         const {
             model,
             fabric,
@@ -3759,125 +3706,84 @@ app.post("/api/cutting/ramado-decision", async (req, res) => {
             riscos_antes,
             riscos_depois,
             ganho_operacional,
-            user_id,
-            user_name
-        } = req.body;
+            idempotency_key
+        } = req.body || {};
 
         if (!model || !decision) {
-            return res.status(400).json({ error: "Modelo e decis├â┬úo s├â┬úo obrigat├â┬│rios." });
+            return res.status(400).json({ error: "Modelo e decisão são obrigatórios." });
         }
 
-        const decisionRecord = {
-            model,
-            fabric: fabric || 'RAMADO',
-            color: color || '',
-            tipo_tecido: tipo_tecido || 'RAMADO',
-            decision, // 'APROVADO_OTIMIZADO' | 'MANTIDO_EXATO'
-            plano_exato: plano_exato || {},
-            plano_otimizado: plano_otimizado || null,
-            excedente_proposto: excedente_proposto || null,
-            excedente_total: Number(excedente_total) || 0,
-            riscos_antes: Number(riscos_antes) || 0,
-            riscos_depois: Number(riscos_depois) || 0,
-            ganho_operacional: ganho_operacional || null,
-            user_id: Number(user_id) || 1,
-            user_name: user_name || 'Operador',
-            created_at: new Date().toISOString()
-        };
+        const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || null;
 
-        let insertedDecision: any = decisionRecord;
-        try {
-            const { data, error } = await supabaseAdmin
-                .from("ramado_decisions")
-                .insert([decisionRecord])
-                .select("*")
-                .single();
-            if (!error && data) {
-                insertedDecision = data;
-            }
-        } catch (e) {
-            console.warn("[API] Aviso ao salvar ramado_decisions no Supabase:", e);
-        }
-
-        // Se a decisão for APROVADO_OTIMIZADO e houver excedentes, salvar em producao_excedentes
-        const surplusItems: any[] = [];
-        if (decision === 'APROVADO_OTIMIZADO' && excedente_proposto && typeof excedente_proposto === 'object') {
-            for (const [sz, qty] of Object.entries(excedente_proposto)) {
-                const count = Number(qty);
-                if (count > 0) {
-                    const excItem = {
-                        decision_id: insertedDecision.id || Date.now(),
-                        model,
-                        fabric: fabric || 'RAMADO',
-                        color: color || '',
-                        size: sz,
-                        quantidade: count,
-                        origem: 'EXCEDENTE_DE_PRODUCAO',
-                        destino: 'ESTOQUE',
-                        created_at: new Date().toISOString()
-                    };
-                    surplusItems.push(excItem);
-                }
-            }
-
-            if (surplusItems.length > 0) {
-                try {
-                    await supabaseAdmin.from("producao_excedentes").insert(surplusItems);
-                } catch (e) {
-                    console.warn("[API] Aviso ao salvar producao_excedentes no Supabase:", e);
-                }
-            }
-        }
-
-        return res.json({
-            success: true,
-            decision: insertedDecision,
-            excedentes_gerados: surplusItems
+        const { data: rpcResult, error: rpcErr } = await supabaseAdmin.rpc("pcp_tx_record_ramado_decision", {
+            p_model: model,
+            p_fabric: fabric || 'RAMADO',
+            p_color: color || '',
+            p_tipo_tecido: tipo_tecido || 'RAMADO',
+            p_decision: decision,
+            p_plano_exato: plano_exato || {},
+            p_plano_otimizado: plano_otimizado || null,
+            p_excedente_proposto: excedente_proposto || null,
+            p_excedente_total: Number(excedente_total) || 0,
+            p_riscos_antes: Number(riscos_antes) || 0,
+            p_riscos_depois: Number(riscos_depois) || 0,
+            p_ganho_operacional: ganho_operacional || null,
+            p_user_id: actorId,
+            p_idempotency_key: effectiveKey
         });
+
+        if (rpcErr) {
+            console.error("[API] Erro na RPC pcp_tx_record_ramado_decision:", rpcErr);
+            return res.status(400).json({ error: rpcErr.message || "Erro ao registrar decisão RAMADO via RPC." });
+        }
+
+        return res.json(rpcResult);
     } catch (err: any) {
         console.error("[API] Erro ao registrar decisão RAMADO:", err);
-        return res.status(500).json({ error: "Erro ao registrar decisão de excedente RAMADO" });
+        return res.status(500).json({ error: "Erro ao registrar decisão de excedente RAMADO." });
     }
 });
 
 // GET /api/cutting/ramado-decisions
-app.get("/api/cutting/ramado-decisions", async (_req, res) => {
+app.get("/api/cutting/ramado-decisions", isAuthenticated, async (_req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from("ramado_decisions")
             .select("*")
             .order("created_at", { ascending: false });
 
-        if (error || !data) {
-            return res.json([]);
+        if (error) {
+            console.error("[API] Erro ao buscar decisões RAMADO:", error);
+            return res.status(500).json({ error: "Erro ao buscar decisões RAMADO." });
         }
-        return res.json(data);
+        return res.json(data || []);
     } catch (err: any) {
-        return res.json([]);
+        return res.status(500).json({ error: "Erro interno ao buscar decisões RAMADO." });
     }
 });
 
 // GET /api/cutting/producao-excedentes
-app.get("/api/cutting/producao-excedentes", async (_req, res) => {
+app.get("/api/cutting/producao-excedentes", isAuthenticated, async (_req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from("producao_excedentes")
             .select("*")
             .order("created_at", { ascending: false });
 
-        if (error || !data) {
-            return res.json([]);
+        if (error) {
+            console.error("[API] Erro ao buscar excedentes de produção:", error);
+            return res.status(500).json({ error: "Erro ao buscar excedentes de produção." });
         }
-        return res.json(data);
+        return res.json(data || []);
     } catch (err: any) {
-        return res.json([]);
+        return res.status(500).json({ error: "Erro interno ao buscar excedentes de produção." });
     }
 });
 
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Stages ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/stages", async (_req, res) => {
-    const { data, error } = await supabase
+app.get("/api/stages", isAuthenticated, async (req, res) => {
+    const { data, error } = await supabaseAdmin
         .from("stages")
         .select("*")
         .eq("active", 1)
@@ -3886,9 +3792,9 @@ app.get("/api/stages", async (_req, res) => {
     return res.json(data);
 });
 
-app.post("/api/stages", async (req, res) => {
+app.post("/api/stages", isPcpOrSupervisorOrAdmin, async (req, res) => {
     const { name, average_time_seconds, ideal_time, calculation_type, meta_diaria } = req.body;
-    const { data: maxData } = await supabase
+    const { data: maxData } = await supabaseAdmin
         .from("stages")
         .select("sort_order")
         .order("sort_order", { ascending: false })
@@ -3896,7 +3802,7 @@ app.post("/api/stages", async (req, res) => {
         .single();
     const sort_order = (maxData?.sort_order || 0) + 1;
 
-    let result = await supabase
+    const result = await supabaseAdmin
         .from("stages")
         .insert({ 
             name, 
@@ -3909,25 +3815,11 @@ app.post("/api/stages", async (req, res) => {
         .select()
         .single();
 
-    if (result.error && result.error.message.includes("meta_diaria")) {
-        result = await supabase
-            .from("stages")
-            .insert({ 
-                name, 
-                sort_order, 
-                average_time_seconds: Number(average_time_seconds) || 0,
-                ideal_time: Number(ideal_time) || Number(average_time_seconds) || 0,
-                calculation_type: calculation_type || 'por_peca'
-            })
-            .select()
-            .single();
-    }
-
     if (checkError(result.error, res)) return;
     return res.json(result.data);
 });
 
-app.patch("/api/stages/:id", async (req, res) => {
+app.patch("/api/stages/:id", isPcpOrSupervisorOrAdmin, async (req, res) => {
     const { name, active, sort_order, average_time_seconds, ideal_time, calculation_type, meta_diaria } = req.body;
     const updates: any = {};
     if (name !== undefined) updates.name = name;
@@ -3938,25 +3830,17 @@ app.patch("/api/stages/:id", async (req, res) => {
     if (calculation_type !== undefined) updates.calculation_type = calculation_type;
     if (meta_diaria !== undefined) updates.meta_diaria = meta_diaria !== null ? Number(meta_diaria) : null;
 
-    let result = await supabase
+    const result = await supabaseAdmin
         .from("stages")
         .update(updates)
         .eq("id", Number(req.params.id));
-
-    if (result.error && result.error.message.includes("meta_diaria")) {
-        delete updates.meta_diaria;
-        result = await supabase
-            .from("stages")
-            .update(updates)
-            .eq("id", Number(req.params.id));
-    }
 
     if (checkError(result.error, res)) return;
     return res.json({ success: true });
 });
 
-app.delete("/api/stages/:id", async (req, res) => {
-    const { error } = await supabase
+app.delete("/api/stages/:id", isAdmin, async (req, res) => {
+    const { error } = await supabaseAdmin
         .from("stages")
         .update({ active: 0 })
         .eq("id", Number(req.params.id));
@@ -3965,9 +3849,9 @@ app.delete("/api/stages/:id", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Loss Reasons & Re-entry Configuration ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/loss-reasons", async (_req, res) => {
+app.get("/api/loss-reasons", isAuthenticated, async (_req, res) => {
     try {
-        const reasons = await getLossReasons(supabase);
+        const reasons = await getLossReasons(supabaseAdmin);
         return res.json(reasons);
     } catch (err: any) {
         console.error("[API] Erro ao buscar motivos de perda:", err);
@@ -3981,7 +3865,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
         if (!Array.isArray(reasons)) {
             return res.status(400).json({ error: "Par├â┬ómetro 'reasons' deve ser um array." });
         }
-        const updated = await updateLossReasons(supabase, reasons);
+        const updated = await updateLossReasons(supabaseAdmin, reasons);
         return res.json({ success: true, reasons: updated });
     } catch (err: any) {
         console.error("[API] Erro ao atualizar motivos de perda:", err);
@@ -3990,7 +3874,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Partial Progress & Loss Logging ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/orders/:id/stage-progress", async (req, res) => {
+app.get("/api/orders/:id/stage-progress", isAuthenticated, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         const progressList = await getStageProgressForOrder(supabaseAdmin, orderId);
@@ -4001,7 +3885,7 @@ app.get("/api/orders/:id/stage-progress", async (req, res) => {
     }
 });
 
-app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
+app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         const stageId = Number(req.params.stageId);
@@ -4009,78 +3893,149 @@ app.post("/api/orders/:id/stages/:stageId/progress", async (req, res) => {
             incremento,
             quantidade_perdida,
             quantidade_retrabalho,
+            quantidade_transferida,
+            next_stage_id,
             observacao,
             transfer_to_next,
-            user_id,
-            user_name,
+            idempotency_key,
+            is_reposition,
+            order_item_id,
+            supervisor_override,
+            override_reason,
         } = req.body;
 
         if ((!incremento || Number(incremento) <= 0) && (!quantidade_perdida || Number(quantidade_perdida) <= 0) && (!quantidade_retrabalho || Number(quantidade_retrabalho) <= 0)) {
             return res.status(400).json({ error: "Quantidade incremental deve ser maior que 0." });
         }
 
-        const result = await logProgress(
-            supabaseAdmin,
-            orderId,
-            stageId,
-            Number(user_id) || 1,
-            user_name || (req.headers["x-user-name"] as string) || "Operador",
-            Number(incremento) || 0,
-            {
-                quantidade_perdida: Number(quantidade_perdida) || 0,
-                quantidade_retrabalho: Number(quantidade_retrabalho) || 0,
-                observacao,
-                transfer_to_next: transfer_to_next !== false,
-            }
-        );
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
+        }
+
+        const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string);
+        if (!effectiveKey || !String(effectiveKey).trim()) {
+            return res.status(400).json({
+                error: "Chave de idempotência (idempotency_key ou x-idempotency-key) é obrigatória para apontamento de produção.",
+                code: "IDEMPOTENCY_KEY_REQUIRED",
+            });
+        }
+        const transferInc = quantidade_transferida !== undefined ? Number(quantidade_transferida) : (transfer_to_next ? Number(incremento) || 0 : 0);
+
+        const { data: rpcRecordData, error: rpcRecordErr } = await supabaseAdmin.rpc("rpc_record_production", {
+            p_order_id: orderId,
+            p_stage_id: stageId,
+            p_user_id: actorId,
+            p_idempotency_key: String(effectiveKey).trim(),
+            p_good_inc: Number(incremento) || 0,
+            p_lost_inc: Number(quantidade_perdida) || 0,
+            p_rework_inc: Number(quantidade_retrabalho) || 0,
+            p_transfer_inc: transferInc,
+            p_next_stage_id: next_stage_id ? Number(next_stage_id) : null,
+            p_observation: observacao || null,
+            p_is_reposition: Boolean(is_reposition),
+            p_order_item_id: order_item_id ? Number(order_item_id) : null,
+            p_supervisor_override: Boolean(supervisor_override),
+            p_override_reason: override_reason || observacao || null,
+        });
+
+        if (rpcRecordErr) {
+            console.error("[API] Erro crítico: RPC rpc_record_production falhou ou não existe no Supabase:", rpcRecordErr);
+            return res.status(500).json({
+                error: `Erro na execução da RPC rpc_record_production: ${rpcRecordErr.message}`,
+                details: rpcRecordErr,
+                code: "RPC_EXECUTION_ERROR"
+            });
+        }
 
         if (observacao) {
             try {
                 await supabaseAdmin.from("stage_observations").insert({
                     order_id: orderId,
                     stage_id: stageId,
-                    user_id: Number(user_id) || 1,
+                    user_id: actorId,
                     observation: observacao,
                 });
-            } catch (_) {}
+            } catch (obsErr) {
+                console.warn("[API] Aviso ao registrar observação da etapa:", obsErr);
+            }
         }
 
-        return res.json(result);
+        const httpStatus = Number(rpcRecordData?.http_status) || 200;
+        return res.status(httpStatus).json({
+            ...rpcRecordData,
+            progress: rpcRecordData,
+        });
     } catch (err: any) {
         console.error("[API] Erro ao registrar progresso parcial:", err);
         return res.status(500).json({ error: "Erro ao registrar progresso parcial" });
     }
 });
 
-app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
+app.post("/api/orders/:id/stages/:stageId/loss", canOperateProduction, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         const stageId = Number(req.params.stageId);
-        const { quantidade_perdida, motivo, motivo_detalhe, etapa_reentrada_id, user_id, user_name } = req.body;
-
-        if (!quantidade_perdida || Number(quantidade_perdida) <= 0) {
-            return res.status(400).json({ error: "Quantidade perdida deve ser maior que 0." });
-        }
-        if (!motivo) {
-            return res.status(400).json({ error: "Motivo da perda ├â┬® obrigat├â┬│rio." });
-        }
-        if (motivo === "Outro" && (!motivo_detalhe || !motivo_detalhe.trim())) {
-            return res.status(400).json({ error: "Campo livre obrigat├â┬│rio para o motivo 'Outro'." });
-        }
-
-        const result = await logLoss(
-            supabaseAdmin,
-            orderId,
-            stageId,
-            Number(user_id) || 1,
-            user_name || "Operador",
-            Number(quantidade_perdida),
+        const {
+            quantidade_perdida,
             motivo,
             motivo_detalhe,
-            etapa_reentrada_id ? Number(etapa_reentrada_id) : undefined
-        );
+            etapa_reentrada_id,
+            order_item_id,
+            idempotency_key,
+            supervisor_override,
+            override_reason
+        } = req.body;
 
-        return res.json(result);
+        if (!quantidade_perdida || Number(quantidade_perdida) <= 0) {
+            return res.status(400).json({ error: "Quantidade perdida deve ser maior que 0.", code: "INVALID_QUANTITY" });
+        }
+        if (!motivo || !String(motivo).trim()) {
+            return res.status(400).json({ error: "Motivo da perda é obrigatório.", code: "REASON_REQUIRED" });
+        }
+        if (motivo === "Outro" && (!motivo_detalhe || !motivo_detalhe.trim())) {
+            return res.status(400).json({ error: "Detalhamento obrigatório para o motivo 'Outro'.", code: "REASON_DETAIL_REQUIRED" });
+        }
+
+        const rawIdempotency = (req.headers["x-idempotency-key"] as string) || (idempotency_key as string) || "";
+        const sanitizedIdempotencyKey = String(rawIdempotency).trim();
+        if (!sanitizedIdempotencyKey) {
+            return res.status(400).json({
+                error: "Chave de idempotência (x-idempotency-key no cabeçalho ou idempotency_key no corpo) é estritamente obrigatória para apontamento de perdas.",
+                code: "IDEMPOTENCY_KEY_REQUIRED"
+            });
+        }
+
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
+        }
+
+        const { data: rpcLossData, error: rpcLossErr } = await supabaseAdmin.rpc("rpc_record_loss", {
+            p_order_id: orderId,
+            p_stage_id: stageId,
+            p_user_id: actorId,
+            p_lost_qty: Number(quantidade_perdida),
+            p_reason: motivo,
+            p_reason_detail: motivo_detalhe || null,
+            p_reentry_stage_id: etapa_reentrada_id ? Number(etapa_reentrada_id) : null,
+            p_order_item_id: order_item_id ? Number(order_item_id) : null,
+            p_idempotency_key: sanitizedIdempotencyKey,
+            p_supervisor_override: Boolean(supervisor_override),
+            p_override_reason: override_reason || null,
+        });
+
+        if (rpcLossErr) {
+            console.error("[API] Erro ao executar rpc_record_loss:", rpcLossErr);
+            return res.status(500).json({
+                error: `Erro ao registrar perda: ${rpcLossErr.message}`,
+                details: rpcLossErr,
+                code: "RPC_EXECUTION_ERROR",
+            });
+        }
+
+        const httpStatus = Number(rpcLossData?.http_status) || 200;
+        return res.status(httpStatus).json(rpcLossData);
     } catch (err: any) {
         console.error("[API] Erro ao registrar perda:", err);
         return res.status(500).json({ error: "Erro ao registrar perda" });
@@ -4088,10 +4043,10 @@ app.post("/api/orders/:id/stages/:stageId/loss", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Loss & Rework Bottleneck Report ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/reports/losses", async (req, res) => {
+app.get("/api/reports/losses", isAuthenticated, async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        const data = await getLossReportDataStore(supabase, startDate as string, endDate as string);
+        const data = await getLossReportDataStore(supabaseAdmin, startDate as string, endDate as string);
         return res.json(data);
     } catch (err: any) {
         console.error("[API] Erro ao gerar relat├â┬│rio de perdas:", err);
@@ -4100,8 +4055,8 @@ app.get("/api/reports/losses", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Collaborator Stage Goals Overrides ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/collaborator-goals", async (_req, res) => {
-    const { data, error } = await supabase
+app.get("/api/collaborator-goals", isAuthenticated, async (_req, res) => {
+    const { data, error } = await supabaseAdmin
         .from("collaborator_stage_goals")
         .select("*, users(name), stages(name)");
     if (checkError(error, res)) return;
@@ -4113,14 +4068,24 @@ app.get("/api/collaborator-goals", async (_req, res) => {
     return res.json(formatted);
 });
 
-app.post("/api/collaborator-goals", async (req, res) => {
-    const { user_id, stage_id, meta_diaria } = req.body;
-    const { data, error } = await supabase
+app.post("/api/collaborator-goals", isPcpOrSupervisorOrAdmin, async (req, res) => {
+    const targetUserId = Number(req.body?.user_id);
+    const targetStageId = Number(req.body?.stage_id);
+    const metaDiaria = Number(req.body?.meta_diaria);
+
+    if (!targetUserId || targetUserId <= 0) {
+        return res.status(400).json({ error: "Colaborador inválido para atribuição de meta." });
+    }
+    if (!targetStageId || targetStageId <= 0) {
+        return res.status(400).json({ error: "Etapa inválida para atribuição de meta." });
+    }
+
+    const { data, error } = await supabaseAdmin
         .from("collaborator_stage_goals")
         .upsert({
-            user_id: Number(user_id),
-            stage_id: Number(stage_id),
-            meta_diaria: Number(meta_diaria),
+            user_id: targetUserId,
+            stage_id: targetStageId,
+            meta_diaria: metaDiaria || 0,
             updated_at: new Date().toISOString()
         }, { onConflict: "user_id,stage_id" })
         .select()
@@ -4129,8 +4094,8 @@ app.post("/api/collaborator-goals", async (req, res) => {
     return res.json(data);
 });
 
-app.delete("/api/collaborator-goals/:id", async (req, res) => {
-    const { error } = await supabase
+app.delete("/api/collaborator-goals/:id", isAdmin, async (req, res) => {
+    const { error } = await supabaseAdmin
         .from("collaborator_stage_goals")
         .delete()
         .eq("id", Number(req.params.id));
@@ -4187,7 +4152,8 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
                 order_number: exec.orders?.order_number,
                 client_name: exec.orders?.client_name,
                 product_type: exec.orders?.product_type,
-                quantity: exec.orders?.quantity
+                quantity: exec.orders?.quantity,
+                accumulated_pause_seconds: itemPauses.reduce((sum: number, p: any) => sum + (p.duration_seconds || 0), 0)
             };
         });
 
@@ -4200,8 +4166,8 @@ app.get("/api/executions/monitor", isAdmin, async (req, res) => {
     }
 });
 
-app.get("/api/executions/active/:userId", async (req, res) => {
-    const { data: executions, error } = await supabase
+app.get("/api/executions/active/:userId", isAuthenticated, async (req, res) => {
+    const { data: executions, error } = await supabaseAdmin
         .from("stage_executions")
         .select(`
             *,
@@ -4220,7 +4186,7 @@ app.get("/api/executions/active/:userId", async (req, res) => {
 
     // Fetch all pauses for these executions to calculate accumulated time
     const executionIds = executions.map(e => e.id);
-    const { data: pauses } = await supabase
+    const { data: pauses } = await supabaseAdmin
         .from("pauses")
         .select("*")
         .in("execution_id", executionIds);
@@ -4246,8 +4212,8 @@ app.get("/api/executions/active/:userId", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Executions ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/orders/:id/executions", async (req, res) => {
-    const { data, error } = await supabase
+app.get("/api/orders/:id/executions", isAuthenticated, async (req, res) => {
+    const { data, error } = await supabaseAdmin
         .from("stage_executions")
         .select(`
           *,
@@ -4260,7 +4226,7 @@ app.get("/api/orders/:id/executions", async (req, res) => {
     // Fetch all pauses for these executions to calculate accumulated time
     const executionIds = (data || []).map(e => e.id);
     const { data: pauses } = executionIds.length > 0
-        ? await supabase.from("pauses").select("*").in("execution_id", executionIds)
+        ? await supabaseAdmin.from("pauses").select("*").in("execution_id", executionIds)
         : { data: [] };
 
     const nowMs = new Date().getTime();
@@ -4283,211 +4249,58 @@ app.get("/api/orders/:id/executions", async (req, res) => {
     return res.json(formatted);
 });
 
-app.get("/api/executions/monitor", isAdmin, async (req, res) => {
-    const { data, error } = await supabase
-        .from("stage_executions")
-        .select(`
-          *,
-          stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count, calculation_type ),
-          users ( name ),
-          orders ( order_number, client_name, product_type, quantity )
-        `)
-        .eq("status", "Em andamento");
-
-    if (checkError(error, res, "Erro ao buscar monitor de tarefas")) return;
-
-    const executionIds = (data || []).map(e => e.id);
-    const { data: pauses } = executionIds.length > 0
-        ? await supabase.from("pauses").select("*").in("execution_id", executionIds)
-        : { data: [] };
-
-    const nowMs = new Date().getTime();
-    const formatted = (data || []).map((e: any) => {
-        const itemPauses = (pauses || []).filter(p => p.execution_id === e.id);
-        const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(e, itemPauses, nowMs);
-
-        return {
-            ...e,
-            stage_name: e.stages?.name,
-            user_name: e.users?.name,
-            order_number: e.orders?.order_number,
-            client_name: e.orders?.client_name,
-            product_type: e.orders?.product_type,
-            average_time_seconds: e.stages?.average_time_seconds || 0,
-            ideal_time: e.stages?.ideal_time || 0,
-            real_average_time: e.stages?.real_average_time || 0,
-            execution_count: e.stages?.execution_count || 0,
-            calculation_type: e.stages?.calculation_type || 'por_peca',
-            quantity: e.orders?.quantity || 1,
-            accumulated_pause_seconds: itemPauses.reduce((sum, p) => sum + (p.duration_seconds || 0), 0),
-            total_time_seconds: totalAccumulatedSeconds,
-            current_session_seconds: currentSessionSeconds,
-            is_paused: isPaused,
-            stages: undefined,
-            users: undefined,
-            orders: undefined
-        };
-    });
-    return res.json(formatted);
-});
-
-const _activeStartExecutionLocks = new Set<string>();
-
-app.post("/api/executions/start", async (req, res) => {
-    const { order_id, stage_id, user_id, supervisor_override } = req.body;
+app.post("/api/executions/start", canOperateProduction, async (req, res) => {
+    const { order_id, stage_id, supervisor_override, motivo, order_item_id } = req.body || {};
     const orderIdNum = Number(order_id);
     const stageIdNum = Number(stage_id);
-    const userIdNum = Number(user_id);
+    const userIdNum = getActorId(req);
 
     if (!userIdNum || userIdNum <= 0) {
-        return res.status(400).json({ error: "Usuário não identificado. Por favor, saia e entre novamente." });
+        return res.status(401).json({ error: "Usuário não identificado. Por favor, saia e entre novamente.", code: "USER_ID_REQUIRED" });
     }
-
-    const lockKey = `${orderIdNum}_${stageIdNum}_${userIdNum}`;
-    if (_activeStartExecutionLocks.has(lockKey)) {
-        return res.status(429).json({ error: "Inicialização já em processamento (proteção contra clique duplo)." });
-    }
-    _activeStartExecutionLocks.add(lockKey);
 
     try {
-        // 1. Verificar se o pedido está bloqueado ou cancelado
-        const { data: orderCheck } = await supabaseAdmin
-            .from("orders")
-            .select("id, order_number, status, pcp_is_blocked, deleted_at, quantity")
-            .eq("id", orderIdNum)
-            .maybeSingle();
-
-        if (!orderCheck || orderCheck.deleted_at || orderCheck.status === "Cancelado") {
-            return res.status(400).json({ error: "Não é possível iniciar operação em um pedido cancelado ou excluído." });
-        }
-
-        if (orderCheck.pcp_is_blocked) {
-            return res.status(400).json({
-                error: `O pedido #${orderCheck.order_number} está BLOQUEADO pelo PCP. Resolva o bloqueio antes de iniciar a operação.`,
-                code: "ORDER_BLOCKED",
-            });
-        }
-
-        // 2. Verificar se esta etapa já está sendo executada para este pedido (clique duplo / concorrência)
-        const { data: existing, error: e1 } = await supabaseAdmin
-            .from("stage_executions")
-            .select("id, user_id")
-            .eq("order_id", orderIdNum)
-            .eq("stage_id", stageIdNum)
-            .eq("status", "Em andamento")
-            .limit(1);
-
-        if (e1) {
-            return checkError(e1, res, "Erro ao verificar execuções existentes");
-        }
-
-        if (existing && existing.length > 0) {
-            if (Number(existing[0].user_id) === userIdNum) {
-                return res.json({ id: existing[0].id, idempotent: true });
-            }
-            return res.status(400).json({ error: "Esta etapa já está sendo executada para este pedido." });
-        }
-
-        // 3. Regra de sessão ativa única por operador (salvo autorização do supervisor/Admin)
-        const userRole = String(req.headers["x-user-role"] || "").trim();
-        const allowConcurrentSession =
-            Boolean(supervisor_override) ||
-            ["Admin", "Administrador", "Supervisor"].includes(userRole);
-
-        if (!allowConcurrentSession) {
-            const { data: activeUserExecs } = await supabaseAdmin
-                .from("stage_executions")
-                .select("id, order_id, stage_id, start_time, orders(order_number), stages(name)")
-                .eq("user_id", userIdNum)
-                .eq("status", "Em andamento")
-                .limit(1);
-
-            if (activeUserExecs && activeUserExecs.length > 0) {
-                const activeExec: any = activeUserExecs[0];
-                const activeOrderNum = activeExec.orders?.order_number || `#${activeExec.order_id}`;
-                const activeStageName = activeExec.stages?.name || `Etapa #${activeExec.stage_id}`;
-                return res.status(409).json({
-                    error: `Você já possui uma operação ativa (${activeStageName} no pedido ${activeOrderNum}). Pause ou finalize a operação atual antes de iniciar outra, ou solicite autorização do supervisor.`,
-                    code: "OPERATOR_ALREADY_ACTIVE",
-                    active_execution: {
-                        id: activeExec.id,
-                        order_id: activeExec.order_id,
-                        order_number: activeOrderNum,
-                        stage_id: activeExec.stage_id,
-                        stage_name: activeStageName,
-                        start_time: activeExec.start_time,
-                    },
-                });
-            }
-        }
-
-        const { data, error } = await supabaseAdmin
-            .from("stage_executions")
-            .insert({
-                order_id: orderIdNum,
-                stage_id: stageIdNum,
-                user_id: userIdNum,
-                status: "Em andamento",
-            })
-            .select("id")
-            .maybeSingle();
-
-        if (error) {
-            console.error("[API] Erro ao iniciar execução:", error);
-            return res.status(500).json({ error: `Erro ao iniciar execução: ${error.message}` });
-        }
-
-        if (!data) {
-            return res.status(500).json({ error: "Erro ao recuperar ID da nova execução." });
-        }
-
-        try {
-            if (stageIdNum !== 1) {
-                await supabaseAdmin
-                    .from("orders")
-                    .update({ status: "Em Produção", pcp_status: "EM_PRODUCAO" })
-                    .eq("id", orderIdNum)
-                    .eq("status", "Entrada");
-            }
-            const { data: existingProg } = await supabaseAdmin
-                .from("order_stage_progress")
-                .select("*")
-                .eq("order_id", orderIdNum)
-                .eq("stage_id", stageIdNum)
-                .maybeSingle();
-            await safeUpsertOrderStageProgress(supabaseAdmin, {
-                order_id: orderIdNum,
-                stage_id: stageIdNum,
-                quantidade_pedido: Number(orderCheck.quantity) || 0,
-                quantidade_boa: Number(existingProg?.quantidade_boa) || 0,
-                quantidade_perdida: Number(existingProg?.quantidade_perdida) || 0,
-                pendencia_reposicao: Number(existingProg?.pendencia_reposicao) || 0,
-                finished: false,
-                status_operacao: "EM_ANDAMENTO",
-            });
-        } catch (_) {}
-
-        await recordPcpAuditLog(supabaseAdmin, {
-            order_id: orderIdNum,
-            stage_id: stageIdNum,
-            user_id: userIdNum,
-            usuario: (req.headers["x-user-name"] as string) || `Operador #${userIdNum}`,
-            acao: "INICIO_OPERACAO",
-            valor_anterior: { status_operacao: "LIBERADA" },
-            valor_novo: { execution_id: data.id, status_operacao: "EM_ANDAMENTO", supervisor_override: Boolean(supervisor_override) },
+        const { data: rpcStartData, error: rpcStartErr } = await supabaseAdmin.rpc("rpc_start_operation", {
+            p_order_id: orderIdNum,
+            p_stage_id: stageIdNum,
+            p_user_id: userIdNum,
+            p_order_item_id: order_item_id ? Number(order_item_id) : null,
+            p_supervisor_override: Boolean(supervisor_override),
+            p_motivo: motivo || null,
         });
 
-        return res.json({ id: data.id, status_operacao: "EM_ANDAMENTO" });
-    } finally {
-        _activeStartExecutionLocks.delete(lockKey);
+        if (rpcStartErr) {
+            console.error("[API] Erro crítico: RPC rpc_start_operation falhou:", rpcStartErr);
+            if (rpcStartErr.code === '23505') {
+                return res.status(409).json({
+                    error: "Conflito de concorrência: o operador já possui uma execução ativa ou a etapa já está sendo executada.",
+                    code: "CONCURRENT_EXECUTION_CONFLICT",
+                });
+            }
+            return res.status(500).json({
+                error: `Erro na execução da RPC rpc_start_operation: ${rpcStartErr.message}`,
+                details: rpcStartErr,
+                code: "RPC_EXECUTION_ERROR"
+            });
+        }
+
+        const httpStatus = Number(rpcStartData?.http_status) || 200;
+        return res.status(httpStatus).json(rpcStartData);
+    } catch (err: any) {
+        if (err?.code === '23505') {
+            return res.status(409).json({
+                error: "Conflito de concorrência: o operador já possui uma execução ativa ou a etapa já está sendo executada.",
+                code: "CONCURRENT_EXECUTION_CONFLICT",
+            });
+        }
+        return res.status(500).json({ error: err.message || "Erro ao iniciar execução" });
     }
 });
 
 // ── Pause-All: pausa todas as execuções ativas (fim de expediente) ────────
 app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
-        const now = new Date();
-
+        const actorId = getActorId(req);
         const { data: activeExecs, error: fetchErr } = await supabaseAdmin
             .from("stage_executions")
             .select("id")
@@ -4498,18 +4311,19 @@ app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res)
             return res.json({ success: true, paused: 0 });
         }
 
+        let pausedCount = 0;
         for (const exec of activeExecs) {
-            await supabaseAdmin
-                .from("stage_executions")
-                .update({ status: "Pausado" })
-                .eq("id", exec.id);
-            await supabaseAdmin
-                .from("pauses")
-                .insert({ execution_id: exec.id, start_pause: now.toISOString() });
+            const { error: rpcErr } = await supabaseAdmin.rpc("rpc_pause_operation", {
+                p_execution_id: exec.id,
+                p_user_id: actorId,
+                p_motivo: "Pausa coletiva (Fim de expediente)",
+                p_supervisor_override: true,
+            });
+            if (!rpcErr) pausedCount++;
         }
 
-        console.log(`[API] Pause-all: ${activeExecs.length} execução(ões) pausada(s) por comando direto.`);
-        return res.json({ success: true, paused: activeExecs.length });
+        console.log(`[API] Pause-all: ${pausedCount} execução(ões) pausada(s) via RPC.`);
+        return res.json({ success: true, paused: pausedCount });
     } catch (err: any) {
         console.error("[API] Erro no pause-all:", err);
         return res.status(500).json({ error: "Erro ao pausar todas as execuções" });
@@ -4518,71 +4332,38 @@ app.post("/api/executions/pause-all", isPcpOrSupervisorOrAdmin, async (req, res)
 
 // ── Reset-Production: zera todos os relatórios e tempos mantendo os pedidos (Opção B) ──
 
-app.get("/api/admin/debug-orders", async (req, res) => {
+app.get("/api/admin/debug-orders", isAdmin, async (req, res) => {
     const { data: orders } = await supabaseAdmin.from("orders").select("id, client_name, stages_status").order("id", { ascending: false }).limit(5);
     return res.json(orders);
 });
 
 app.post("/api/admin/reset-production", isAdmin, async (req, res) => {
     try {
-        console.log(`[API] Reset solicitado por ${req.headers["x-user-name"] || "Admin"}`);
-
-        // 1. Apagar todas as pausas
-        const { error: errPauses } = await supabaseAdmin
-            .from("pauses")
-            .delete()
-            .gt("id", 0);
-        
-        // 2. Apagar todas as execuções de etapas
-        await supabaseAdmin.from("stage_executions").delete().gt("id", 0);
-        
-        // 3. Apagar progresso e perdas (ordem importa por causa das chaves)
-        await supabaseAdmin.from("order_progress_logs").delete().gt("id", 0);
-        await supabaseAdmin.from("order_loss_logs").delete().gt("id", 0);
-        
-        // order_stage_progress usa composite key
-        await supabaseAdmin.from("order_stage_progress").delete().not("order_id", "is", null);
-
-        // 4. Apagar Planos de Corte e dependências
-        await supabaseAdmin.from("production_movements").delete().gt("id", 0);
-        await supabaseAdmin.from("cut_plan_items").delete().gt("id", 0);
-        await supabaseAdmin.from("cut_plans").delete().gt("id", 0);
-        await supabaseAdmin.from("corte_allocations").delete().gt("id", 0);
-
-        // 5. Resetar estoques de excedentes
-        await supabaseAdmin.from("producao_excedentes").delete().gt("id", 0);
-
-        // 7. Resetar o tempo acumulado dos pedidos para 0
-        await supabaseAdmin.from("orders").update({ total_time_seconds: 0 }).gt("id", 0);
-
-        // 8. Resetar as médias de tempo calculadas nos estágios
-        await supabaseAdmin.from("stages").update({ real_average_time: 0, execution_count: 0 }).gt("id", 0);
-
-        // 9. Resetar o array stages_status dos pedidos para 'finished: false' e 'in_progress: false'
-        const { data: orders } = await supabaseAdmin.from("orders").select("id, stages_status");
-        if (orders) {
-            for (const o of orders) {
-                if (o.stages_status && Array.isArray(o.stages_status)) {
-                    const newStatus = o.stages_status.map((st: any) => ({
-                        ...st,
-                        finished: false,
-                        in_progress: false
-                    }));
-                    await supabaseAdmin.from("orders").update({ stages_status: newStatus }).eq("id", o.id);
-                }
-            }
+        const actorId = getActorId(req);
+        if (!actorId) {
+            return res.status(401).json({ error: "Sessão inválida ou sem identificação de usuário." });
         }
-
-        console.log("[API] Reset de produ├â┬º├â┬úo conclu├â┬¡do com sucesso!");
-        return res.json({ success: true, message: "Hist├â┬│rico de relat├â┬│rios e tempos resetados com sucesso! Os pedidos foram preservados." });
+        const { confirmation_text } = req.body || {};
+        const { data, error } = await supabaseAdmin.rpc("pcp_tx_reset_production", {
+            p_confirmation_text: confirmation_text || "RESETAR_PRODUCAO_CONFIRMADO",
+            p_user_id: actorId
+        });
+        if (error) {
+            console.error("[API] Erro ao resetar produção via RPC:", error);
+            const isForbidden = error.message?.includes('INSUFFICIENT_ROLE');
+            const isInvalidText = error.message?.includes('CONFIRMATION_TEXT_INVALID');
+            const status = isForbidden ? 403 : (isInvalidText ? 400 : 500);
+            return res.status(status).json({ error: error.message });
+        }
+        return res.json(data);
     } catch (err: any) {
-        console.error("[API] Erro ao resetar produ├â┬º├â┬úo:", err);
-        return res.status(500).json({ error: "Erro interno ao processar reset de produ├â┬º├â┬úo" });
+        console.error("[API] Erro ao resetar produção:", err);
+        return res.status(500).json({ error: err.message || "Erro interno ao processar reset de produção" });
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Auto-Pause: pausa autom├â┬ítica baseado no hor├â┬írio agendado ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.post("/api/executions/auto-pause", async (req, res) => {
+// ── Auto-Pause: pausa automática baseado no horário agendado ────────────
+app.post("/api/executions/auto-pause", isPcpOrSupervisorOrAdmin, async (req, res) => {
     try {
         const { data: config, error: configErr } = await supabaseAdmin.from("config_producao").select("*").eq("id", 1).single();
         if (configErr) throw configErr;
@@ -4621,572 +4402,157 @@ app.post("/api/executions/auto-pause", async (req, res) => {
             return res.json({ success: true, message: "Nenhuma tarefa ativa para pausar.", paused: 0 });
         }
 
+        const pauseReason = isLunch ? "Pausa automática (Almoço)" : "Pausa automática (Fim de expediente)";
+        let pausedCount = 0;
         for (const exec of activeExecs) {
-            await supabaseAdmin.from("stage_executions").update({ status: "Pausado" }).eq("id", exec.id);
-            await supabaseAdmin.from("pauses").insert({ execution_id: exec.id, start_pause: now.toISOString() });
+            const { error: rpcErr } = await supabaseAdmin.rpc("rpc_pause_operation", {
+                p_execution_id: exec.id,
+                p_user_id: null,
+                p_motivo: pauseReason,
+                p_supervisor_override: true,
+            });
+            if (!rpcErr) pausedCount++;
         }
 
-        console.log(`[AutoPause] ${activeExecs.length} execu├â┬º├â┬úo(├â┬Áes) pausadas automaticamente por ${isLunch ? 'almo├â┬ºo' : 'fim de expediente'}.`);
-        return res.json({ success: true, paused: activeExecs.length, reason: isLunch ? 'almo├â┬ºo' : 'fim de expediente' });
+        console.log(`[AutoPause] ${pausedCount} execução(ões) pausadas automaticamente por ${pauseReason}.`);
+        return res.json({ success: true, paused: pausedCount, reason: pauseReason });
     } catch (err: any) {
         console.error("[AutoPause] Erro:", err);
         return res.status(500).json({ error: "Erro interno no auto-pause" });
     }
 });
 
-app.post("/api/executions/:id/pause", async (req, res) => {
+app.post("/api/executions/:id/pause", canOperateProduction, async (req, res) => {
     const execution_id = Number(req.params.id);
-    const { observation, motivo, reason } = req.body || {};
+    const { observation, motivo, reason, supervisor_override } = req.body || {};
     const pauseReason = (motivo || reason || observation || "Pausa operacional").toString().trim();
+    const actorId = getActorId(req);
 
-    const { data: exec } = await supabaseAdmin
-        .from("stage_executions")
-        .select("order_id, stage_id, user_id, status")
-        .eq("id", execution_id)
-        .single();
-
-    if (!exec) {
-        return res.status(404).json({ error: "Execução não encontrada." });
+    if (!actorId) {
+        return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
     }
 
-    // Proteção contra clique duplo na pausa
-    const { data: existingOpenPause } = await supabaseAdmin
-        .from("pauses")
-        .select("id")
-        .eq("execution_id", execution_id)
-        .is("end_pause", null)
-        .limit(1)
-        .maybeSingle();
-
-    if (existingOpenPause && exec.status === "Pausado") {
-        return res.json({ success: true, idempotent: true, status_operacao: "PAUSADA" });
-    }
-
-    const { error: e1 } = await supabaseAdmin
-        .from("stage_executions")
-        .update({ status: "Pausado" })
-        .eq("id", execution_id);
-    if (checkError(e1, res, "Erro ao pausar execução")) return;
-
-    if (!existingOpenPause) {
-        const { error: e2 } = await supabaseAdmin
-            .from("pauses")
-            .insert({ execution_id, start_pause: new Date().toISOString() });
-        if (checkError(e2, res, "Erro ao registrar pausa")) return;
-    }
-
-    if ((observation || motivo || reason) && exec) {
-        try {
-            await supabaseAdmin.from("stage_observations").insert({
-                order_id: exec.order_id,
-                stage_id: exec.stage_id,
-                user_id: exec.user_id,
-                observation: `[PAUSA] ${pauseReason}`,
-            });
-        } catch (e) {
-            console.error("Erro ao salvar observação da etapa na pausa:", e);
-        }
-    }
-
-    await recordPcpAuditLog(supabaseAdmin, {
-        order_id: exec.order_id,
-        stage_id: exec.stage_id,
-        user_id: exec.user_id,
-        usuario: (req.headers["x-user-name"] as string) || `Operador #${exec.user_id}`,
-        acao: "PAUSA_OPERACAO",
-        motivo: pauseReason,
-        valor_anterior: { status_operacao: "EM_ANDAMENTO" },
-        valor_novo: { execution_id, status_operacao: "PAUSADA", motivo: pauseReason },
+    const { data: rpcPauseData, error: rpcPauseErr } = await supabaseAdmin.rpc("rpc_pause_operation", {
+        p_execution_id: execution_id,
+        p_user_id: actorId,
+        p_motivo: pauseReason,
+        p_supervisor_override: Boolean(supervisor_override),
     });
 
-    return res.json({ success: true, status_operacao: "PAUSADA", motivo: pauseReason });
-});
-
-app.post("/api/executions/:id/resume", async (req, res) => {
-    const execution_id = Number(req.params.id);
-    const { supervisor_override } = req.body || {};
-    const now = new Date();
-
-    const { data: exec } = await supabaseAdmin
-        .from("stage_executions")
-        .select("id, order_id, stage_id, user_id, status")
-        .eq("id", execution_id)
-        .single();
-
-    if (!exec) {
-        return res.status(404).json({ error: "Execução não encontrada." });
-    }
-
-    // Regra de sessão única ativa ao retomar operação
-    const userRole = String(req.headers["x-user-role"] || "").trim();
-    const allowConcurrentSession =
-        Boolean(supervisor_override) ||
-        ["Admin", "Administrador", "Supervisor"].includes(userRole);
-
-    if (!allowConcurrentSession && exec.user_id) {
-        const { data: otherActive } = await supabaseAdmin
-            .from("stage_executions")
-            .select("id, order_id, stage_id, orders(order_number), stages(name)")
-            .eq("user_id", exec.user_id)
-            .eq("status", "Em andamento")
-            .neq("id", execution_id)
-            .limit(1);
-
-        if (otherActive && otherActive.length > 0) {
-            const activeExec: any = otherActive[0];
-            const activeOrderNum = activeExec.orders?.order_number || `#${activeExec.order_id}`;
-            const activeStageName = activeExec.stages?.name || `Etapa #${activeExec.stage_id}`;
-            return res.status(409).json({
-                error: `Você já possui outra operação em andamento (${activeStageName} no pedido ${activeOrderNum}). Pause ou finalize a operação atual antes de retomar esta.`,
-                code: "OPERATOR_ALREADY_ACTIVE",
-            });
-        }
-    }
-
-    // 1. Get the active pause
-    const { data: activePause, error: e0 } = await supabaseAdmin
-        .from("pauses")
-        .select("id, start_pause")
-        .eq("execution_id", execution_id)
-        .is("end_pause", null)
-        .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (e0) return checkError(e0, res, "Erro ao buscar pausa ativa");
-
-    let pauseDuration = 0;
-    if (activePause) {
-        pauseDuration = Math.max(0, Math.floor((now.getTime() - new Date(activePause.start_pause).getTime()) / 1000));
-        const { error: e2 } = await supabaseAdmin
-            .from("pauses")
-            .update({
-                end_pause: now.toISOString(),
-                duration_seconds: pauseDuration,
-            })
-            .eq("id", activePause.id);
-        if (checkError(e2, res, "Erro ao finalizar pausa")) return;
-    }
-
-    const { error: e1 } = await supabaseAdmin
-        .from("stage_executions")
-        .update({ status: "Em andamento" })
-        .eq("id", execution_id);
-    if (checkError(e1, res, "Erro ao retomar execução")) return;
-
-    await recordPcpAuditLog(supabaseAdmin, {
-        order_id: exec.order_id,
-        stage_id: exec.stage_id,
-        user_id: exec.user_id,
-        usuario: (req.headers["x-user-name"] as string) || `Operador #${exec.user_id}`,
-        acao: "RETOMADA_OPERACAO",
-        valor_anterior: { status_operacao: "PAUSADA" },
-        valor_novo: { execution_id, status_operacao: "EM_ANDAMENTO", pause_duration_seconds: pauseDuration },
-    });
-
-    return res.json({ success: true, status_operacao: "EM_ANDAMENTO" });
-});
-
-app.post("/api/executions/:id/finish", async (req, res) => {
-    const execution_id = Number(req.params.id);
-    const { observation, quantidade_boa_incremento, partial } = req.body || {};
-    const nowISO = new Date().toISOString();
-    const nowMs = new Date().getTime();
-
-    // 1. Get current execution
-    const { data: execution, error: e1 } = await supabaseAdmin
-        .from("stage_executions")
-        .select("*, stages(name, calculation_type)")
-        .eq("id", execution_id)
-        .single();
-
-    if (checkError(e1, res, "Execucao nao encontrada") || !execution) return;
-
-    // Proteção contra clique duplo na finalização
-    if (execution.status === "Finalizado") {
-        return res.json({
-            success: true,
-            idempotent: true,
-            total_time: execution.total_time_seconds || 0,
+    if (rpcPauseErr) {
+        console.error("[API] Erro crítico: RPC rpc_pause_operation falhou ou não existe no Supabase:", rpcPauseErr);
+        return res.status(500).json({
+            error: `Erro na execução da RPC rpc_pause_operation: ${rpcPauseErr.message}`,
+            details: rpcPauseErr,
+            code: "RPC_EXECUTION_ERROR",
         });
     }
 
-    // 2. Finalize any active pause
-    const { data: lastPauseData } = await supabaseAdmin
-        .from("pauses")
-        .select("id, start_pause")
-        .eq("execution_id", execution_id)
-        .is("end_pause", null)
-        .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (lastPauseData) {
-        const duration = Math.floor((nowMs - new Date(lastPauseData.start_pause).getTime()) / 1000);
-        await supabaseAdmin
-            .from("pauses")
-            .update({ end_pause: nowISO, duration_seconds: Math.max(0, duration) })
-            .eq("id", lastPauseData.id);
-    }
-
-    // 3. Calculate total pause time
-    const { data: pausesData } = await supabaseAdmin
-        .from("pauses")
-        .select("duration_seconds")
-        .eq("execution_id", execution_id);
-
-    const totalPauseSeconds = (pausesData || []).reduce(
-        (sum: number, p: any) => sum + (p.duration_seconds || 0),
-        0
-    );
-
-    // 4. Calculate total execution time (tempo produtivo líquido descontando pausas)
-    const totalExecutionSeconds = Math.max(
-        0,
-        Math.floor((nowMs - new Date(execution.start_time).getTime()) / 1000) - totalPauseSeconds
-    );
-
-    // 5. Update execution status
-    const { error: e2 } = await supabaseAdmin
-        .from("stage_executions")
-        .update({
-            end_time: nowISO,
-            total_time_seconds: totalExecutionSeconds,
-            status: "Finalizado",
-        })
-        .eq("id", execution_id);
-
-    if (checkError(e2, res, "Erro ao finalizar execucao")) return;
-
-    if (observation && execution) {
-        try {
-            await supabaseAdmin.from("stage_observations").insert({
-                order_id: execution.order_id,
-                stage_id: execution.stage_id,
-                user_id: execution.user_id,
-                observation,
-            });
-        } catch (e) {
-            console.error("Erro ao salvar observacao da etapa na finalizacao:", e);
-        }
-    }
-
-    // 6. Update order total time & fetch order metadata
-    const [allExecsRes, orderRes, existingProgRes] = await Promise.all([
-        supabaseAdmin.from("stage_executions").select("total_time_seconds, stage_id, status").eq("order_id", execution.order_id),
-        supabaseAdmin.from("orders").select("quantity, required_stages, status, pcp_status").eq("id", execution.order_id).single(),
-        supabaseAdmin
-            .from("order_stage_progress")
-            .select("*")
-            .eq("order_id", execution.order_id)
-            .eq("stage_id", execution.stage_id)
-            .maybeSingle(),
-    ]);
-
-    const allExecs = allExecsRes.data || [];
-    const orderData = orderRes.data;
-    const existingProg = existingProgRes.data;
-
-    const totalOrderTime = allExecs.reduce((sum: number, e: any) => sum + (e.total_time_seconds || 0), 0);
-
-    await supabaseAdmin
-        .from("orders")
-        .update({ total_time_seconds: totalOrderTime })
-        .eq("id", execution.order_id);
-
-    // 6.5 Validar saldo de produção parcial vs conclusão total da etapa
-    const orderQty = Number(orderData?.quantity) || 1;
-    const calcType = execution.stages?.calculation_type || "por_peca";
-
-    if (quantidade_boa_incremento && Number(quantidade_boa_incremento) > 0) {
-        await logProgress(
-            supabaseAdmin,
-            Number(execution.order_id),
-            Number(execution.stage_id),
-            Number(execution.user_id) || 1,
-            (req.headers["x-user-name"] as string) || `Operador #${execution.user_id}`,
-            Number(quantidade_boa_incremento),
-            { observacao: observation }
-        );
-    }
-
-    const { data: refreshedProg } = await supabaseAdmin
-        .from("order_stage_progress")
-        .select("*")
-        .eq("order_id", execution.order_id)
-        .eq("stage_id", execution.stage_id)
-        .maybeSingle();
-
-    const currentGood = Number(refreshedProg?.quantidade_boa) || 0;
-    const currentLost = Number(refreshedProg?.quantidade_perdida) || 0;
-    const currentRepl = Number(refreshedProg?.pendencia_reposicao) || 0;
-
-    // Se o operador apontou produção parcial (< orderQty) ou marcou partial=true ou há pendência de reposição,
-    // manter a etapa como PARCIAL (finished = false) com saldo pendente!
-    const hasPartialBalance =
-        Boolean(partial) ||
-        currentRepl > 0 ||
-        (calcType !== "por_pedido" && currentGood > 0 && currentGood < orderQty);
-
-    const isStageFullyCompleted = !hasPartialBalance;
-    const finalGoodQty = isStageFullyCompleted ? Math.max(orderQty, currentGood) : currentGood;
-    const saldoPendente = Math.max(0, orderQty - finalGoodQty + currentRepl);
-    const stageOperationStatus: OperationStatus = isStageFullyCompleted ? "CONCLUIDA" : "PARCIAL";
-
-    const progRow: OrderStageProgress = {
-        order_id: Number(execution.order_id),
-        stage_id: Number(execution.stage_id),
-        quantidade_pedido: orderQty,
-        quantidade_recebida: orderQty,
-        quantidade_boa: finalGoodQty,
-        quantidade_perdida: currentLost,
-        quantidade_transferida: Math.min(orderQty, finalGoodQty),
-        pendencia_reposicao: currentRepl,
-        saldo_pendente: saldoPendente,
-        finished: isStageFullyCompleted,
-        status_operacao: stageOperationStatus,
-    };
-    await safeUpsertOrderStageProgress(supabaseAdmin, progRow);
-
-    // Liberar a próxima etapa da rota com a quantidade transferida (total ou parcial)
-    const activeReqStages = Array.isArray(orderData?.required_stages)
-        ? orderData.required_stages.map((id: any) => Number(id)).filter((id: number) => ![2, 7, 12].includes(id))
-        : [];
-    const currentRouteIdx = activeReqStages.indexOf(Number(execution.stage_id));
-    const nextStageIdInRoute =
-        currentRouteIdx >= 0 && currentRouteIdx + 1 < activeReqStages.length
-            ? activeReqStages[currentRouteIdx + 1]
-            : null;
-
-    if (nextStageIdInRoute && finalGoodQty > 0) {
-        const { data: nextProgExisting } = await supabaseAdmin
-            .from("order_stage_progress")
-            .select("*")
-            .eq("order_id", execution.order_id)
-            .eq("stage_id", nextStageIdInRoute)
-            .maybeSingle();
-
-        const nextGood = Number(nextProgExisting?.quantidade_boa) || 0;
-        const nextReceived = Math.min(orderQty, Math.max(Number(nextProgExisting?.quantidade_recebida) || 0, finalGoodQty));
-        const nextProgRow: OrderStageProgress = {
-            order_id: Number(execution.order_id),
-            stage_id: nextStageIdInRoute,
-            quantidade_pedido: orderQty,
-            quantidade_recebida: nextReceived,
-            quantidade_boa: nextGood,
-            quantidade_perdida: Number(nextProgExisting?.quantidade_perdida) || 0,
-            pendencia_reposicao: Number(nextProgExisting?.pendencia_reposicao) || 0,
-            saldo_pendente: Math.max(0, orderQty - nextGood),
-            finished: Boolean(nextProgExisting?.finished),
-            status_operacao: nextProgExisting?.finished ? "CONCLUIDA" : nextGood > 0 ? "PARCIAL" : "LIBERADA",
-        };
-        await safeUpsertOrderStageProgress(supabaseAdmin, nextProgRow);
-    }
-
-    // 7. Atualizar status do pedido: NUNCA finalizar automaticamente todo o pedido quando apenas uma etapa intermediária ou parcial foi concluída!
-    let newOrderStatus = orderData?.status || "Em Produção";
-    const stageName = execution.stages?.name?.toLowerCase() || "";
-    if (((stageName.includes("ficha") && stageName.includes("aprova")) || Number(execution.stage_id) === 1) && isStageFullyCompleted) {
-        if (orderData?.status === "Entrada") {
-            await supabaseAdmin
-                .from("orders")
-                .update({ status: "Em Produção", pcp_status: "EM_PRODUCAO" })
-                .eq("id", execution.order_id);
-            newOrderStatus = "Em Produção";
-        }
-    }
-
-    if (isStageFullyCompleted) {
-        const { data: progRows } = await supabaseAdmin
-            .from("order_stage_progress")
-            .select("stage_id, finished")
-            .eq("order_id", execution.order_id);
-
-        const finishedByProgress = new Set(
-            (progRows || []).filter((r: any) => r.finished).map((r: any) => Number(r.stage_id))
-        );
-        finishedByProgress.add(Number(execution.stage_id));
-
-        const isLastStageInRoute =
-            activeReqStages.length > 0 &&
-            activeReqStages[activeReqStages.length - 1] === Number(execution.stage_id);
-        const isConferenciaOrEmbalagem =
-            stageName.includes("confer") || stageName.includes("embalag") || Number(execution.stage_id) === 8;
-
-        const allStagesCompleted =
-            activeReqStages.length > 0
-                ? activeReqStages.every((id: number) => finishedByProgress.has(id))
-                : isConferenciaOrEmbalagem;
-
-        if (allStagesCompleted || (isConferenciaOrEmbalagem && isLastStageInRoute)) {
-            await supabaseAdmin
-                .from("orders")
-                .update({
-                    status: "Entregue",
-                    pcp_status: "PRONTO",
-                    delivered_at: nowISO,
-                })
-                .eq("id", execution.order_id);
-            newOrderStatus = "Entregue";
-            console.log(`[API] Pedido ${execution.order_id} concluiu todas as etapas da rota produtiva (pcp_status=PRONTO).`);
-        }
-    }
-
-    await recordPcpAuditLog(supabaseAdmin, {
-        order_id: Number(execution.order_id),
-        stage_id: Number(execution.stage_id),
-        user_id: Number(execution.user_id),
-        usuario: (req.headers["x-user-name"] as string) || `Operador #${execution.user_id}`,
-        acao: isStageFullyCompleted ? "FIM_OPERACAO_CONCLUIDA" : "FIM_SESSAO_PARCIAL",
-        quantidade: finalGoodQty,
-        observacao: observation || null,
-        valor_anterior: {
-            quantidade_boa: Number(existingProg?.quantidade_boa) || 0,
-            finished: Boolean(existingProg?.finished),
-        },
-        valor_novo: {
-            execution_id,
-            total_time_seconds: totalExecutionSeconds,
-            quantidade_boa: finalGoodQty,
-            saldo_pendente: saldoPendente,
-            status_operacao: stageOperationStatus,
-            next_stage_released: nextStageIdInRoute,
-            order_status: newOrderStatus,
-        },
-    });
-
-    // 8. Update real average time for the stage
-    try {
-        const { data: stageInfo } = await supabaseAdmin
-            .from("stages")
-            .select("calculation_type")
-            .eq("id", execution.stage_id)
-            .single();
-
-        const { data: recentExecs } = await supabaseAdmin
-            .from("stage_executions")
-            .select("total_time_seconds, orders(quantity)")
-            .eq("stage_id", execution.stage_id)
-            .eq("status", "Finalizado")
-            .order("end_time", { ascending: false })
-            .limit(20);
-
-        if (recentExecs && recentExecs.length > 0) {
-            const calcTypeMetric = stageInfo?.calculation_type || "por_peca";
-            const sumNormalizedTime = recentExecs.reduce((sum: number, e: any) => {
-                const qty = e.orders?.quantity || 1;
-                const time = e.total_time_seconds || 0;
-
-                if (calcTypeMetric === "por_peca") {
-                    return sum + time / qty;
-                } else if (calcTypeMetric === "por_lote") {
-                    return sum + time / Math.ceil(qty / 10);
-                }
-                return sum + time; // por_pedido
-            }, 0);
-            const avg = Math.round(sumNormalizedTime / recentExecs.length);
-
-            const { count } = await supabaseAdmin
-                .from("stage_executions")
-                .select("*", { count: "exact", head: true })
-                .eq("stage_id", execution.stage_id)
-                .eq("status", "Finalizado");
-
-            await supabaseAdmin
-                .from("stages")
-                .update({
-                    real_average_time: avg,
-                    execution_count: count || recentExecs.length,
-                })
-                .eq("id", execution.stage_id);
-        }
-    } catch (metricError) {
-        console.error("[API] Erro ao recalcular metricas de tempo da etapa:", metricError);
-    }
-
-    return res.json({
-        success: true,
-        total_time: totalExecutionSeconds,
-        order_status: newOrderStatus,
-        status_operacao: stageOperationStatus,
-        saldo_pendente: saldoPendente,
-        next_stage_id: nextStageIdInRoute,
+    const httpStatus = Number(rpcPauseData?.http_status) || 200;
+    return res.status(httpStatus).json({
+        ...rpcPauseData,
+        status: rpcPauseData?.status || "Pausado",
     });
 });
 
-app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
+app.post("/api/executions/:id/resume", canOperateProduction, async (req, res) => {
+    const execution_id = Number(req.params.id);
+    const { supervisor_override, motivo } = req.body || {};
+    const actorId = getActorId(req);
+
+    if (!actorId) {
+        return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
+    }
+
+    const { data: rpcResumeData, error: rpcResumeErr } = await supabaseAdmin.rpc("rpc_resume_operation", {
+        p_execution_id: execution_id,
+        p_user_id: actorId,
+        p_supervisor_override: Boolean(supervisor_override),
+        p_motivo: motivo || null,
+    });
+
+    if (rpcResumeErr) {
+        console.error("[API] Erro crítico: RPC rpc_resume_operation falhou ou não existe no Supabase:", rpcResumeErr);
+        return res.status(500).json({
+            error: `Erro na execução da RPC rpc_resume_operation: ${rpcResumeErr.message}`,
+            details: rpcResumeErr,
+            code: "RPC_EXECUTION_ERROR",
+        });
+    }
+
+    const httpStatus = Number(rpcResumeData?.http_status) || 200;
+    return res.status(httpStatus).json({
+        ...rpcResumeData,
+        status: rpcResumeData?.status || "Em andamento",
+    });
+});
+
+app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) => {
+    const execution_id = Number(req.params.id);
+    const { observation, quantidade_boa_incremento, partial, idempotency_key, supervisor_override } = req.body || {};
+    const actorId = getActorId(req);
+
+    if (!actorId) {
+        return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
+    }
+
+    const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || `fin_${execution_id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    const { data: rpcFinishData, error: rpcFinishErr } = await supabaseAdmin.rpc("rpc_finish_operation", {
+        p_execution_id: execution_id,
+        p_user_id: actorId,
+        p_good_inc: Number(quantidade_boa_incremento) || 0,
+        p_partial: Boolean(partial),
+        p_observation: observation || null,
+        p_idempotency_key: effectiveKey,
+        p_supervisor_override: Boolean(supervisor_override),
+    });
+
+    if (rpcFinishErr) {
+        console.error("[API] Erro crítico: RPC rpc_finish_operation falhou ou não existe no Supabase:", rpcFinishErr);
+        return res.status(500).json({
+            error: `Erro na execução da RPC rpc_finish_operation: ${rpcFinishErr.message}`,
+            details: rpcFinishErr,
+            code: "RPC_EXECUTION_ERROR",
+        });
+    }
+
+    const httpStatus = Number(rpcFinishData?.http_status) || 200;
+    return res.status(httpStatus).json({
+        ...rpcFinishData,
+        status: rpcFinishData?.status || "Finalizado",
+    });
+});
+
+app.post("/api/orders/:id/stages/:stageId/reopen", isPcpOrSupervisorOrAdmin, async (req, res) => {
     const orderId = Number(req.params.id);
     const stageId = Number(req.params.stageId);
     const { motivo } = req.body || {};
-    const usuario = (req.headers["x-user-name"] as string) || "Supervisor/Admin";
+    const usuario = getActorName(req, "Supervisor/Admin");
 
     try {
-        // Regra 8: Preservar histórico de execuções e pausas! Apenas encerrar eventual sessão travada em aberto.
-        const { data: openExecs } = await supabaseAdmin
-            .from("stage_executions")
-            .select("id")
-            .eq("order_id", orderId)
-            .eq("stage_id", stageId)
-            .neq("status", "Finalizado");
-
-        if (openExecs && openExecs.length > 0) {
-            const openIds = openExecs.map((e: any) => e.id);
-            await supabaseAdmin
-                .from("pauses")
-                .update({ end_pause: new Date().toISOString(), duration_seconds: 0 })
-                .in("execution_id", openIds)
-                .is("end_pause", null);
-            await supabaseAdmin
-                .from("stage_executions")
-                .update({ status: "Finalizado", end_time: new Date().toISOString() })
-                .in("id", openIds);
-        }
-
-        const { data: prevProg } = await supabaseAdmin
-            .from("order_stage_progress")
-            .select("*")
-            .eq("order_id", orderId)
-            .eq("stage_id", stageId)
-            .maybeSingle();
-
-        await supabaseAdmin
-            .from("order_stage_progress")
-            .update({ finished: false, quantidade_boa: 0 })
-            .eq("order_id", orderId)
-            .eq("stage_id", stageId);
-
-        const { data: orderData } = await supabaseAdmin
-            .from("orders")
-            .select("status, quantity")
-            .eq("id", orderId)
-            .single();
-
-        let updatedStatus = orderData?.status;
-        if (stageId === 1) {
-            updatedStatus = "Entrada";
-            await supabaseAdmin
-                .from("orders")
-                .update({ status: "Entrada", delivered_at: null, pcp_status: "AGUARDANDO LIBERAÇÃO" })
-                .eq("id", orderId);
-        } else if (orderData?.status === "Entregue") {
-            updatedStatus = "Em Produção";
-            await supabaseAdmin
-                .from("orders")
-                .update({ status: "Em Produção", delivered_at: null, pcp_status: "EM_PRODUCAO" })
-                .eq("id", orderId);
-        }
-
-        await recordPcpAuditLog(supabaseAdmin, {
-            order_id: orderId,
-            stage_id: stageId,
-            usuario,
-            acao: "REABERTURA_ETAPA",
-            motivo: motivo || "Reabertura manual da etapa",
-            valor_anterior: prevProg || { finished: true },
-            valor_novo: { finished: false, quantidade_boa: 0, status_operacao: "LIBERADA", order_status: updatedStatus },
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_reabrir_etapa', {
+            p_order_id: orderId,
+            p_stage_id: stageId,
+            p_motivo: motivo || "Reabertura manual da etapa",
+            p_usuario: usuario,
         });
 
-        return res.json({ success: true, order_status: updatedStatus, status_operacao: "LIBERADA" });
+        if (rpcErr) {
+            console.error("[API] Erro ao executar pcp_tx_reabrir_etapa:", rpcErr);
+            return res.status(500).json({ error: `Erro ao reabrir etapa: ${rpcErr.message}`, code: "RPC_EXECUTION_ERROR" });
+        }
+
+        const httpStatus = Number(rpcRes?.http_status) || 200;
+        if (rpcRes?.error) {
+            return res.status(httpStatus).json(rpcRes);
+        }
+
+        return res.status(httpStatus).json({
+            success: true,
+            order_status: rpcRes?.order_status,
+            status_operacao: rpcRes?.status_operacao || "LIBERADA",
+        });
     } catch (err: any) {
         console.error("[API] Erro ao reabrir etapa:", err);
         return res.status(500).json({ error: "Erro ao reabrir etapa" });
@@ -5194,8 +4560,8 @@ app.post("/api/orders/:id/stages/:stageId/reopen", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/config/producao", async (_req, res) => {
-    const { data, error } = await supabase
+app.get("/api/config/producao", isAuthenticated, async (_req, res) => {
+    const { data, error } = await supabaseAdmin
         .from("config_producao")
         .select("*")
         .limit(1)
@@ -5206,7 +4572,7 @@ app.get("/api/config/producao", async (_req, res) => {
 
 app.patch("/api/config/producao", isAdmin, async (req, res) => {
     const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas } = req.body;
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from("config_producao")
         .update({ jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas })
         .eq("id", 1);
@@ -5215,8 +4581,8 @@ app.patch("/api/config/producao", isAdmin, async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Users ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/users", async (req, res) => {
-    const isAdminUser = req.headers["x-user-role"] === "Admin";
+app.get("/api/users", isAuthenticated, async (req, res) => {
+    const isAdminUser = (req as any).user?.role === "Administrador";
     const { search } = req.query;
     let query = supabaseAdmin
         .from("users")
@@ -5263,10 +4629,11 @@ app.post("/api/users", isAdmin, async (req, res) => {
         .insert({
             name,
             email,
-            password: "-", // A senha verdadeira fica apenas no Auth por seguran├â┬ºa
+            password: "-",
             role,
             hourly_cost: hourly_cost || 0,
-            active: 1
+            active: 1,
+            auth_user_id: authData?.user?.id || null
         })
         .select("id")
         .single();
@@ -5284,7 +4651,7 @@ app.post("/api/users", isAdmin, async (req, res) => {
 
 app.patch("/api/users/:id", isAdmin, async (req, res) => {
     const { name, email, role, hourly_cost, active } = req.body;
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from("users")
         .update({ name, email, role, hourly_cost, active: active ? 1 : 0 })
         .eq("id", Number(req.params.id));
@@ -5293,20 +4660,20 @@ app.patch("/api/users/:id", isAdmin, async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Clients ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/clients", async (req, res) => {
+app.get("/api/clients", isAuthenticated, async (req, res) => {
     const { search } = req.query;
-    let query = supabase.from("clients").select("*").order("name");
+    let query = supabaseAdmin.from("clients").select("*").order("name");
     if (search) {
-        query = query.or(`name.ilike.% ${search} %, email.ilike.% ${search} % `);
+        query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
     }
     const { data, error } = await query;
     if (checkError(error, res)) return;
     return res.json(data);
 });
 
-app.post("/api/clients", async (req, res) => {
+app.post("/api/clients", isAdminOrComercial, async (req, res) => {
     const { name, phone, email } = req.body;
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from("clients")
         .insert({ name, phone, email })
         .select("id")
@@ -5316,11 +4683,11 @@ app.post("/api/clients", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Delivery & Delays Reports ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/reports/delays", async (req, res) => {
+app.get("/api/reports/delays", isAuthenticated, async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
     const today = new Date().toISOString().split("T")[0];
 
-    let query = supabase
+    let query = supabaseAdmin
         .from("orders")
         .select("id, order_number, client_name, product_type, print_type, quantity, deadline")
         .neq("status", "Entregue")
@@ -5351,7 +4718,7 @@ app.get("/api/reports/delays", async (req, res) => {
     return res.json(atrasados);
 });
 
-app.get("/api/reports/delivery", async (req, res) => {
+app.get("/api/reports/delivery", isAuthenticated, async (req, res) => {
     const { period, startDate: queryStartDate, endDate: queryEndDate, print_type } = req.query;
     const now = new Date();
     let startDate = new Date();
@@ -5381,7 +4748,7 @@ app.get("/api/reports/delivery", async (req, res) => {
         endDate.setHours(23, 59, 59, 999);
     }
 
-    let ordersQuery = supabase
+    let ordersQuery = supabaseAdmin
         .from("orders")
         .select("id, created_at, quantity, deadline, delivered_at")
         .eq("status", "Entregue")
@@ -5432,7 +4799,7 @@ app.get("/api/reports/delivery", async (req, res) => {
         chartMap[localDate].pecas += Number(o.quantity) || 0;
     });
 
-    const { data: config } = await supabase.from("config_producao").select("meta_diaria_pedidos, meta_diaria_pecas").eq("id", 1).single();
+    const { data: config } = await supabaseAdmin.from("config_producao").select("meta_diaria_pedidos, meta_diaria_pecas").eq("id", 1).single();
     const meta_pedidos = config?.meta_diaria_pedidos || 0;
     const meta_pecas = config?.meta_diaria_pecas || 0;
 
@@ -5469,7 +4836,7 @@ app.get("/api/reports/delivery", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Operational Report (Drill-Down) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/reports/operational", async (req, res) => {
+app.get("/api/reports/operational", isAuthenticated, async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
 
     if (!startDate || !endDate) {
@@ -5482,17 +4849,17 @@ app.get("/api/reports/operational", async (req, res) => {
     };
     if (print_type) rpcParams.p_print_type = print_type;
 
-    const { data, error } = await supabase.rpc("get_operational_report", rpcParams);
+    const { data, error } = await supabaseAdmin.rpc("get_operational_report", rpcParams);
 
     if (checkError(error, res, "Erro ao buscar relat├â┬│rio operacional")) return;
     return res.json(data);
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Production Profile Report ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/reports/profiles", async (req, res) => {
+app.get("/api/reports/profiles", isAuthenticated, async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
 
-    let query = supabase
+    let query = supabaseAdmin
         .from("orders")
         .select("product_type, print_type, num_colors, total_time_seconds, quantity")
         .eq("status", "Entregue")
@@ -5554,7 +4921,7 @@ app.get("/api/reports/profiles", async (req, res) => {
 });
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Goals & Productivity Report (Day, Week, Month) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.get("/api/reports/goals-productivity", async (req, res) => {
+app.get("/api/reports/goals-productivity", isAuthenticated, async (req, res) => {
     // Current time in Brazil (UTC-3)
     const now = new Date();
     const brTimeMs = now.getTime() - (3 * 60 * 60 * 1000);
@@ -5806,8 +5173,8 @@ app.get("/api/reports/goals-productivity", async (req, res) => {
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Gera├â┬º├â┬úo de Token & Acompanhamento P├â┬║blico de Pedido ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-app.post("/api/orders/:id/tracking-token", async (req, res) => {
+// ── Geração de Token & Acompanhamento Público de Pedido ─────────────────
+app.post("/api/orders/:id/tracking-token", isAdminOrComercial, async (req, res) => {
     try {
         const orderId = Number(req.params.id);
         
@@ -6034,15 +5401,15 @@ function _calcNecessidade(
  * Returns all current production necessities, calculated from active orders.
  * Uses stored data from producao_necessidades table + live order data.
  */
-app.get('/api/pcp/necessidades', async (req: any, res: any) => {
+app.get('/api/pcp/necessidades', isAuthenticated, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
+        const supabaseAdmin = createClient(
             process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
         );
 
         // Load active orders with items
-        const { data: orders, error: ordersErr } = await supabase
+        const { data: orders, error: ordersErr } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, client_name, deadline, status, quantity, total_via_corte, items, olist_order_id, product_type')
             .is('deleted_at', null)
@@ -6052,7 +5419,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
         if (ordersErr) throw ordersErr;
 
         // Load existing necessidades from DB (for status tracking)
-        const { data: savedNecessidades } = await supabase
+        const { data: savedNecessidades } = await supabaseAdmin
             .from('producao_necessidades')
             .select('*')
             .not('status', 'in', '("CONCLUIDO","COBERTO_PELO_ESTOQUE")');
@@ -6063,7 +5430,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
         });
 
         // Load OPs abertas from DB (local tracking)
-        const { data: opsAbertas } = await supabase
+        const { data: opsAbertas } = await supabaseAdmin
             .from('ordens_de_producao')
             .select('*')
             .in('status', ['ABERTA', 'EM_ANDAMENTO']);
@@ -6190,9 +5557,9 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
  * Re-queries Tiny stock for all SKUs and recalculates all necessidades.
  * Saves results to producao_necessidades table.
  */
-app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
+app.post('/api/pcp/necessidades/recalcular', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
+        const supabaseAdmin = createClient(
             process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
         );
@@ -6200,7 +5567,7 @@ app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
         const token = await _getEffectiveOlistToken();
         const tokenAvailable = !!token;
 
-        const { data: orders, error: ordersErr } = await supabase
+        const { data: orders, error: ordersErr } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, client_name, deadline, status, quantity, total_via_corte, items, olist_order_id, product_type')
             .is('deleted_at', null)
@@ -6209,7 +5576,7 @@ app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
 
         if (ordersErr) throw ordersErr;
 
-        const { data: opsAbertas } = await supabase
+        const { data: opsAbertas } = await supabaseAdmin
             .from('ordens_de_producao')
             .select('*')
             .in('status', ['ABERTA', 'EM_ANDAMENTO']);
@@ -6302,42 +5669,26 @@ app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
             }
         }
 
-        // Upsert all necessidades (conflict on order_id + product_type + size)
-        if (necessidadesToUpsert.length > 0) {
-            // Clear and re-insert for this recalculation
-            const orderIds = [...new Set(necessidadesToUpsert.map((n: any) => n.order_id))];
-            await supabase
-                .from('producao_necessidades')
-                .delete()
-                .in('order_id', orderIds)
-                .in('status', ['NECESSITA_NOVO_CORTE', 'AGUARDANDO_PRODUCAO_EXISTENTE', 'COBERTO_PELO_ESTOQUE']);
+        // Atomic transactional RPC: deletes outdated records, inserts new ones, and records audit atomically
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_recalcular_necessidades', {
+            p_necessidades: necessidadesToUpsert,
+            p_usuario: (req as any).user?.name || (req as any).user?.email || 'Sistema',
+            p_detalhes: {
+                total_pedidos: activeOrders.length,
+                estoque_via_tiny: tinyStockCache.size,
+                token_disponivel: tokenAvailable,
+                consultado_em: consultadoEm,
+            },
+        });
 
-            const { error: upsertErr } = await supabase
-                .from('producao_necessidades')
-                .insert(necessidadesToUpsert);
-
-            if (upsertErr) {
-                console.warn('[PCP] Erro ao salvar necessidades no banco:', upsertErr.message);
-            }
+        if (rpcErr) {
+            console.error('[PCP] Erro transacional ao recalcular necessidades:', rpcErr);
+            throw new Error(`Erro na transação de recálculo: ${rpcErr.message}`);
         }
-
-        // Audit log
-        try {
-            await supabase.from('pcp_audit_log').insert({
-                acao: 'NECESSIDADES_RECALCULADAS',
-                qty_calculada: necessidadesToUpsert.length,
-                detalhes: {
-                    total_pedidos: activeOrders.length,
-                    estoque_via_tiny: tinyStockCache.size,
-                    token_disponivel: tokenAvailable,
-                },
-                created_at: consultadoEm,
-            });
-        } catch (_) {}
 
         return res.json({
             success: true,
-            total_recalculadas: necessidadesToUpsert.length,
+            total_recalculadas: rpcRes?.total_recalculadas ?? necessidadesToUpsert.length,
             estoque_consultado_tiny: tinyStockCache.size,
             token_disponivel: tokenAvailable,
             consultado_em: consultadoEm,
@@ -6352,13 +5703,13 @@ app.post('/api/pcp/necessidades/recalcular', async (req: any, res: any) => {
  * GET /api/pcp/planos
  * Lists all cutting plans ordered by creation date.
  */
-app.get('/api/pcp/planos', async (req: any, res: any) => {
+app.get('/api/pcp/planos', isAuthenticated, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
+        const supabaseAdmin = createClient(
             process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
         );
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('planos_de_corte')
             .select('*')
             .order('created_at', { ascending: false })
@@ -6375,22 +5726,19 @@ app.get('/api/pcp/planos', async (req: any, res: any) => {
  * Creates a new cutting plan draft from selected necessidades.
  * Body: { necessidades_ids, fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids, created_by }
  */
-app.post('/api/pcp/planos', async (req: any, res: any) => {
+app.post('/api/pcp/planos', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-        const { necessidades_ids = [], fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids = [], created_by } = req.body;
+        const actorName = getActorName(req, 'Sistema');
+        const { necessidades_ids = [], fabric, color, tipo_tecido, largura_util, qty_planejada, enfesto_data, pedidos_ids = [] } = req.body;
 
         // Generate unique plan number
-        const { data: seqData } = await supabase.rpc('generate_plano_numero');
+        const { data: seqData } = await supabaseAdmin.rpc('generate_plano_numero');
         const plano_numero = seqData || `PC-${new Date().getFullYear()}-${Date.now()}`;
         const idempotency_key = `${plano_numero}_${Date.now()}`;
 
-        const { data, error } = await supabase
-            .from('planos_de_corte')
-            .insert({
+        // Atomic transactional RPC: creates cutting plan, updates linked necessidades, and records audit atomically
+        const { data: planoRow, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_criar_plano_corte', {
+            p_plano: {
                 plano_numero,
                 status: 'RASCUNHO',
                 fabric,
@@ -6400,32 +5748,23 @@ app.post('/api/pcp/planos', async (req: any, res: any) => {
                 qty_planejada: qty_planejada || 0,
                 enfesto_data,
                 pedidos_ids,
-                necessidades_ids,
-                created_by,
                 idempotency_key,
-            })
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        // Mark necessidades as INCLUIDO_EM_PLANO
-        if (necessidades_ids.length > 0 && data?.id) {
-            await supabase
-                .from('producao_necessidades')
-                .update({ status: 'INCLUIDO_EM_PLANO', plano_corte_id: data.id, updated_at: new Date().toISOString() })
-                .in('id', necessidades_ids);
-        }
-
-        await supabase.from('pcp_audit_log').insert({
-            acao: 'PLANO_CRIADO',
-            plano_id: data.id,
-            qty_calculada: qty_planejada,
-            usuario: created_by,
-            detalhes: { plano_numero, fabric, color },
+            },
+            p_necessidades_ids: necessidades_ids || [],
+            p_usuario: actorName,
+            p_detalhes: {
+                plano_numero,
+                fabric,
+                color,
+            },
         });
 
-        return res.status(201).json(data);
+        if (rpcErr) {
+            console.error('[PCP] Erro transacional ao criar plano:', rpcErr);
+            throw new Error(`Erro na transação de criação do plano: ${rpcErr.message}`);
+        }
+
+        return res.status(201).json(planoRow);
     } catch (err: any) {
         console.error('[PCP] Erro ao criar plano:', err);
         return res.status(500).json({ error: err.message });
@@ -6436,78 +5775,42 @@ app.post('/api/pcp/planos', async (req: any, res: any) => {
  * POST /api/pcp/planos/:id/aprovar
  * Revalidates necessidades and approves a cutting plan.
  * Requires idempotency_key to prevent double-approval.
- * Body: { aprovado_por, qty_aprovada, idempotency_key }
+ * Body: { qty_aprovada, idempotency_key }
  */
-app.post('/api/pcp/planos/:id/aprovar', async (req: any, res: any) => {
+app.post('/api/pcp/planos/:id/aprovar', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
         const planoId = parseInt(req.params.id);
-        const { aprovado_por, qty_aprovada, idempotency_key } = req.body;
+        const actorName = getActorName(req, 'Sistema');
+        const { qty_aprovada, idempotency_key } = req.body;
 
         if (!idempotency_key) {
-            return res.status(400).json({ error: 'idempotency_key ├â┬® obrigat├â┬│rio para aprova├â┬º├â┬úo' });
+            return res.status(400).json({ error: 'idempotency_key é obrigatório para aprovação' });
         }
 
-        // Check for existing approval with same key (anti-duplicate)
-        const { data: existing } = await supabase
-            .from('planos_de_corte')
-            .select('id, status, idempotency_key')
-            .eq('id', planoId)
-            .single();
-
-        if (!existing) return res.status(404).json({ error: 'Plano n├â┬úo encontrado' });
-        if (existing.status === 'APROVADO') {
-            return res.status(409).json({ error: 'Plano j├â┬í foi aprovado anteriormente', plano: existing });
-        }
-        if (!['RASCUNHO', 'AGUARDANDO_APROVACAO'].includes(existing.status)) {
-            return res.status(409).json({ error: `Plano n├â┬úo pode ser aprovado no status atual: ${existing.status}` });
-        }
-
-        const now = new Date().toISOString();
-        const { data: updated, error } = await supabase
-            .from('planos_de_corte')
-            .update({
-                status: 'APROVADO',
-                qty_aprovada,
-                aprovado_por,
-                aprovado_em: now,
-                revalidado_em: now,
-                idempotency_key,
-                updated_at: now,
-            })
-            .eq('id', planoId)
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        // Mark necessidades as PLANO_APROVADO
-        const { data: planoData } = await supabase
-            .from('planos_de_corte')
-            .select('necessidades_ids')
-            .eq('id', planoId)
-            .single();
-
-        if (planoData?.necessidades_ids?.length > 0) {
-            await supabase
-                .from('producao_necessidades')
-                .update({ status: 'PLANO_APROVADO', updated_at: now })
-                .in('id', planoData.necessidades_ids);
-        }
-
-        await supabase.from('pcp_audit_log').insert({
-            acao: 'PLANO_APROVADO',
-            plano_id: planoId,
-            qty_aprovada,
-            usuario: aprovado_por,
-            detalhes: { idempotency_key },
-            created_at: now,
+        // Atomic transactional RPC: validates status, updates plano & necessidades, and writes audit atomically
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_aprovar_plano_corte', {
+            p_plano_id: planoId,
+            p_qty_aprovada: qty_aprovada,
+            p_usuario: actorName,
+            p_idempotency_key: idempotency_key,
         });
 
-        return res.json({ success: true, plano: updated });
+        if (rpcErr) {
+            if (rpcErr.message?.includes('PLANO_NOT_FOUND')) {
+                return res.status(404).json({ error: 'Plano não encontrado' });
+            }
+            if (rpcErr.message?.includes('INVALID_STATUS')) {
+                return res.status(409).json({ error: rpcErr.message });
+            }
+            console.error('[PCP] Erro transacional ao aprovar plano:', rpcErr);
+            throw new Error(`Erro na transação de aprovação: ${rpcErr.message}`);
+        }
+
+        if (rpcRes?.already_approved) {
+            return res.status(409).json({ error: 'Plano já foi aprovado anteriormente', plano: rpcRes.plano });
+        }
+
+        return res.json({ success: true, plano: rpcRes?.plano });
     } catch (err: any) {
         console.error('[PCP] Erro ao aprovar plano:', err);
         return res.status(500).json({ error: err.message });
@@ -6518,13 +5821,13 @@ app.post('/api/pcp/planos/:id/aprovar', async (req: any, res: any) => {
  * GET /api/pcp/ops
  * Lists all production orders registered in ProComfort.
  */
-app.get('/api/pcp/ops', async (req: any, res: any) => {
+app.get('/api/pcp/ops', isAuthenticated, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
+        const supabaseAdmin = createClient(
             process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
         );
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('ordens_de_producao')
             .select('*')
             .order('created_at', { ascending: false })
@@ -6541,19 +5844,20 @@ app.get('/api/pcp/ops', async (req: any, res: any) => {
  * Creates a production order in ProComfort (and optionally tries Tiny API).
  * Body: { plano_corte_id, product_type, fabric, color, size, sku, qty_total, observacao, created_by }
  */
-app.post('/api/pcp/ops', async (req: any, res: any) => {
+app.post('/api/pcp/ops', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
+        const actorName = getActorName(req, 'Sistema');
+        const supabaseAdmin = createClient(
             process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
         );
-        const { plano_corte_id, product_type, fabric, color, size, sku, qty_total, observacao, created_by } = req.body;
+        const { plano_corte_id, product_type, fabric, color, size, sku, qty_total, observacao } = req.body;
 
         if (!product_type || !qty_total) {
-            return res.status(400).json({ error: 'product_type e qty_total s├â┬úo obrigat├â┬│rios' });
+            return res.status(400).json({ error: 'product_type e qty_total são obrigatórios' });
         }
 
-        // Try Tiny API to create OP (Fase 5 ├óÔé¼ÔÇØ may not be available)
+        // Try Tiny API to create OP (Fase 5 — may not be available)
         let tinyResult: { tiny_op_id?: string; tiny_op_numero?: string } = {};
         let tinyAttempted = false;
         try {
@@ -6582,14 +5886,15 @@ app.post('/api/pcp/ops', async (req: any, res: any) => {
                 }
             }
         } catch (_) {
-            // Tiny OP creation not available ├óÔé¼ÔÇØ use manual fallback
+            // Tiny OP creation not available — use manual fallback
         }
 
         const opStatus = tinyResult.tiny_op_id ? 'ABERTA' : 'PENDENTE_CADASTRO_TINY';
+        const acaoAudit = tinyResult.tiny_op_id ? 'OP_GERADA_TINY' : 'OP_REGISTRADA_MANUAL';
 
-        const { data, error } = await supabase
-            .from('ordens_de_producao')
-            .insert({
+        // Atomic transactional RPC: creates OP, updates plan status if needed, and writes audit atomically
+        const { data: opData, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_registrar_op', {
+            p_op_data: {
                 plano_corte_id: plano_corte_id || null,
                 tiny_op_id: tinyResult.tiny_op_id || null,
                 tiny_op_numero: tinyResult.tiny_op_numero || null,
@@ -6599,40 +5904,29 @@ app.post('/api/pcp/ops', async (req: any, res: any) => {
                 color: color || null,
                 size: size || null,
                 qty_total,
-                qty_concluida: 0,
-                qty_pendente: qty_total,
-                qty_comprometida: 0,
                 status: opStatus,
                 tipo: plano_corte_id ? 'VINCULADA_PLANO' : 'REPOSICAO',
                 observacao,
-                created_by,
-            })
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        // Update plano status if tied to a plan
-        if (plano_corte_id && tinyResult.tiny_op_id) {
-            await supabase
-                .from('planos_de_corte')
-                .update({ status: 'EM_CORTE', updated_at: new Date().toISOString() })
-                .eq('id', plano_corte_id);
-        }
-
-        await supabase.from('pcp_audit_log').insert({
-            acao: tinyResult.tiny_op_id ? 'OP_GERADA_TINY' : 'OP_REGISTRADA_MANUAL',
-            plano_id: plano_corte_id || null,
-            op_id: data?.id,
-            produto: product_type,
-            sku,
-            qty_calculada: qty_total,
-            usuario: created_by,
-            detalhes: { tiny_attempted: tinyAttempted, tiny_op_id: tinyResult.tiny_op_id || null, status: opStatus },
+            },
+            p_acao: acaoAudit,
+            p_usuario: actorName,
+            p_detalhes: {
+                plano_id: plano_corte_id || null,
+                produto: product_type,
+                sku,
+                tiny_attempted: tinyAttempted,
+                tiny_op_id: tinyResult.tiny_op_id || null,
+                status: opStatus,
+            },
         });
 
+        if (rpcErr) {
+            console.error('[PCP] Erro transacional ao criar OP:', rpcErr);
+            throw new Error(`Erro na transação de registro da OP: ${rpcErr.message}`);
+        }
+
         return res.status(201).json({
-            ...data,
+            ...opData,
             tiny_criada: !!tinyResult.tiny_op_id,
             tiny_attempted: tinyAttempted,
         });
@@ -6647,42 +5941,35 @@ app.post('/api/pcp/ops', async (req: any, res: any) => {
  * Manually associates a Tiny OP number with a ProComfort OP (when auto-creation wasn't available).
  * Body: { tiny_op_numero, tiny_op_id? }
  */
-app.post('/api/pcp/ops/:id/registrar-tiny', async (req: any, res: any) => {
+app.post('/api/pcp/ops/:id/registrar-tiny', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
         const opId = parseInt(req.params.id);
-        const { tiny_op_numero, tiny_op_id, usuario } = req.body;
+        const actorName = getActorName(req, 'Sistema');
+        const { tiny_op_numero, tiny_op_id } = req.body;
 
         if (!tiny_op_numero) {
-            return res.status(400).json({ error: 'tiny_op_numero ├â┬® obrigat├â┬│rio' });
+            return res.status(400).json({ error: 'tiny_op_numero é obrigatório' });
         }
 
-        const { data, error } = await supabase
-            .from('ordens_de_producao')
-            .update({
-                tiny_op_numero,
-                tiny_op_id: tiny_op_id || tiny_op_numero,
-                status: 'ABERTA',
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', opId)
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        await supabase.from('pcp_audit_log').insert({
-            acao: 'OP_NUMERO_TINY_REGISTRADO',
-            op_id: opId,
-            usuario,
-            detalhes: { tiny_op_numero, tiny_op_id },
+        // Atomic transactional RPC: updates OP with Tiny ID and writes audit atomically
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_registrar_numero_tiny_op', {
+            p_op_id: opId,
+            p_tiny_op_numero: tiny_op_numero,
+            p_tiny_op_id: tiny_op_id || tiny_op_numero,
+            p_usuario: actorName,
         });
 
-        return res.json({ success: true, op: data });
+        if (rpcErr) {
+            if (rpcErr.message?.includes('OP_NOT_FOUND')) {
+                return res.status(404).json({ error: 'Ordem de produção não encontrada' });
+            }
+            console.error('[PCP] Erro transacional ao registrar Tiny na OP:', rpcErr);
+            throw new Error(`Erro na transação de registro do Tiny: ${rpcErr.message}`);
+        }
+
+        return res.json({ success: true, op: rpcRes?.op });
     } catch (err: any) {
+        console.error('[PCP] Erro ao registrar Tiny na OP:', err);
         return res.status(500).json({ error: err.message });
     }
 });
@@ -6691,17 +5978,12 @@ app.post('/api/pcp/ops/:id/registrar-tiny', async (req: any, res: any) => {
  * GET /api/pcp/summary
  * Returns summary metrics for the PCP dashboard header.
  */
-app.get('/api/pcp/summary', async (req: any, res: any) => {
+app.get('/api/pcp/summary', isAuthenticated, async (req: any, res: any) => {
     try {
-        const supabase = createClient(
-            process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
-        );
-
         const [{ data: nec }, { data: planos }, { data: ops }] = await Promise.all([
-            supabase.from('producao_necessidades').select('status, qty_necessaria'),
-            supabase.from('planos_de_corte').select('status').not('status', 'in', '("CONCLUIDO","CANCELADO")'),
-            supabase.from('ordens_de_producao').select('status, qty_pendente').not('status', 'in', '("CONCLUIDA","CANCELADA")'),
+            supabaseAdmin.from('producao_necessidades').select('status, qty_necessaria'),
+            supabaseAdmin.from('planos_de_corte').select('status').not('status', 'in', '("CONCLUIDO","CANCELADO")'),
+            supabaseAdmin.from('ordens_de_producao').select('status, qty_pendente').not('status', 'in', '("CONCLUIDA","CANCELADA")'),
         ]);
 
         const necessidades = nec || [];
@@ -6729,7 +6011,7 @@ app.get('/api/pcp/summary', async (req: any, res: any) => {
  * Proxies Tiny ERP stock queries server-side to avoid CORS issues.
  * Body: { token: string, products: { id_produto: string, sku: string }[] }
  */
-app.post('/api/stock/sync', async (req: any, res: any) => {
+app.post('/api/stock/sync', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
   try {
     const { token: requestToken, products } = req.body || {};
     
@@ -6805,7 +6087,7 @@ app.post('/api/stock/sync', async (req: any, res: any) => {
 // ============================================================================
 
 // GET /api/cut-plans ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø lista todos os planos com itens e movimentacoes
-app.get('/api/cut-plans', async (req: any, res: any) => {
+app.get('/api/cut-plans', isAuthenticated, async (req: any, res: any) => {
   try {
     const { data: plans, error } = await supabaseAdmin
       .from('cut_plans')
@@ -6819,7 +6101,7 @@ app.get('/api/cut-plans', async (req: any, res: any) => {
 });
 
 // GET /api/cut-plans/committed-quantities ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø quantidades comprometidas para a Central de Corte
-app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
+app.get('/api/cut-plans/committed-quantities', isAuthenticated, async (_req: any, res: any) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('cut_plan_items')
@@ -6839,7 +6121,7 @@ app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
 });
 
 // GET /api/cut-plans/:id ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø plano especifico com itens e movimentacoes
-app.get('/api/cut-plans/:id', async (req: any, res: any) => {
+app.get('/api/cut-plans/:id', isAuthenticated, async (req: any, res: any) => {
   try {
     const { id } = req.params;
     const { data: plan, error } = await supabaseAdmin
@@ -6854,498 +6136,187 @@ app.get('/api/cut-plans/:id', async (req: any, res: any) => {
   }
 });
 
-// POST /api/cut-plans ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø cria um novo plano de corte (snapshot + itens por pedido)
-app.post('/api/cut-plans', async (req: any, res: any) => {
+// POST /api/cut-plans — atomic transactional RPC
+app.post('/api/cut-plans', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
   try {
-    const { fabric, color, tipo_tecido, largura_util, items, created_by, notes } = req.body;
-    // items = array de { order_id, order_number, sku, product_type, fabric, color, size, item_key, quantity_planned }
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: 'Sessão inválida ou sem identificação de usuário.' });
+    }
+    const { fabric, color, tipo_tecido, largura_util, items, notes, idempotency_key } = req.body || {};
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Items do plano sao obrigatorios' });
     }
-
-    const qty_planned = items.reduce((sum: number, it: any) => sum + Number(it.quantity_planned || 0), 0);
-
-    // Gerar plan_number: PC-YYYY-NNNNN
-    const year = new Date().getFullYear();
-    const { data: maxRow } = await supabaseAdmin
-      .from('cut_plans')
-      .select('plan_number')
-      .like('plan_number', `PC-${year}-%`)
-      .order('plan_number', { ascending: false })
-      .limit(1)
-      .single();
-    let seq = 1;
-    if (maxRow?.plan_number) {
-      const parts = maxRow.plan_number.split('-');
-      seq = (parseInt(parts[2] || '0', 10) || 0) + 1;
+    const { data, error } = await supabaseAdmin.rpc('pcp_tx_create_cut_plan', {
+      p_fabric: fabric || null,
+      p_color: color || null,
+      p_tipo_tecido: tipo_tecido || null,
+      p_largura_util: largura_util || null,
+      p_items: items,
+      p_notes: notes || null,
+      p_user_id: actorId,
+      p_idempotency_key: idempotency_key || null
+    });
+    if (error) {
+      console.error('[API] Erro ao criar cut plan via RPC:', error);
+      return res.status(500).json({ error: error.message });
     }
-    const plan_number = `PC-${year}-${String(seq).padStart(5, '0')}`;
-
-    const { data: plan, error: planErr } = await supabaseAdmin
-      .from('cut_plans')
-      .insert({
-        plan_number, fabric, color, tipo_tecido, largura_util,
-        qty_planned, status: 'PENDING_CUT',
-        snapshot_json: items,
-        created_by: created_by || 'Sistema'
-      })
-      .select()
-      .single();
-    if (planErr || !plan) return res.status(500).json({ error: planErr?.message || 'Erro ao criar plano' });
-
-    // Criar itens do plano
-    const itemsToInsert = items.map((it: any) => ({
-      plan_id: plan.id,
-      order_id: it.order_id,
-      order_number: it.order_number || null,
-      order_item_id: it.order_item_id || null,
-      sku: it.sku || null,
-      product_type: it.product_type,
-      fabric: it.fabric || fabric,
-      color: it.color || color,
-      size: it.size,
-      item_key: it.item_key,
-      quantity_planned: Number(it.quantity_planned || 0),
-      quantity_cut: 0,
-      quantity_sewing: 0,
-      quantity_sewing_done: 0,
-      status: 'PENDING_CUT'
-    }));
-    await supabaseAdmin.from('cut_plan_items').insert(itemsToInsert);
-
-    // Registrar movimento PLAN_CREATED
-    const movements = items.map((it: any) => ({
-      plan_id: plan.id,
-      order_id: it.order_id,
-      order_number: it.order_number || null,
-      plan_number,
-      movement_type: 'PLAN_CREATED',
-      sku: it.sku || null,
-      product_type: it.product_type,
-      size: it.size,
-      item_key: it.item_key,
-      qty_before: 0,
-      qty_after: Number(it.quantity_planned || 0),
-      quantity: Number(it.quantity_planned || 0),
-      notes: 'Plano criado',
-      user_name: created_by || 'Sistema'
-    }));
-    await supabaseAdmin.from('production_movements').insert(movements);
-
-    return res.status(201).json({ ...plan, plan_number });
+    return res.status(201).json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/cut-plans/:id/release ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø LIBERAR PARA CORTE
-app.post('/api/cut-plans/:id/release', async (req: any, res: any) => {
+// POST /api/cut-plans/:id/release — atomic transactional RPC
+app.post('/api/cut-plans/:id/release', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { user_name } = req.body;
-
-    const { data: plan, error: fetchErr } = await supabaseAdmin
-      .from('cut_plans')
-      .select('*, items:cut_plan_items(*)')
-      .eq('id', id)
-      .single();
-    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
-    if (plan.status !== 'PENDING_CUT') {
-      return res.status(400).json({ error: `Plano ja esta em status ${plan.status}. Apenas planos PENDING_CUT podem ser liberados.` });
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: 'Sessão inválida ou sem identificação de usuário.' });
     }
-
-    const now = new Date().toISOString();
-
-    await supabaseAdmin.from('cut_plans').update({
-      status: 'CUT_RELEASED', released_at: now
-    }).eq('id', id);
-
-    await supabaseAdmin.from('cut_plan_items').update({ status: 'CUT_RELEASED' }).eq('plan_id', id);
-
-    const movements = (plan.items || []).map((it: any) => ({
-      plan_id: Number(id),
-      plan_item_id: it.id,
-      order_id: it.order_id,
-      order_number: it.order_number,
-      plan_number: plan.plan_number,
-      movement_type: 'CUT_RELEASED',
-      sku: it.sku,
-      product_type: it.product_type,
-      size: it.size,
-      item_key: it.item_key,
-      qty_before: it.quantity_planned,
-      qty_after: it.quantity_planned,
-      quantity: it.quantity_planned,
-      notes: 'Liberado para corte',
-      user_name: user_name || 'Sistema'
-    }));
-    await supabaseAdmin.from('production_movements').insert(movements);
-
-    return res.json({ success: true, plan_number: plan.plan_number, status: 'CUT_RELEASED' });
+    const { idempotency_key } = req.body || {};
+    const { data, error } = await supabaseAdmin.rpc('pcp_tx_release_cut_plan', {
+      p_plan_id: Number(id),
+      p_user_id: actorId,
+      p_idempotency_key: idempotency_key || null
+    });
+    if (error) {
+      console.error('[API] Erro ao liberar cut plan via RPC:', error);
+      const isNotFound = error.message?.includes('PLAN_NOT_FOUND');
+      const isBadStatus = error.message?.includes('INVALID_STATUS');
+      const status = isNotFound ? 404 : (isBadStatus ? 400 : 500);
+      return res.status(status).json({ error: error.message });
+    }
+    return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/cut-plans/:id/complete-cut ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø CORTE CONCLUIDO
-app.post('/api/cut-plans/:id/complete-cut', async (req: any, res: any) => {
+// POST /api/cut-plans/:id/complete-cut — atomic transactional RPC
+app.post('/api/cut-plans/:id/complete-cut', canOperateProduction, async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { qty_cut_actual, user_name, notes } = req.body;
-
-    if (!qty_cut_actual || Number(qty_cut_actual) < 0) {
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: 'Sessão inválida ou sem identificação de usuário.' });
+    }
+    const { qty_cut_actual, notes, item_quantities, idempotency_key } = req.body || {};
+    if (qty_cut_actual === undefined || Number(qty_cut_actual) < 0) {
       return res.status(400).json({ error: 'qty_cut_actual e obrigatorio e deve ser >= 0' });
     }
-
-    const { data: plan, error: fetchErr } = await supabaseAdmin
-      .from('cut_plans')
-      .select('*, items:cut_plan_items(*)')
-      .eq('id', id)
-      .single();
-    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
-    if (plan.status !== 'CUT_RELEASED') {
-      return res.status(400).json({ error: `Plano deve estar em CUT_RELEASED para registrar corte concluido. Status atual: ${plan.status}` });
-    }
-
-    const qtyCutActual = Number(qty_cut_actual);
-    const qtyPlanned = Number(plan.qty_planned);
-    const qtyReturn = Math.max(0, qtyPlanned - qtyCutActual);
-
-    await supabaseAdmin.from('cut_plans').update({
-      status: 'CUT_COMPLETED',
-      qty_cut: qtyCutActual,
-      completed_at: new Date().toISOString()
-    }).eq('id', id);
-
-    const { item_quantities } = req.body;
-    const items = plan.items || [];
-    const movementsToInsert: any[] = [];
-    const newItemsToQueue: any[] = [];
-
-    for (const it of items) {
-      const itPlanned = Number(it.quantity_planned);
-      let itCut = 0;
-      
-      if (item_quantities && typeof item_quantities[it.id] !== 'undefined') {
-          itCut = Number(item_quantities[it.id]) || 0;
-      } else {
-          const ratio = qtyPlanned > 0 ? itPlanned / qtyPlanned : 0;
-          itCut = Math.round(qtyCutActual * ratio);
-      }
-      
-      const itReturn = Math.max(0, itPlanned - itCut);
-
-      await supabaseAdmin.from('cut_plan_items').update({
-        status: 'CUT_COMPLETED',
-        quantity_cut: itCut
-      }).eq('id', it.id);
-      
-      if (itReturn > 0) {
-          newItemsToQueue.push({
-              order_id: it.order_id,
-              order_number: it.order_number,
-              order_item_id: it.order_item_id,
-              sku: it.sku,
-              product_type: it.product_type,
-              size: it.size,
-              color: it.color,
-              fabric: it.fabric,
-              item_key: it.item_key,
-              quantity_planned: itReturn,
-              quantity_cut: 0,
-              quantity_sewing: 0,
-              quantity_sewing_done: 0,
-              status: 'PENDING_CUT',
-              plan_id: null
-          });
-      }
-
-      movementsToInsert.push({
-        plan_id: Number(id),
-        plan_item_id: it.id,
-        order_id: it.order_id,
-        order_number: it.order_number,
-        plan_number: plan.plan_number,
-        movement_type: 'CUT_COMPLETED',
-        sku: it.sku,
-        product_type: it.product_type,
-        size: it.size,
-        item_key: it.item_key,
-        qty_before: itPlanned,
-        qty_after: itCut,
-        quantity: itCut,
-        user_name: user_name || 'Sistema',
-        notes: notes || `Corte concluído (planejado: ${itPlanned}, cortado: ${itCut})`
-      });
-    }
-
-    if (newItemsToQueue.length > 0) { await supabaseAdmin.from('cut_plan_items').insert(newItemsToQueue); }
-    await supabaseAdmin.from('production_movements').insert(movementsToInsert);
-
-
-    return res.json({
-      success: true,
-      qty_planned: qtyPlanned,
-      qty_cut: qtyCutActual,
-      qty_returned_to_pending: qtyReturn,
-      status: 'CUT_COMPLETED'
+    const { data, error } = await supabaseAdmin.rpc('pcp_tx_complete_cut_plan', {
+      p_plan_id: Number(id),
+      p_qty_cut_actual: Number(qty_cut_actual),
+      p_user_id: actorId,
+      p_notes: notes || null,
+      p_item_quantities: item_quantities || null,
+      p_idempotency_key: idempotency_key || null
     });
+    if (error) {
+      console.error('[API] Erro ao concluir cut plan via RPC:', error);
+      const isNotFound = error.message?.includes('PLAN_NOT_FOUND');
+      const isBadStatus = error.message?.includes('INVALID_STATUS');
+      const status = isNotFound ? 404 : (isBadStatus ? 400 : 500);
+      return res.status(status).json({ error: error.message });
+    }
+    return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/cut-plans/:id/send-sewing ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø ENVIAR PARA COSTURA
-app.post('/api/cut-plans/:id/send-sewing', async (req: any, res: any) => {
+// POST /api/cut-plans/:id/send-sewing — atomic transactional RPC
+app.post('/api/cut-plans/:id/send-sewing', canOperateProduction, async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { qty_sewing, user_name, notes, faccao_id } = req.body;
-
-    const { data: plan, error: fetchErr } = await supabaseAdmin
-      .from('cut_plans')
-      .select('*, items:cut_plan_items(*)')
-      .eq('id', id)
-      .single();
-    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
-    if (plan.status !== 'CUT_COMPLETED') {
-      return res.status(400).json({ error: `Plano deve estar CUT_COMPLETED para enviar para costura. Status atual: ${plan.status}` });
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: 'Sessão inválida ou sem identificação de usuário.' });
     }
-
-    const qtySewing = Number(qty_sewing) || Number(plan.qty_cut) || 0;
-
-    await supabaseAdmin.from('cut_plans').update({
-      status: 'IN_SEWING',
-      qty_sewing: qtySewing, faccao_id: faccao_id || null }).eq('id', id);
-
-    const qtyCutPlan = Number(plan.qty_cut) || 1;
-    for (const it of (plan.items || [])) {
-      if (it.status !== 'CUT_COMPLETED') continue;
-      const itRatio = Number(it.quantity_cut) / qtyCutPlan;
-      const itSewing = Math.round(qtySewing * itRatio);
-      await supabaseAdmin.from('cut_plan_items').update({ status: 'IN_SEWING', quantity_sewing: itSewing }).eq('id', it.id);
+    const { qty_sewing, notes, faccao_id, idempotency_key } = req.body || {};
+    const { data, error } = await supabaseAdmin.rpc('pcp_tx_send_cut_plan_sewing', {
+      p_plan_id: Number(id),
+      p_qty_sewing: Number(qty_sewing) || 0,
+      p_user_id: actorId,
+      p_faccao_id: faccao_id ? Number(faccao_id) : null,
+      p_notes: notes || null,
+      p_idempotency_key: idempotency_key || null
+    });
+    if (error) {
+      console.error('[API] Erro ao enviar cut plan para costura via RPC:', error);
+      const isNotFound = error.message?.includes('PLAN_NOT_FOUND');
+      const isBadStatus = error.message?.includes('INVALID_STATUS');
+      const status = isNotFound ? 404 : (isBadStatus ? 400 : 500);
+      return res.status(status).json({ error: error.message });
     }
-
-    const movements = (plan.items || []).filter((it: any) => it.status === 'CUT_COMPLETED').map((it: any) => ({
-      plan_id: Number(id),
-      plan_item_id: it.id,
-      order_id: it.order_id,
-      order_number: it.order_number,
-      plan_number: plan.plan_number,
-      movement_type: 'SEWING_SENT',
-      sku: it.sku,
-      product_type: it.product_type,
-      size: it.size,
-      item_key: it.item_key,
-      qty_before: it.quantity_cut,
-      qty_after: it.quantity_cut,
-      quantity: it.quantity_cut,
-      notes: notes || 'Enviado para costura',
-      user_name: user_name || 'Sistema'
-    }));
-    await supabaseAdmin.from('production_movements').insert(movements);
-
-    return res.json({ success: true, qty_sewing: qtySewing, status: 'IN_SEWING' });
+    return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/cut-plans/:id/return-sewing ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø RETORNOU DA COSTURA (parcial ou total)
-app.post('/api/cut-plans/:id/return-sewing', async (req: any, res: any) => {
+// POST /api/cut-plans/:id/return-sewing — atomic transactional RPC
+app.post('/api/cut-plans/:id/return-sewing', canOperateProduction, async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { qty_returned, item_quantities, user_name, notes } = req.body;
-
-    const { data: plan, error: fetchErr } = await supabaseAdmin
-      .from('cut_plans')
-      .select('*, items:cut_plan_items(*)')
-      .eq('id', id)
-      .single();
-    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
-    if (plan.status !== 'IN_SEWING') {
-      return res.status(400).json({ error: `Plano deve estar IN_SEWING para registrar retorno. Status atual: ${plan.status}` });
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: 'Sessão inválida ou sem identificação de usuário.' });
     }
-
-    const qtyReturned = Number(qty_returned) || 0;
-    const qtyInSewing = Number(plan.qty_sewing) || 0;
-    const qtyStillInSewing = Math.max(0, qtyInSewing - qtyReturned);
-
-    const newStatus = qtyStillInSewing <= 0 ? 'SEWING_COMPLETED' : 'IN_SEWING';
-
-    await supabaseAdmin.from('cut_plans').update({
-      status: newStatus,
-      qty_sewing_done: (Number(plan.qty_sewing_done) || 0) + qtyReturned,
-      qty_sewing: qtyStillInSewing
-    }).eq('id', id);
-
-    const qtyInSewingPlan = Number(plan.qty_sewing) || 1;
-    const movements: any[] = [];
-    
-    // First, plan-level movement
-    movements.push({
-      plan_id: Number(id),
-      order_id: null,
-      plan_number: plan.plan_number,
-      movement_type: 'SEWING_RETURNED',
-      qty_before: qtyInSewing,
-      qty_after: qtyStillInSewing,
-      quantity: qtyReturned,
-      notes: notes || (qtyStillInSewing > 0 ? `${qtyStillInSewing} ainda em costura` : 'Costura concluida'),
-      user_name: user_name || 'Sistema'
+    const { qty_returned, item_quantities, notes, idempotency_key } = req.body || {};
+    const { data, error } = await supabaseAdmin.rpc('pcp_tx_return_cut_plan_sewing', {
+      p_plan_id: Number(id),
+      p_qty_returned: Number(qty_returned) || 0,
+      p_user_id: actorId,
+      p_item_quantities: item_quantities || null,
+      p_notes: notes || null,
+      p_idempotency_key: idempotency_key || null
     });
-
-    for (const it of (plan.items || [])) {
-      if (it.status !== 'IN_SEWING') continue;
-      
-      let itReturned = 0;
-      if (item_quantities && typeof item_quantities[it.id] !== 'undefined') {
-        itReturned = Number(item_quantities[it.id]) || 0;
-      } else {
-        const itRatio = Number(it.quantity_sewing) / qtyInSewingPlan;
-        itReturned = Math.round(qtyReturned * itRatio);
-      }
-      
-      const itStillSewing = Math.max(0, Number(it.quantity_sewing) - itReturned);
-      
-      await supabaseAdmin.from('cut_plan_items').update({
-        status: itStillSewing <= 0 ? 'SEWING_COMPLETED' : 'IN_SEWING',
-        quantity_sewing_done: (Number(it.quantity_sewing_done) || 0) + itReturned,
-        quantity_sewing: itStillSewing
-      }).eq('id', it.id);
-      
-      if (itReturned > 0) {
-        movements.push({
-          plan_id: Number(id),
-          plan_item_id: it.id,
-          order_id: it.order_id,
-          order_number: it.order_number,
-          plan_number: plan.plan_number,
-          movement_type: 'SEWING_RETURNED',
-          sku: it.sku,
-          product_type: it.product_type,
-          size: it.size,
-          item_key: it.item_key,
-          qty_before: Number(it.quantity_sewing),
-          qty_after: itStillSewing,
-          quantity: itReturned,
-          notes: notes || `Retornou ${itReturned} pecas`,
-          user_name: user_name || 'Sistema'
-        });
-      }
+    if (error) {
+      console.error('[API] Erro ao retornar cut plan da costura via RPC:', error);
+      const isNotFound = error.message?.includes('PLAN_NOT_FOUND');
+      const isBadStatus = error.message?.includes('INVALID_STATUS');
+      const status = isNotFound ? 404 : (isBadStatus ? 400 : 500);
+      return res.status(status).json({ error: error.message });
     }
-
-    await supabaseAdmin.from('production_movements').insert(movements);
-
-    
-    // Avançar status das ordens se os itens foram 100% retornados
-    const fullyReturnedOrderIds = [...new Set((plan.items || [])
-      .filter((it: any) => {
-        let itRet = 0;
-        if (item_quantities && typeof item_quantities[it.id] !== 'undefined') {
-          itRet = Number(item_quantities[it.id]) || 0;
-        } else {
-          const ratio = Number(it.quantity_sewing) / qtyInSewingPlan;
-          itRet = Math.round(qtyReturned * ratio);
-        }
-        const stillSewing = Math.max(0, Number(it.quantity_sewing) - itRet);
-        return stillSewing <= 0;
-      })
-      .map((it: any) => it.order_id)
-      .filter((id: any) => id)
-    )];
-
-    if (fullyReturnedOrderIds.length > 0) {
-        // Encontrar os IDs reais das etapas Corte e Costura no banco
-        const { data: stages } = await supabaseAdmin.from('stages').select('id, name');
-        const targetStages = (stages || [])
-            .filter((s: any) => {
-                const stName = (s.name || '').toLowerCase();
-                return stName.includes('corte') || stName.includes('costura') || stName.includes('confeccao');
-            })
-            .map((s: any) => s.id);
-
-        for (const oId of fullyReturnedOrderIds) {
-            const { data: orderData } = await supabaseAdmin.from('orders').select('quantity').eq('id', oId).single();
-            const orderQty = orderData?.quantity || 1;
-
-            for (const stageId of targetStages) {
-                const prog = {
-                    order_id: oId,
-                    stage_id: stageId,
-                    quantidade_pedido: orderQty,
-                    quantidade_boa: orderQty,
-                    quantidade_perdida: 0,
-                    pendencia_reposicao: 0,
-                    finished: true
-                };
-                await supabaseAdmin.from('order_stage_progress').upsert(prog);
-            }
-        }
-    }
-
-
-
-    return res.json({ success: true, qty_returned: qtyReturned, qty_still_in_sewing: qtyStillInSewing, status: newStatus });
+    return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-
-
-// POST /api/cut-plans/:id/cancel ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø CANCELAR LIBERACAO / REABRIR PARA CORTE
-app.post('/api/cut-plans/:id/cancel', async (req: any, res: any) => {
+// POST /api/cut-plans/:id/cancel — atomic transactional RPC
+app.post('/api/cut-plans/:id/cancel', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { user_name, reason } = req.body;
-
-    const { data: plan, error: fetchErr } = await supabaseAdmin
-      .from('cut_plans')
-      .select('*, items:cut_plan_items(*)')
-      .eq('id', id)
-      .single();
-    if (fetchErr || !plan) return res.status(404).json({ error: 'Plano nao encontrado' });
-
-    const cancellableStatuses = ['PENDING_CUT', 'CUT_RELEASED'];
-    if (!cancellableStatuses.includes(plan.status)) {
-      return res.status(400).json({ error: `Nao e possivel cancelar um plano com status ${plan.status}. Apenas PENDING_CUT e CUT_RELEASED podem ser cancelados.` });
+    const actorId = getActorId(req);
+    if (!actorId) {
+      return res.status(401).json({ error: 'Sessão inválida ou sem identificação de usuário.' });
     }
-
-    await supabaseAdmin.from('cut_plans').update({ status: 'CANCELLED' }).eq('id', id);
-    await supabaseAdmin.from('cut_plan_items').update({ status: 'CANCELLED' }).eq('plan_id', id);
-
-    const movements = (plan.items || []).map((it: any) => ({
-      plan_id: Number(id),
-      plan_item_id: it.id,
-      order_id: it.order_id,
-      order_number: it.order_number,
-      plan_number: plan.plan_number,
-      movement_type: 'PLAN_CANCELLED',
-      sku: it.sku,
-      product_type: it.product_type,
-      size: it.size,
-      item_key: it.item_key,
-      qty_before: it.quantity_planned,
-      qty_after: 0,
-      quantity: it.quantity_planned,
-      notes: reason || 'Liberacao cancelada ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø quantidades retornam para pendencia de corte',
-      user_name: user_name || 'Sistema'
-    }));
-    await supabaseAdmin.from('production_movements').insert(movements);
-
-    return res.json({
-      success: true,
-      status: 'CANCELLED',
-      qty_returned_to_pending: plan.qty_planned,
-      message: `${plan.qty_planned} pecas retornaram para pendencia de corte`
+    const { reason, idempotency_key } = req.body || {};
+    const { data, error } = await supabaseAdmin.rpc('pcp_tx_cancel_cut_plan', {
+      p_plan_id: Number(id),
+      p_user_id: actorId,
+      p_reason: reason || null,
+      p_idempotency_key: idempotency_key || null
     });
+    if (error) {
+      console.error('[API] Erro ao cancelar cut plan via RPC:', error);
+      const isNotFound = error.message?.includes('PLAN_NOT_FOUND');
+      const isBadStatus = error.message?.includes('INVALID_STATUS');
+      const status = isNotFound ? 404 : (isBadStatus ? 400 : 500);
+      return res.status(status).json({ error: error.message });
+    }
+    return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
 // GET /api/cut-plans/:id/movements ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø historico de movimentacoes
-app.get('/api/cut-plans/:id/movements', async (req: any, res: any) => {
+app.get('/api/cut-plans/:id/movements', isAuthenticated, async (req: any, res: any) => {
   try {
     const { id } = req.params;
     const { data, error } = await supabaseAdmin
@@ -7360,8 +6331,106 @@ app.get('/api/cut-plans/:id/movements', async (req: any, res: any) => {
   }
 });
 
+// ── ROTAS DE CONTROLE DE FACÇÕES E TABELA DE PREÇOS (PCP) ─────────────────────
+app.get('/api/pcp/faccoes', isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('faccoes').select('*').order('name');
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data || []);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pcp/faccoes', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
+  try {
+    const { name, phone, active = true } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nome da facção é obrigatório' });
+    const { data, error } = await supabaseAdmin.from('faccoes').insert({ name: name.trim(), phone, active }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/pcp/faccoes/:id', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, active } = req.body;
+    const updatePayload: any = {};
+    if (name !== undefined) updatePayload.name = name.trim();
+    if (phone !== undefined) updatePayload.phone = phone;
+    if (active !== undefined) updatePayload.active = active;
+    const { data, error } = await supabaseAdmin.from('faccoes').update(updatePayload).eq('id', Number(id)).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/pcp/faccao-prices', isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { faccao_id } = req.query;
+    let query = supabaseAdmin.from('faccao_prices').select('*').order('product_type');
+    if (faccao_id) {
+      query = query.eq('faccao_id', Number(faccao_id));
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data || []);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/pcp/faccao-prices', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
+  try {
+    const { faccao_id, product_type, price } = req.body;
+    if (!faccao_id || !product_type || price === undefined) {
+      return res.status(400).json({ error: 'faccao_id, product_type e price são obrigatórios' });
+    }
+    const { data, error } = await supabaseAdmin.from('faccao_prices').insert({
+      faccao_id: Number(faccao_id),
+      product_type: String(product_type).trim(),
+      price: Number(price)
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(201).json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/pcp/faccao-prices/:id', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabaseAdmin.from('faccao_prices').delete().eq('id', Number(id));
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/cut-plans/:id/pay-sewing', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseAdmin.from('cut_plans').update({
+      sewing_paid: true,
+      sewing_paid_at: now
+    }).eq('id', Number(id)).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true, plan: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/orders/:id/production-status ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø andamento produtivo por item do pedido
-app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
+app.get('/api/orders/:id/production-status', isAuthenticated, async (req: any, res: any) => {
   try {
     const orderId = Number(req.params.id);
     const { data: items, error } = await supabaseAdmin
@@ -7412,7 +6481,7 @@ app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
 // MÓDULO PCP - FASE 1 & AUDITORIA
 // ============================================================================
 
-app.get('/api/pcp-phase1/dashboard', async (_req: any, res: any) => {
+app.get('/api/pcp-phase1/dashboard', isAuthenticated, async (_req: any, res: any) => {
     try {
         const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 
@@ -7468,7 +6537,7 @@ app.get('/api/pcp-phase1/dashboard', async (_req: any, res: any) => {
     }
 });
 
-app.get('/api/pcp-phase1/necessidades', async (_req: any, res: any) => {
+app.get('/api/pcp-phase1/necessidades', isAuthenticated, async (_req: any, res: any) => {
     try {
         const { data, error } = await supabaseAdmin
             .from('pcp_producao_necessidades')
@@ -7481,7 +6550,7 @@ app.get('/api/pcp-phase1/necessidades', async (_req: any, res: any) => {
     }
 });
 
-app.get('/api/pcp-phase1/prioridades', async (_req: any, res: any) => {
+app.get('/api/pcp-phase1/prioridades', isAuthenticated, async (_req: any, res: any) => {
     try {
         const { data, error } = await supabaseAdmin
             .from('orders')
@@ -7498,7 +6567,7 @@ app.get('/api/pcp-phase1/prioridades', async (_req: any, res: any) => {
     }
 });
 
-app.get('/api/pcp-phase1/bloqueados', async (_req: any, res: any) => {
+app.get('/api/pcp-phase1/bloqueados', isAuthenticated, async (_req: any, res: any) => {
     try {
         const { data, error } = await supabaseAdmin
             .from('pcp_blocks')
@@ -7512,110 +6581,63 @@ app.get('/api/pcp-phase1/bloqueados', async (_req: any, res: any) => {
     }
 });
 
-app.post('/api/pcp-phase1/ordens/:id/bloqueio', async (req: any, res: any) => {
+app.post('/api/pcp-phase1/ordens/:id/bloqueio', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
         const orderId = Number(req.params.id);
-        const { motivo, observacao, usuario, stage_id } = req.body || {};
-        const actor = usuario || (req.headers['x-user-name'] as string) || 'PCP/Supervisor';
+        const { motivo, observacao, stage_id } = req.body || {};
+        const actor = getActorName(req, 'PCP/Supervisor');
 
         if (!motivo || !String(motivo).trim()) {
             return res.status(400).json({ error: 'O motivo do bloqueio é obrigatório.' });
         }
 
-        const { data: prevOrder } = await supabaseAdmin
-            .from('orders')
-            .select('id, order_number, pcp_is_blocked, pcp_status, status')
-            .eq('id', orderId)
-            .maybeSingle();
-
-        await supabaseAdmin.from('pcp_blocks').insert({
-            order_id: orderId,
-            motivo: String(motivo).trim(),
-            observacao: observacao || null,
-            bloqueado_por: actor,
-            is_active: true,
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_bloquear_ordem', {
+            p_order_id: orderId,
+            p_motivo: String(motivo).trim(),
+            p_observacao: observacao || null,
+            p_usuario: actor,
+            p_stage_id: stage_id ? Number(stage_id) : null,
         });
 
-        await supabaseAdmin
-            .from('orders')
-            .update({
-                pcp_is_blocked: true,
-                pcp_status: 'BLOQUEADO',
-            })
-            .eq('id', orderId);
+        if (rpcErr) {
+            console.error('[API] Erro ao executar pcp_tx_bloquear_ordem:', rpcErr);
+            return res.status(500).json({ error: `Erro ao bloquear pedido: ${rpcErr.message}`, code: 'RPC_EXECUTION_ERROR' });
+        }
 
-        await recordPcpAuditLog(supabaseAdmin, {
-            order_id: orderId,
-            stage_id: stage_id ? Number(stage_id) : null,
-            usuario: actor,
-            acao: 'BLOQUEIO_PEDIDO',
-            motivo: String(motivo).trim(),
-            observacao: observacao || null,
-            valor_anterior: {
-                pcp_is_blocked: Boolean(prevOrder?.pcp_is_blocked),
-                pcp_status: prevOrder?.pcp_status || null,
-            },
-            valor_novo: {
-                pcp_is_blocked: true,
-                pcp_status: 'BLOQUEADO',
-                motivo: String(motivo).trim(),
-                observacao: observacao || null,
-            },
-        });
+        const httpStatus = Number(rpcRes?.http_status) || 200;
+        if (rpcRes?.error) {
+            return res.status(httpStatus).json(rpcRes);
+        }
 
-        res.json({ success: true, status_operacao: 'BLOQUEADA' });
+        res.status(httpStatus).json({ success: true, status_operacao: 'BLOQUEADA' });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.post('/api/pcp-phase1/ordens/:id/desbloqueio', async (req: any, res: any) => {
+app.post('/api/pcp-phase1/ordens/:id/desbloqueio', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
         const orderId = Number(req.params.id);
-        const { usuario, motivo } = req.body || {};
-        const actor = usuario || (req.headers['x-user-name'] as string) || 'PCP/Supervisor';
+        const { motivo } = req.body || {};
+        const actor = getActorName(req, 'PCP/Supervisor');
 
-        const { data: prevOrder } = await supabaseAdmin
-            .from('orders')
-            .select('id, order_number, pcp_is_blocked, pcp_status, status')
-            .eq('id', orderId)
-            .maybeSingle();
-
-        await supabaseAdmin
-            .from('pcp_blocks')
-            .update({
-                is_active: false,
-                desbloqueado_por: actor,
-                data_desbloqueio: new Date().toISOString(),
-            })
-            .eq('order_id', orderId)
-            .eq('is_active', true);
-
-        const nextPcpStatus = prevOrder?.status === 'Em Produção' ? 'EM_PRODUCAO' : 'AGUARDANDO LIBERAÇÃO';
-        await supabaseAdmin
-            .from('orders')
-            .update({
-                pcp_is_blocked: false,
-                pcp_status: nextPcpStatus,
-            })
-            .eq('id', orderId);
-
-        await recordPcpAuditLog(supabaseAdmin, {
-            order_id: orderId,
-            usuario: actor,
-            acao: 'DESBLOQUEIO_PEDIDO',
-            motivo: motivo || 'Impedimento resolvido',
-            valor_anterior: {
-                pcp_is_blocked: Boolean(prevOrder?.pcp_is_blocked),
-                pcp_status: prevOrder?.pcp_status || 'BLOQUEADO',
-            },
-            valor_novo: {
-                pcp_is_blocked: false,
-                pcp_status: nextPcpStatus,
-            },
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_desbloquear_ordem', {
+            p_order_id: orderId,
+            p_motivo: motivo || 'Impedimento resolvido',
+            p_usuario: actor,
         });
 
-        res.json({ success: true });
+        if (rpcErr) {
+            console.error('[API] Erro ao executar pcp_tx_desbloquear_ordem:', rpcErr);
+            return res.status(500).json({ error: `Erro ao desbloquear pedido: ${rpcErr.message}`, code: 'RPC_EXECUTION_ERROR' });
+        }
+
+        const httpStatus = Number(rpcRes?.http_status) || 200;
+        if (rpcRes?.error) {
+            return res.status(httpStatus).json(rpcRes);
+        }
+
+        res.status(httpStatus).json({ success: true, next_pcp_status: rpcRes?.next_pcp_status });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -7624,49 +6646,34 @@ app.post('/api/pcp-phase1/ordens/:id/desbloqueio', async (req: any, res: any) =>
 app.post('/api/pcp-phase1/ordens/:id/prioridade_manual', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
         const orderId = Number(req.params.id);
-        const { priority, score, motivo, usuario } = req.body || {};
-        const actor = usuario || (req.headers['x-user-name'] as string) || 'PCP';
+        const { priority, score, motivo } = req.body || {};
+        const actor = getActorName(req, 'PCP');
 
-        const { data: prevOrder } = await supabaseAdmin
-            .from('orders')
-            .select('id, order_number, pcp_priority, pcp_priority_score')
-            .eq('id', orderId)
-            .maybeSingle();
-
-        const newPriority = priority || 'CRÍTICA';
-        const newScore = score !== undefined ? Number(score) : newPriority === 'CRÍTICA' ? 1000 : newPriority === 'ALTA' ? 500 : 100;
-
-        await supabaseAdmin
-            .from('orders')
-            .update({
-                pcp_priority: newPriority,
-                pcp_priority_score: newScore,
-            })
-            .eq('id', orderId);
-
-        await recordPcpAuditLog(supabaseAdmin, {
-            order_id: orderId,
-            usuario: actor,
-            acao: 'ALTERACAO_PRIORIDADE_MANUAL',
-            motivo: motivo || `Prioridade manual alterada para ${newPriority}`,
-            valor_anterior: {
-                pcp_priority: prevOrder?.pcp_priority || 'NORMAL',
-                pcp_priority_score: prevOrder?.pcp_priority_score || 0,
-            },
-            valor_novo: {
-                pcp_priority: newPriority,
-                pcp_priority_score: newScore,
-                motivo: motivo || 'Definição manual pelo PCP',
-            },
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_alterar_prioridade', {
+            p_order_id: orderId,
+            p_priority: priority || 'CRÍTICA',
+            p_score: score !== undefined ? Number(score) : null,
+            p_motivo: motivo || null,
+            p_usuario: actor,
         });
 
-        res.json({ success: true, pcp_priority: newPriority, pcp_priority_score: newScore });
+        if (rpcErr) {
+            console.error('[API] Erro ao executar pcp_tx_alterar_prioridade:', rpcErr);
+            return res.status(500).json({ error: `Erro ao alterar prioridade: ${rpcErr.message}`, code: 'RPC_EXECUTION_ERROR' });
+        }
+
+        const httpStatus = Number(rpcRes?.http_status) || 200;
+        if (rpcRes?.error) {
+            return res.status(httpStatus).json(rpcRes);
+        }
+
+        res.status(httpStatus).json({ success: true, pcp_priority: rpcRes?.pcp_priority, pcp_priority_score: rpcRes?.pcp_priority_score });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/pcp-phase1/config', async (_req: any, res: any) => {
+app.get('/api/pcp-phase1/config', isAuthenticated, async (_req: any, res: any) => {
     try {
         const { data, error } = await supabaseAdmin.from('pcp_settings').select('*').eq('id', 1).maybeSingle();
         if (error) throw error;
@@ -7683,14 +6690,16 @@ app.get('/api/pcp-phase1/config', async (_req: any, res: any) => {
         };
         try {
             await supabaseAdmin.from('pcp_settings').upsert(defaultSettings, { onConflict: 'id' });
-        } catch (_) {}
+        } catch (upsertErr) {
+            console.warn('[PCP Settings] Aviso ao gravar configurações padrão:', upsertErr);
+        }
         return res.json(defaultSettings);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-app.get('/api/pcp-phase1/audit-log', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/audit-log', isAuditReader, async (req: any, res: any) => {
     try {
         const { order_id, limit } = req.query;
         const maxRows = Math.min(200, Number(limit) || 50);
@@ -7758,49 +6767,31 @@ app.get('/api/pcp-phase1/audit-log', async (req: any, res: any) => {
 app.post('/api/orders/:id/expedir', isAdminOrComercial, async (req: any, res: any) => {
     try {
         const orderId = Number(req.params.id);
-        const usuario = (req.headers['x-user-name'] as string) || req.body?.usuario || 'Expedição';
+        const usuario = getActorName(req, 'Expedição');
         const { observacao } = req.body || {};
-        const nowISO = new Date().toISOString();
 
-        const { data: currentOrder } = await supabaseAdmin
-            .from('orders')
-            .select('id, order_number, status, pcp_status, delivered_at')
-            .eq('id', orderId)
-            .maybeSingle();
-
-        if (!currentOrder) {
-            return res.status(404).json({ error: 'Pedido não encontrado.' });
-        }
-
-        const { error: updErr } = await supabaseAdmin
-            .from('orders')
-            .update({
-                status: 'Entregue',
-                pcp_status: 'EXPEDIDO_ENTREGUE',
-                delivered_at: nowISO,
-            })
-            .eq('id', orderId);
-
-        if (updErr) throw updErr;
-
-        await recordPcpAuditLog(supabaseAdmin, {
-            order_id: orderId,
-            usuario,
-            acao: 'EXPEDICAO_ENTREGA_CLIENTE',
-            observacao: observacao || 'Pedido expedido e entregue ao cliente',
-            valor_anterior: {
-                status: currentOrder.status,
-                pcp_status: currentOrder.pcp_status,
-                delivered_at: currentOrder.delivered_at,
-            },
-            valor_novo: {
-                status: 'Entregue',
-                pcp_status: 'EXPEDIDO_ENTREGUE',
-                delivered_at: nowISO,
-            },
+        const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('pcp_tx_expedir_ordem', {
+            p_order_id: orderId,
+            p_observacao: observacao || null,
+            p_usuario: usuario,
         });
 
-        return res.json({ success: true, status: 'Entregue', pcp_status: 'EXPEDIDO_ENTREGUE', delivered_at: nowISO });
+        if (rpcErr) {
+            console.error('[API] Erro ao executar pcp_tx_expedir_ordem:', rpcErr);
+            return res.status(500).json({ error: `Erro ao expedir pedido: ${rpcErr.message}`, code: 'RPC_EXECUTION_ERROR' });
+        }
+
+        const httpStatus = Number(rpcRes?.http_status) || 200;
+        if (rpcRes?.error) {
+            return res.status(httpStatus).json(rpcRes);
+        }
+
+        return res.status(httpStatus).json({
+            success: true,
+            status: rpcRes?.status || 'Entregue',
+            pcp_status: rpcRes?.pcp_status || 'EXPEDIDO_ENTREGUE',
+            delivered_at: rpcRes?.delivered_at,
+        });
     } catch (e: any) {
         return res.status(500).json({ error: e.message });
     }
