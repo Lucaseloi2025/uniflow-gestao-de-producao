@@ -126,7 +126,7 @@ export function useAppLogic() {
   const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
   const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
   const [autoPauseTimeWeekend, setAutoPauseTimeWeekend] = useState<string>('13:00');
-  const [showCompletedOrders, setShowCompletedOrders] = useState(false);
+  const [showCompletedOrders, setShowCompletedOrders] = useState(true);
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);

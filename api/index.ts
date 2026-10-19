@@ -2995,7 +2995,7 @@ app.get("/api/orders", async (req, res) => {
     if (checkError(error, res, "Erro ao buscar pedidos")) return;
 
     if (data && data.length > 0) {
-        if (include_delivered !== "true" && !search) {
+        if (include_delivered === "false" && !search) {
             data = data.filter((o: any) => o.status !== "Entregue" && o.status !== "Cancelado");
         }
     }
