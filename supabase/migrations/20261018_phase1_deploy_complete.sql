@@ -390,6 +390,9 @@ ALTER TABLE public.users
 
 CREATE INDEX IF NOT EXISTS idx_users_auth_user_id ON public.users (auth_user_id);
 
+-- Dropar constraint legada antes de atualizar os papéis para não colidir com o check antigo
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
+
 -- Migração segura de TODOS os perfis legados antes de aplicar a constraint canônica
 UPDATE public.users SET role = 'Administrador' WHERE role ILIKE 'admin%' OR role IN ('Admin', 'admin', 'ADMIN');
 UPDATE public.users SET role = 'Operador' WHERE role ILIKE 'produ%' OR role IN ('Produção', 'producao', 'Producao', 'Operador de Produção', 'OP', 'OPERADOR');
@@ -418,7 +421,6 @@ BEGIN
   END IF;
 END $$;
 
-ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE public.users ADD CONSTRAINT users_role_check
   CHECK (role IN ('Administrador', 'PCP', 'Supervisor', 'Operador', 'Comercial', 'Visualização'));
 
