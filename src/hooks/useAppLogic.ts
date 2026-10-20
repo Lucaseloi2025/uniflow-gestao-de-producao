@@ -97,6 +97,12 @@ export function useAppLogic() {
   const setActiveTab = (tab: string) => {
     navigate(tab === 'dashboard' ? '/' : '/' + tab);
   };
+
+  useEffect(() => {
+    if (['conferencia', 'costs', 'monitor'].includes(rawTab)) {
+      navigate('/', { replace: true });
+    }
+  }, [rawTab, navigate]);
   const [printOpen, setPrintOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -123,7 +129,6 @@ export function useAppLogic() {
   const [goalsViewType, setGoalsViewType] = useState<'collaborator' | 'sector'>('collaborator');
   const [reportStartDate, setReportStartDate] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
-  const [metaCustoPeca, setMetaCustoPeca] = useState<number>(0);
   const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
   const [autoPauseTimeWeekend, setAutoPauseTimeWeekend] = useState<string>('13:00');
   const [showCompletedOrders, setShowCompletedOrders] = useState(true);
@@ -561,13 +566,19 @@ export function useAppLogic() {
     }
   };
 
-  const handleSyncOlist = async () => {
+  const handleSyncOlist = async (options?: { days?: number; orderNumbers?: string[] }) => {
     setIsSyncingOlist(true);
     try {
+      const days = options?.days ?? 30;
+      const bodyPayload: any = { days };
+      if (options?.orderNumbers && options.orderNumbers.length > 0) {
+        bodyPayload.order_numbers = options.orderNumbers;
+      }
+
       const res = await apiFetch('/api/integrations/olist/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: 1 })
+        body: JSON.stringify(bodyPayload)
       });
       const contentType = res.headers.get('content-type') || '';
       
@@ -585,10 +596,17 @@ export function useAppLogic() {
       await fetchDraftOrders();
 
       let msg = `Sincronização concluída com sucesso!\n`;
-      msg += `Pedidos encontrados no Tiny (Histórico): ${data.total_found || 0}\n`;
-      msg += `Pedidos elegíveis (De hoje em diante): ${data.eligible_count || 0}\n`;
-      msg += `Novos rascunhos importados: ${data.imported_count || 0}\n`;
-      msg += `Pedidos ignorados (já importados): ${data.skipped_count || 0}`;
+      if (options?.orderNumbers && options.orderNumbers.length > 0) {
+        msg = `Busca de pedidos específicos concluída!\n`;
+        msg += `Buscados: ${options.orderNumbers.join(', ')}\n`;
+        msg += `Novos rascunhos importados: ${data.imported_count || 0}\n`;
+        msg += `Pedidos já importados: ${data.skipped_count || 0}`;
+      } else {
+        msg += `Pedidos encontrados no Tiny (Histórico): ${data.total_found || 0}\n`;
+        msg += `Pedidos elegíveis (últimos ${data.days_limit || days} dias): ${data.eligible_count || 0}\n`;
+        msg += `Novos rascunhos importados: ${data.imported_count || 0}\n`;
+        msg += `Pedidos ignorados (já importados): ${data.skipped_count || 0}`;
+      }
       if (data.errors_count > 0) {
         msg += `\n⚠️ Erros: ${data.errors_count}`;
         if (data.errors && data.errors.length > 0) {
@@ -596,8 +614,10 @@ export function useAppLogic() {
         }
       }
       showToast(msg);
+      return data;
     } catch (err: any) {
       showToast(`Erro na sincronização Olist: ${err.message}`);
+      return { success: false, error: err.message };
     } finally {
       setIsSyncingOlist(false);
     }
@@ -750,7 +770,6 @@ export function useAppLogic() {
   const fetchConfig = async () => {
     const data = await safeFetch('/api/config');
     if (data) {
-      if (data.meta_custo_por_peca !== undefined) setMetaCustoPeca(data.meta_custo_por_peca);
       if (data.auto_pause_time_weekday) setAutoPauseTimeWeekday(data.auto_pause_time_weekday);
       if (data.auto_pause_time_friday) setAutoPauseTimeFriday(data.auto_pause_time_friday);
       if (data.auto_pause_time_lunch) setAutoPauseTimeLunch(data.auto_pause_time_lunch);
@@ -1207,19 +1226,23 @@ export function useAppLogic() {
       });
       if (finishRes.ok) {
         const resData = await finishRes.json().catch(() => ({}));
-        const isDelivered = resData?.order_status === 'Entregue' || Number(stageId) === 8;
+        const nextStages = (selectedOrder?.stages_status || []).map(s =>
+          Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
+        );
+        const allStagesFinished = nextStages.length > 0 && nextStages.every(s => s.finished);
+        const isDelivered = resData?.order_status === 'Entregue' || resData?.order_status === 'Pronto' || allStagesFinished;
 
         // Optimistically update selectedOrder stages_status immediately
         setSelectedOrder(prev => {
           if (!prev) return null;
           if (isDelivered && !showCompletedOrders) return null;
-          const nextStages = (prev.stages_status || []).map(s =>
+          const updatedStages = (prev.stages_status || []).map(s =>
             Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
           );
           return {
             ...prev,
-            status: resData?.order_status || prev.status,
-            stages_status: nextStages
+            status: resData?.order_status || (allStagesFinished ? 'Pronto' : prev.status),
+            stages_status: updatedStages
           };
         });
 
@@ -1510,7 +1533,7 @@ export function useAppLogic() {
   }, [activeTab, userSearchTerm]);
 
   useEffect(() => {
-    if (activeTab === 'reports' || activeTab === 'costs') {
+    if (activeTab === 'reports') {
       fetchReports();
       safeFetch(`/api/reports/profiles?startDate=${reportStartDate}&endDate=${reportEndDate}${reportUser ? `&user_id=${reportUser}` : ''}`).then(data => {
         if (data) setProfileReport(data);
@@ -1671,16 +1694,6 @@ export function useAppLogic() {
 
   const COLORS = React.useMemo(() => ['#18181b', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'], []);
 
-  // Memoriazação robusta dos dados de custo para evitar crash durante renderização
-  const memoizedCostsByCollaborator = React.useMemo(() => {
-    if (!reportData?.costsByCollaborator || !Array.isArray(reportData.costsByCollaborator)) return [];
-    return [...reportData.costsByCollaborator].sort((a: any, b: any) => {
-      const costA = (Number(a?.total_cost) || 0) / (Number(a?.pecas) || 1);
-      const costB = (Number(b?.total_cost) || 0) / (Number(b?.pecas) || 1);
-      return costA - costB;
-    });
-  }, [reportData?.costsByCollaborator]);
-
   const memoizedOrdersCompleted = React.useMemo(() => {
     if (!operationalReportData?.pedidos_concluidos || !Array.isArray(operationalReportData.pedidos_concluidos)) return [];
     return [...operationalReportData.pedidos_concluidos];
@@ -1814,9 +1827,7 @@ export function useAppLogic() {
     lossReentryStageIdInput,
     lossReportData,
     lossStageId,
-    memoizedCostsByCollaborator,
     memoizedOrdersCompleted,
-    metaCustoPeca,
     moveStage,
     navigate,
     newOrderForm,
@@ -1923,7 +1934,6 @@ export function useAppLogic() {
     setLossReentryStageIdInput,
     setLossReportData,
     setLossStageId,
-    setMetaCustoPeca,
     setNewOrderForm,
     setNewOrderRequiredStages,
     setNewStageCalculationType,

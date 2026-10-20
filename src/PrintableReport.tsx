@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { motion } from 'motion/react';
-import { Printer, X, Calendar, Users, Layers, Clock, TrendingUp, DollarSign, Package, CheckCircle } from 'lucide-react';
+import { Printer, X, Calendar, Users, Layers, Clock, TrendingUp, Package, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { User, Stage, OperationalReportData, GoalsProductivityResponse } from './types';
@@ -43,8 +43,6 @@ interface ConsolidatedCollaborator {
   ordersCount: number;
   piecesCount: number;
   totalTimeSeconds: number;
-  totalCost: number;
-  costPerPiece: number;
 }
 
 interface ConsolidatedSector {
@@ -118,37 +116,8 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
         name,
         ordersCount: prod.etapas || 0,
         piecesCount: prod.pecas || 0,
-        totalTimeSeconds: prod.tempo_total_segundos || 0,
-        totalCost: 0,
-        costPerPiece: 0
+        totalTimeSeconds: prod.tempo_total_segundos || 0
       });
-    });
-  }
-
-  if (reportData?.costsByCollaborator) {
-    reportData.costsByCollaborator.forEach((cost: any) => {
-      const name = cost.name || cost.user_name;
-      if (!name) return;
-      const existing = collaboratorsMap.get(name);
-      const totalCost = Number(cost.total_cost) || 0;
-      const piecesCount = Number(cost.pecas) || existing?.piecesCount || 0;
-      const totalTimeSeconds = cost.total_time ? cost.total_time * 3600 : (existing?.totalTimeSeconds || 0);
-
-      if (existing) {
-        existing.totalCost = totalCost;
-        if (cost.pecas) existing.piecesCount = piecesCount;
-        if (cost.total_time) existing.totalTimeSeconds = totalTimeSeconds;
-        existing.costPerPiece = piecesCount > 0 ? totalCost / piecesCount : 0;
-      } else {
-        collaboratorsMap.set(name, {
-          name,
-          ordersCount: Number(cost.etapas) || 0,
-          piecesCount,
-          totalTimeSeconds,
-          totalCost,
-          costPerPiece: piecesCount > 0 ? totalCost / piecesCount : 0
-        });
-      }
     });
   }
 
@@ -349,18 +318,6 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                   {formatSeconds(reportData?.summary?.avg_stage_time || 0)}
                 </h3>
               </div>
-
-              {isAdmin && (
-                <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 print:border-zinc-300 print:bg-zinc-50/50">
-                  <div className="flex items-center gap-2 text-zinc-400 mb-1">
-                    <DollarSign size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Custo Total M.O.</span>
-                  </div>
-                  <h3 className="text-lg font-black text-zinc-900">
-                    R$ {(Number(reportData?.summary?.total_labor_cost) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </h3>
-                </div>
-              )}
             </div>
 
             {/* COLLABORATORS SECTION */}
@@ -368,7 +325,7 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
               <div className="mb-10 print:break-after-page">
                 <div className="flex items-center gap-2 mb-4 border-b border-zinc-200 pb-2">
                   <Users size={18} className="text-zinc-800" />
-                  <h2 className="text-base font-black text-zinc-900 uppercase tracking-tight">Produtividade {isAdmin ? 'e Custos dos Colaboradores' : 'dos Colaboradores'}</h2>
+                  <h2 className="text-base font-black text-zinc-900 uppercase tracking-tight">Produtividade dos Colaboradores</h2>
                 </div>
 
                 {consolidatedCollaborators.length === 0 ? (
@@ -384,8 +341,6 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                             <th className="px-4 py-3 text-center">Pedidos / Etapas</th>
                             <th className="px-4 py-3 text-center">Peças Produzidas</th>
                             <th className="px-4 py-3 text-center">Tempo Total</th>
-                            {isAdmin && <th className="px-4 py-3 text-right">Custo Total</th>}
-                            {isAdmin && <th className="px-4 py-3 text-right">Custo / Peça</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-200">
@@ -395,16 +350,6 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                               <td className="px-4 py-3 text-center font-semibold text-zinc-700">{colab.ordersCount}</td>
                               <td className="px-4 py-3 text-center font-semibold text-zinc-700">{colab.piecesCount}</td>
                               <td className="px-4 py-3 text-center font-semibold text-zinc-700">{formatSeconds(colab.totalTimeSeconds)}</td>
-                              {isAdmin && (
-                                <td className="px-4 py-3 text-right font-semibold text-zinc-900">
-                                  R$ {colab.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                </td>
-                              )}
-                              {isAdmin && (
-                                <td className="px-4 py-3 text-right font-semibold text-zinc-900">
-                                  R$ {colab.costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                </td>
-                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -420,11 +365,6 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                         >
                           <div className="flex justify-between items-start mb-3">
                             <h4 className="font-extrabold text-sm text-zinc-950">{colab.name}</h4>
-                            {isAdmin && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 bg-zinc-100 border border-zinc-200 rounded text-zinc-600 print:bg-zinc-50 print:border-zinc-300">
-                                R$ {colab.costPerPiece.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / peça
-                              </span>
-                            )}
                           </div>
                           
                           <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-zinc-600">
@@ -440,12 +380,6 @@ export const PrintableReport: React.FC<PrintableReportProps> = ({
                               <Clock size={12} className="text-zinc-400" />
                               <span>Tempo: <strong>{formatSeconds(colab.totalTimeSeconds)}</strong></span>
                             </div>
-                            {isAdmin && (
-                              <div className="flex items-center gap-1.5">
-                                <DollarSign size={12} className="text-zinc-400" />
-                                <span>Total M.O.: <strong className="text-zinc-900">R$ {colab.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></span>
-                              </div>
-                            )}
                           </div>
                         </div>
                       ))}

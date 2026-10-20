@@ -25,5 +25,7 @@ commit.json
 words.txt
 supabase/.temp/
 .agents/
+temp_edge_*/
+*.patch
 
 

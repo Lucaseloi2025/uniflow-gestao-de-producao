@@ -111,18 +111,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 const Orders = lazy(() => import('./pages/Orders').then(m => ({ default: m.Orders })));
 const Kanban = lazy(() => import('./pages/Kanban').then(m => ({ default: m.Kanban })));
 const Reports = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
-const Costs = lazy(() => import('./pages/Costs').then(m => ({ default: m.Costs })));
 const Collaborators = lazy(() => import('./pages/Collaborators').then(m => ({ default: m.Collaborators })));
-const ConsolidatedCuttingPanel = lazy(() => import('./components/ConsolidatedCuttingPanel').then(m => ({ default: m.ConsolidatedCuttingPanel })));
 const DashboardTab = lazy(() => import('./pages/DashboardTab').then(m => ({ default: m.DashboardTab })));
-const PcpDashboard = lazy(() => import('./pages/PCP/PcpDashboard').then(m => ({ default: m.PcpDashboard })));
-const PcpNecessidades = lazy(() => import('./pages/PCP/PcpNecessidades').then(m => ({ default: m.PcpNecessidades })));
-const PcpPrioridades = lazy(() => import('./pages/PCP/PcpPrioridades').then(m => ({ default: m.PcpPrioridades })));
-const PcpBloqueados = lazy(() => import('./pages/PCP/PcpBloqueados').then(m => ({ default: m.PcpBloqueados })));
-const PcpSettings = lazy(() => import('./pages/PCP/PcpSettings').then(m => ({ default: m.PcpSettings })));
-const PcpControleFaccao = lazy(() => import('./pages/PCP/PcpControleFaccao').then(m => ({ default: m.PcpControleFaccao }))); 
-const Conferencia = lazy(() => import('./pages/PCP/Conferencia').then(m => ({ default: m.Conferencia })));
-const TaskMonitor = lazy(() => import('./pages/TaskMonitor').then(m => ({ default: m.TaskMonitor })));
 const SettingsTab = lazy(() => import('./pages/SettingsTab').then(m => ({ default: m.SettingsTab })));
 
 const FallbackLoading = () => (
@@ -146,7 +136,7 @@ const FallbackLoading = () => (
 
 export default function App() {
   const appLogic = useAppLogic();
-  const { safeFetch, actionLossQuantityInput, actionLossReasonDetailInput, actionLossReasonInput, actionLossReentryStageIdInput, actionObservationInput, actionQuantityInput, activeExecutions, activeOrderTotalTime, activeReportSubTab, activeTab, authEmail, authError, authPassword, autoPauseTimeFriday, autoPauseTimeLunch, autoPauseTimeWeekday, autoPauseTimeWeekend, collaboratorGoals, COLORS, confirmTimeoutRef, scanInputRef, confirmDraftForm, confirmingDtfOrderId, cortePendingBadgeCount, currentUser, dateRange, delaysReportData, deliveryReportData, draftOrders, editingDtfOrderId, editingDtfValue, editingStageCalculationType, editingStageId, editingStageMetaDiaria, editingStageName, editingStageTime, editingTemplate, editOrderForm, editOrderHasExecutions, executionActionModal, executions, expandedForecast, expandedGoalStageId, expandedReportStage, fetchActiveExecution, fetchCollaboratorGoals, fetchConfig, fetchData, fetchDraftOrders, fetchExecutions, fetchForecast, fetchOperationalReport, fetchReports, fetchUsers, forecastData, goalEditValues, goalsProductivityData, goalsViewType, handleAddImages, handleCancelOrder, handleCleanOldDrafts, handleConfirmDraftOrder, handleConfirmExecutionAction, handleDeleteDraftOrder, handleDeleteOrder, handleEditOrderSubmit, handleFinishStage, handleGenerateTrackingLink, handleLogin, handleLogout, handleOpenActionModal, handleOpenDraftReview, handleOpenLossModal, handleOpenProgressModal, handlePauseStage, handleReopenStage, handleRequestToggleDtf, handleResumeStage, handleSaveLoss, handleSaveLossReasonsMapping, handleSaveProgress, handleStartStage, handleSyncOlist, handleToggleDtf, handleUpdateDeadline, handleUpdateDtfLocation, handleViewHistory, applyTemplate, getOrderRisk, openEditOrderModal, infoModal, isActionLoading, isAuthLoading, isCancellingOrder, isConfirmingDraft, isCreatingOrder, isDeletingOrder, isDraftsListModalOpen, isEditingOrder, isGeneratingLink, isLoadingForecast, isLoadingHistory, isLossModalOpen, isMobileMenuOpen, isPrintModalOpen, isProgressModalOpen, isSubmitting, isSyncingOlist, isTemplateEditorOpen, isTrackingPage, isUploadingArt, location, lossQtyInput, lossReasonDetailInput, lossReasonInput, lossReasonsList, lossReentryStageIdInput, lossReportData, lossStageId, memoizedCostsByCollaborator, memoizedOrdersCompleted, metaCustoPeca, moveStage, navigate, newOrderForm, newOrderRequiredStages, newStageCalculationType, newStageMetaDiaria, newStageName, newStageTime, now, operationalReportData, orderHistory, orders, orderStageObservations, printOpen, printTypeFilter, productTypeFilter, profileReport, progressIncrementInput, progressStageId, rawTab, reportData, reportEndDate, reportPeriod, reportPrintType, reportStage, reportStartDate, reportUser, searchTerm, selectedDraftOrder, selectedFullImage, selectedOrder, selectedStageFilter, selectedStageId, selectedStageStatus, selectedUserForEdit, session, setActionLossQuantityInput, setActionLossReasonDetailInput, setActionLossReasonInput, setActionLossReentryStageIdInput, setActionObservationInput, setActionQuantityInput, setActiveExecutions, setActiveReportSubTab, setActiveTab, setAuthEmail, setAuthError, setAuthPassword, setAutoPauseTimeFriday, setAutoPauseTimeLunch, setAutoPauseTimeWeekday, setAutoPauseTimeWeekend, setCollaboratorGoals, setConfirmDraftForm, setConfirmingDtfOrderId, setCurrentUser, setDateRange, setDelaysReportData, setDeliveryReportData, setDraftOrders, setEditingDtfOrderId, setEditingDtfValue, setEditingStageCalculationType, setEditingStageId, setEditingStageMetaDiaria, setEditingStageName, setEditingStageTime, setEditingTemplate, setEditOrderForm, setEditOrderHasExecutions, setExecutionActionModal, setExecutions, setExpandedForecast, setExpandedGoalStageId, setExpandedReportStage, setForecastData, setGoalEditValues, setGoalsProductivityData, setGoalsViewType, setInfoModal, setIsActionLoading, setIsAuthLoading, setIsCancellingOrder, setIsConfirmingDraft, setIsCreatingOrder, setIsDeletingOrder, setIsDraftsListModalOpen, setIsEditingOrder, setIsGeneratingLink, setIsLoadingForecast, setIsLoadingHistory, setIsLossModalOpen, setIsMobileMenuOpen, setIsPrintModalOpen, setIsProgressModalOpen, setIsSubmitting, setIsSyncingOlist, setIsTemplateEditorOpen, setIsUploadingArt, setLossQtyInput, setLossReasonDetailInput, setLossReasonInput, setLossReasonsList, setLossReentryStageIdInput, setLossReportData, setLossStageId, setMetaCustoPeca, setNewOrderForm, setNewOrderRequiredStages, setNewStageCalculationType, setNewStageMetaDiaria, setNewStageName, setNewStageTime, setNow, setOperationalReportData, setOrderHistory, setOrders, setOrderStageObservations, setPrintOpen, setPrintTypeFilter, setProductTypeFilter, setProfileReport, setProgressIncrementInput, setProgressStageId, setReportData, setReportEndDate, setReportPeriod, setReportPrintType, setReportStage, setReportStartDate, setReportUser, setSearchTerm, setSelectedDraftOrder, setSelectedFullImage, setSelectedOrder, setSelectedStageFilter, setSelectedStageId, setSelectedStageStatus, setSelectedUserForEdit, setSession, setShowActionLossSection, setShowCompletedOrders, setShowEditOrderModal, setShowHistoryModal, setShowNewOrderModal, setShowUserModal, setStages, setStats, setTemplateFormStages, setTemplates, setToastMessage, setUsers, setUserSearchTerm, showActionLossSection, showCompletedOrders, showEditOrderModal, showHistoryModal, showNewOrderModal, showUserModal, stages, stats, templateFormStages, templates, toastMessage, trackingToken, users, userSearchTerm } = appLogic;
+  const { safeFetch, actionLossQuantityInput, actionLossReasonDetailInput, actionLossReasonInput, actionLossReentryStageIdInput, actionObservationInput, actionQuantityInput, activeExecutions, activeOrderTotalTime, activeReportSubTab, activeTab, authEmail, authError, authPassword, autoPauseTimeFriday, autoPauseTimeLunch, autoPauseTimeWeekday, autoPauseTimeWeekend, collaboratorGoals, COLORS, confirmTimeoutRef, scanInputRef, confirmDraftForm, confirmingDtfOrderId, cortePendingBadgeCount, currentUser, dateRange, delaysReportData, deliveryReportData, draftOrders, editingDtfOrderId, editingDtfValue, editingStageCalculationType, editingStageId, editingStageMetaDiaria, editingStageName, editingStageTime, editingTemplate, editOrderForm, editOrderHasExecutions, executionActionModal, executions, expandedForecast, expandedGoalStageId, expandedReportStage, fetchActiveExecution, fetchCollaboratorGoals, fetchConfig, fetchData, fetchDraftOrders, fetchExecutions, fetchForecast, fetchOperationalReport, fetchReports, fetchUsers, forecastData, goalEditValues, goalsProductivityData, goalsViewType, handleAddImages, handleCancelOrder, handleCleanOldDrafts, handleConfirmDraftOrder, handleConfirmExecutionAction, handleDeleteDraftOrder, handleDeleteOrder, handleEditOrderSubmit, handleFinishStage, handleGenerateTrackingLink, handleLogin, handleLogout, handleOpenActionModal, handleOpenDraftReview, handleOpenLossModal, handleOpenProgressModal, handlePauseStage, handleReopenStage, handleRequestToggleDtf, handleResumeStage, handleSaveLoss, handleSaveLossReasonsMapping, handleSaveProgress, handleStartStage, handleSyncOlist, handleToggleDtf, handleUpdateDeadline, handleUpdateDtfLocation, handleViewHistory, applyTemplate, getOrderRisk, openEditOrderModal, infoModal, isActionLoading, isAuthLoading, isCancellingOrder, isConfirmingDraft, isCreatingOrder, isDeletingOrder, isDraftsListModalOpen, isEditingOrder, isGeneratingLink, isLoadingForecast, isLoadingHistory, isLossModalOpen, isMobileMenuOpen, isPrintModalOpen, isProgressModalOpen, isSubmitting, isSyncingOlist, isTemplateEditorOpen, isTrackingPage, isUploadingArt, location, lossQtyInput, lossReasonDetailInput, lossReasonInput, lossReasonsList, lossReentryStageIdInput, lossReportData, lossStageId, memoizedOrdersCompleted, moveStage, navigate, newOrderForm, newOrderRequiredStages, newStageCalculationType, newStageMetaDiaria, newStageName, newStageTime, now, operationalReportData, orderHistory, orders, orderStageObservations, printOpen, printTypeFilter, productTypeFilter, profileReport, progressIncrementInput, progressStageId, rawTab, reportData, reportEndDate, reportPeriod, reportPrintType, reportStage, reportStartDate, reportUser, searchTerm, selectedDraftOrder, selectedFullImage, selectedOrder, selectedStageFilter, selectedStageId, selectedStageStatus, selectedUserForEdit, session, setActionLossQuantityInput, setActionLossReasonDetailInput, setActionLossReasonInput, setActionLossReentryStageIdInput, setActionObservationInput, setActionQuantityInput, setActiveExecutions, setActiveReportSubTab, setActiveTab, setAuthEmail, setAuthError, setAuthPassword, setAutoPauseTimeFriday, setAutoPauseTimeLunch, setAutoPauseTimeWeekday, setAutoPauseTimeWeekend, setCollaboratorGoals, setConfirmDraftForm, setConfirmingDtfOrderId, setCurrentUser, setDateRange, setDelaysReportData, setDeliveryReportData, setDraftOrders, setEditingDtfOrderId, setEditingDtfValue, setEditingStageCalculationType, setEditingStageId, setEditingStageMetaDiaria, setEditingStageName, setEditingStageTime, setEditingTemplate, setEditOrderForm, setEditOrderHasExecutions, setExecutionActionModal, setExecutions, setExpandedForecast, setExpandedGoalStageId, setExpandedReportStage, setForecastData, setGoalEditValues, setGoalsProductivityData, setGoalsViewType, setInfoModal, setIsActionLoading, setIsAuthLoading, setIsCancellingOrder, setIsConfirmingDraft, setIsCreatingOrder, setIsDeletingOrder, setIsDraftsListModalOpen, setIsEditingOrder, setIsGeneratingLink, setIsLoadingForecast, setIsLoadingHistory, setIsLossModalOpen, setIsMobileMenuOpen, setIsPrintModalOpen, setIsProgressModalOpen, setIsSubmitting, setIsSyncingOlist, setIsTemplateEditorOpen, setIsUploadingArt, setLossQtyInput, setLossReasonDetailInput, setLossReasonInput, setLossReasonsList, setLossReentryStageIdInput, setLossReportData, setLossStageId, setNewOrderForm, setNewOrderRequiredStages, setNewStageCalculationType, setNewStageMetaDiaria, setNewStageName, setNewStageTime, setNow, setOperationalReportData, setOrderHistory, setOrders, setOrderStageObservations, setPrintOpen, setPrintTypeFilter, setProductTypeFilter, setProfileReport, setProgressIncrementInput, setProgressStageId, setReportData, setReportEndDate, setReportPeriod, setReportPrintType, setReportStage, setReportStartDate, setReportUser, setSearchTerm, setSelectedDraftOrder, setSelectedFullImage, setSelectedOrder, setSelectedStageFilter, setSelectedStageId, setSelectedStageStatus, setSelectedUserForEdit, setSession, setShowActionLossSection, setShowCompletedOrders, setShowEditOrderModal, setShowHistoryModal, setShowNewOrderModal, setShowUserModal, setStages, setStats, setTemplateFormStages, setTemplates, setToastMessage, setUsers, setUserSearchTerm, showActionLossSection, showCompletedOrders, showEditOrderModal, showHistoryModal, showNewOrderModal, showUserModal, stages, stats, templateFormStages, templates, toastMessage, trackingToken, users, userSearchTerm } = appLogic;
 
 
 
@@ -455,12 +445,6 @@ export default function App() {
           />
         )}
 
-        <ErrorBoundary>
-          <Suspense fallback={<div className="p-8 text-center text-zinc-500">Carregando módulo...</div>}>
-            {activeTab === 'conferencia' && <Conferencia orders={orders} currentUser={currentUser} stages={stages} fetchOrders={fetchData} />}
-          </Suspense>
-        </ErrorBoundary>
-
         {activeTab === 'collaborators' && (
           <Collaborators
             users={users}
@@ -504,42 +488,8 @@ export default function App() {
 />
         )}
 
-        {activeTab === 'costs' && currentUser?.role === 'Administrador' && (
-          <Costs COLORS={COLORS} 
-  currentUser={currentUser}
-  fetchReports={fetchReports}
-  memoizedCostsByCollaborator={memoizedCostsByCollaborator}
-  memoizedOrdersCompleted={memoizedOrdersCompleted}
-  metaCustoPeca={metaCustoPeca}
-  operationalReportData={operationalReportData}
-  reportData={reportData}
-  reportEndDate={reportEndDate}
-  reportStage={reportStage}
-  reportStartDate={reportStartDate}
-  reportUser={reportUser}
-  setInfoModal={setInfoModal}
-  setMetaCustoPeca={setMetaCustoPeca}
-  setReportEndDate={setReportEndDate}
-  setReportStage={setReportStage}
-  setReportStartDate={setReportStartDate}
-  setReportUser={setReportUser}
-  stages={stages}
-  users={users}
-/>
-        )}
-
-        {activeTab === 'monitor' && currentUser?.role === 'Administrador' && (
-          <div className="max-w-7xl mx-auto pb-12">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold tracking-tight">Monitor de Tarefas</h2>
-              <p className="text-zinc-500">Acompanhamento em tempo real da produÃ§Ã£o e tempos de execuÃ§Ã£o</p>
-            </div>
-            <TaskMonitor onShowInfo={(t, d) => setInfoModal({ title: t, description: d })} />
-          </div>
-        )}
-
         {activeTab === 'settings' && (
-          <SettingsTab metaCustoPeca={metaCustoPeca} 
+          <SettingsTab 
             autoPauseTimeFriday={autoPauseTimeFriday}
             autoPauseTimeLunch={autoPauseTimeLunch}
             autoPauseTimeWeekday={autoPauseTimeWeekday}
@@ -705,6 +655,7 @@ export default function App() {
         <PhotoLightbox
           selectedFullImage={selectedFullImage}
           setSelectedFullImage={setSelectedFullImage}
+          imageList={selectedOrder ? Array.from(new Set([...(selectedOrder.art_urls || []), ...(selectedOrder.art_url ? [selectedOrder.art_url] : [])].filter(Boolean))) : []}
         />
 
         {/* Ã°Å¸â€œÂ¦ Edit Order Modal Ã°Å¸â€œÂ¦ */}
@@ -811,6 +762,8 @@ export default function App() {
           handleCleanOldDrafts={handleCleanOldDrafts}
           handleDeleteDraftOrder={handleDeleteDraftOrder}
           handleOpenDraftReview={handleOpenDraftReview}
+          handleSyncOlist={handleSyncOlist}
+          isSyncingOlist={isSyncingOlist}
         />
 
       {/* Global Toast Message */}

@@ -212,10 +212,10 @@ export const Reports = ({
                   </Card>
                 </div>
 
-                {/* Section 3: Impacto em Prazo de Entrega (Custo do Retrabalho) */}
+                {/* Section 3: Impacto em Prazo de Entrega (Tempo de Retrabalho) */}
                 <Card className="p-6">
                   <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-2">
-                    <Clock size={16} className="text-purple-600" /> Impacto no Prazo por Pedidos com Reposição (Custo do Retrabalho)
+                    <Clock size={16} className="text-purple-600" /> Impacto no Prazo por Pedidos com Reposição (Tempo de Retrabalho)
                   </h3>
                   <p className="text-xs text-zinc-500 mb-4">
                     Compara o tempo total de produção dos pedidos que tiveram perdas contra a média dos pedidos sem perdas.
@@ -546,7 +546,7 @@ export const Reports = ({
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Delivery Chart */}
-              {deliveryReportData && deliveryReportData.grafico.length > 0 && (
+              {deliveryReportData && (deliveryReportData.grafico?.length || 0) > 0 && (
                 <Card className="p-8">
                   <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                     <BarChart3 size={20} />

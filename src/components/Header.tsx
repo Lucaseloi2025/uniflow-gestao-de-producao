@@ -18,9 +18,7 @@ export const Header = ({
                 {activeTab === 'orders' && 'Todos os Pedidos'}
                 {activeTab === 'collaborators' && 'Colaboradores'}
                 {activeTab === 'reports' && 'Relatórios'}
-                {activeTab === 'costs' && 'Análise de Custos'}
                 {activeTab === 'settings' && 'Configurações do Sistema'}
-                {activeTab === 'monitor' && 'Monitor de Tarefas (Tempo Real)'}
               </h2>
               <p className="text-zinc-500 text-xs lg:text-sm">
                 {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
@@ -366,10 +364,10 @@ export const Header = ({
                 </form>
 
                 <button
-                  onClick={handleSyncOlist}
+                  onClick={() => handleSyncOlist({ days: 30 })}
                   disabled={isSyncingOlist}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm whitespace-nowrap text-xs font-bold active:scale-95 disabled:opacity-50 cursor-pointer"
-                  title="Buscar novos pedidos aprovados dos últimos 7 dias do Olist ERP"
+                  title="Buscar novos pedidos aprovados dos últimos 30 dias do Olist ERP"
                 >
                   <RefreshCw size={15} className={cn(isSyncingOlist && "animate-spin")} />
                   <span>{isSyncingOlist ? "Sincronizando..." : "Sincronizar Olist"}</span>

@@ -220,13 +220,67 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â�
   return { product_type: productType, fabric, color, size, description, sku: rawSku, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields };
 }
 
+// ============================================================================
+// RESOLUÇÃO CANÔNICA DE ETAPAS (SEM DEPENDÊNCIA DE IDS FIXOS 1, 17, 8)
+// ============================================================================
+export function getStageSlug(stage: any): string {
+    if (!stage) return '';
+    if (stage.code && typeof stage.code === 'string') return stage.code.toUpperCase().trim();
+    if (stage.slug && typeof stage.slug === 'string') return stage.slug.toUpperCase().trim();
+    const str = `${stage.name || ''} ${stage.sector_name || ''}`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase();
+    if (str.includes('CORTE')) return 'CORTE';
+    if (str.includes('COSTURA')) return 'COSTURA';
+    if (str.includes('CONFER') || str.includes('SEPARA')) return 'CONFERENCIA';
+    return str.trim();
+}
+
+export function isCorteStage(stage: any): boolean {
+    return getStageSlug(stage) === 'CORTE';
+}
+
+export function isCosturaStage(stage: any): boolean {
+    return getStageSlug(stage) === 'COSTURA';
+}
+
+export function isConferenciaStage(stage: any): boolean {
+    return getStageSlug(stage) === 'CONFERENCIA';
+}
+
+export async function resolveDefaultProductionStageIds(client: any = supabaseAdmin): Promise<number[]> {
+    try {
+        const { data: dbStages } = await client
+            .from('stages')
+            .select('id, name, sector_name, active, sort_order')
+            .eq('active', 1)
+            .order('sort_order', { ascending: true });
+
+        if (Array.isArray(dbStages) && dbStages.length > 0) {
+            const prodStages = dbStages.filter((s: any) => !isConferenciaStage(s));
+            const corte = prodStages.find((s: any) => isCorteStage(s));
+            const costura = prodStages.find((s: any) => isCosturaStage(s));
+
+            if (corte && costura) {
+                return [Number(corte.id), Number(costura.id)];
+            }
+            if (prodStages.length > 0) {
+                return prodStages.map((s: any) => Number(s.id));
+            }
+        }
+    } catch (err) {
+        console.warn('[Stages] Falha ao resolver etapas canônicas dinamicamente:', err);
+    }
+    return [];
+}
 
 function getOrderCuttingNeeded(order: any): number {
   if (!order || order.deleted_at || order.status === 'Cancelado' || order.status === 'Entregue') return 0;
   try {
     if (order.total_via_corte !== undefined && order.total_via_corte !== null && Number(order.total_via_corte) > 0) return Number(order.total_via_corte);
     const stagesList = Array.isArray(order.stages_status) ? order.stages_status : (typeof order.stages_status === 'string' ? JSON.parse(order.stages_status || '[]') : []);
-    const corteStage = stagesList.find((s: any) => Number(s.id) === 2 || s.name?.toLowerCase() === 'corte');
+    const corteStage = stagesList.find((s: any) => isCorteStage(s));
     if (corteStage && Number(corteStage.quantidade_pedido || 0) > 0) return Number(corteStage.quantidade_pedido);
     const itemsList = parseOrderItems(order.items);
     if (itemsList.length > 0) {
@@ -335,7 +389,7 @@ function allocateCuttingPieces(orders: any[], targetItemKey: string, cutQty: num
       order.items = itemsList;
     }
     const stagesList = Array.isArray(order.stages_status) ? order.stages_status : (typeof order.stages_status === 'string' ? JSON.parse(order.stages_status || '[]') : []);
-    const corteStage = stagesList.find((s: any) => Number(s.id) === 2);
+    const corteStage = stagesList.find((s: any) => isCorteStage(s));
     if (corteStage) {
       corteStage.quantidade_boa = (corteStage.quantidade_boa || 0) + allocQty;
       const totalReq = corteStage.quantidade_pedido || order.total_via_corte || order.quantity || 1;
@@ -1590,18 +1644,16 @@ app.get("/api/dashboard/stats", async (req, res) => {
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config & Goals ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/config", async (req, res) => {
-    const userRole = (req as any).user?.role;
-    const isAdminUser = userRole === "Administrador";
     const { data, error } = await supabaseAdmin.from("config_producao").select("*").single();
     if (checkError(error, res)) return;
-    if (!isAdminUser && data) {
+    if (data) {
         delete data.meta_custo_por_peca;
     }
     return res.json(data);
 });
 
 app.patch("/api/config", isAdmin, async (req, res) => {
-    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, meta_custo_por_peca, auto_pause_time_weekday, auto_pause_time_friday, auto_pause_time_lunch } = req.body;
+    const { jornada_horas, operadores_ativos, eficiencia_percentual, dias_uteis_mes, meta_diaria_pedidos, meta_diaria_pecas, auto_pause_time_weekday, auto_pause_time_friday, auto_pause_time_lunch } = req.body;
     const updates: any = {};
     if (jornada_horas !== undefined) updates.jornada_horas = jornada_horas;
     if (operadores_ativos !== undefined) updates.operadores_ativos = operadores_ativos;
@@ -1609,7 +1661,6 @@ app.patch("/api/config", isAdmin, async (req, res) => {
     if (dias_uteis_mes !== undefined) updates.dias_uteis_mes = dias_uteis_mes;
     if (meta_diaria_pedidos !== undefined) updates.meta_diaria_pedidos = meta_diaria_pedidos;
     if (meta_diaria_pecas !== undefined) updates.meta_diaria_pecas = meta_diaria_pecas;
-    if (meta_custo_por_peca !== undefined) updates.meta_custo_por_peca = meta_custo_por_peca;
     if (auto_pause_time_weekday !== undefined) updates.auto_pause_time_weekday = auto_pause_time_weekday;
     if (auto_pause_time_friday !== undefined) updates.auto_pause_time_friday = auto_pause_time_friday;
     if (auto_pause_time_lunch !== undefined) updates.auto_pause_time_lunch = auto_pause_time_lunch;
@@ -1759,23 +1810,12 @@ app.get("/api/reports", async (req, res) => {
             data.production_by_stage = [];
         }
 
-        if (!isAdminUser) {
+        if (data) {
             if (data.summary) {
-                data.summary.total_labor_cost = 0;
+                delete data.summary.total_labor_cost;
             }
-            if (Array.isArray(data.costsByCollaborator)) {
-                data.costsByCollaborator = data.costsByCollaborator.map((item: any) => ({
-                    ...item,
-                    hourly_cost: 0,
-                    total_cost: 0,
-                    cost_per_piece: 0,
-                    totalCost: 0,
-                    costPerPiece: 0
-                }));
-            }
-            if (data.costsByOrder) {
-                data.costsByOrder = [];
-            }
+            delete data.costsByCollaborator;
+            delete data.costsByOrder;
         }
     }
     return res.json(data);
@@ -1954,12 +1994,85 @@ async function _fetchOlistStockForItem(token: string, idProduto?: string | numbe
     return null;
 }
 
-async function _fetchOlistOrders(token: string, daysLimit: number = 1): Promise<any[]> {
+async function _fetchOlistOrders(
+    token: string,
+    daysLimit: number = 30,
+    specificOrderNumbers?: string[]
+): Promise<any[]> {
     if (!token) return [];
 
     const allOrders: any[] = [];
     const seenIds = new Set<string>();
 
+    // 1. Se números específicos foram solicitados (ex: '1121', '1122'), busca direta no Tiny ERP
+    if (specificOrderNumbers && specificOrderNumbers.length > 0) {
+        for (const rawNum of specificOrderNumbers) {
+            const cleanNum = String(rawNum).replace(/^OLIST-/i, '').trim();
+            if (!cleanNum) continue;
+
+            try {
+                const bodyParams = new URLSearchParams({
+                    token: token,
+                    formato: 'json',
+                    numero: cleanNum
+                });
+                console.log(`[OlistSync] Buscando pedido específico no Tiny por número: ${cleanNum}...`);
+                const res = await _fetchTinyWithRetry("https://api.tiny.com.br/api2/pedidos.pesquisa.php", bodyParams);
+                if (res.ok) {
+                    const text = await res.text();
+                    let pedidos: any[] = [];
+                    try {
+                        const json = JSON.parse(text);
+                        const retorno = json.retorno || {};
+                        if (retorno.status === 'OK' && retorno.pedidos) {
+                            pedidos = retorno.pedidos.map((item: any) => item.pedido || item);
+                        }
+                    } catch (_) {
+                        const xmlParsed = _parseTinyXml(text);
+                        pedidos = xmlParsed?.pedidos || [];
+                    }
+
+                    if (pedidos.length === 0) {
+                        // Fallback de busca textual por pesquisa
+                        const fbParams = new URLSearchParams({
+                            token: token,
+                            formato: 'json',
+                            pesquisa: cleanNum
+                        });
+                        const fbRes = await _fetchTinyWithRetry("https://api.tiny.com.br/api2/pedidos.pesquisa.php", fbParams);
+                        if (fbRes.ok) {
+                            const fbText = await fbRes.text();
+                            try {
+                                const fbJson = JSON.parse(fbText);
+                                const fbRet = fbJson.retorno || {};
+                                if (fbRet.status === 'OK' && fbRet.pedidos) {
+                                    pedidos = fbRet.pedidos.map((item: any) => item.pedido || item);
+                                }
+                            } catch (parseErr) {
+                                console.debug('[OlistSync] Erro no parsing JSON do fallback de pesquisa:', parseErr);
+                            }
+                        }
+                    }
+
+                    for (const p of pedidos) {
+                        const idStr = String(p.id || p.numero);
+                        if (!seenIds.has(idStr)) {
+                            seenIds.add(idStr);
+                            allOrders.push(p);
+                        }
+                    }
+                }
+                await new Promise(r => setTimeout(r, 600));
+            } catch (err) {
+                console.warn(`[OlistSync] Erro ao buscar pedido específico ${cleanNum}:`, err);
+            }
+        }
+
+        console.log(`[OlistSync] Pedidos específicos encontrados: ${allOrders.length}`);
+        return allOrders;
+    }
+
+    // 2. Busca por janela de dias (padrão 30 dias)
     let dataInicial: string | undefined = undefined;
     if (daysLimit > 0) {
         const cutoffDate = new Date();
@@ -1970,11 +2083,11 @@ async function _fetchOlistOrders(token: string, daysLimit: number = 1): Promise<
         dataInicial = _formatDateDDMMYYYY(cutoffDate);
     }
 
-    // Query open and approved statuses
-    const statusQueries = ['em_aberto', 'aprovado'];
+    // Consulta todas as situações elegíveis no Tiny ERP
+    const statusQueries = ['em_aberto', 'aprovado', 'preparando_envio', 'faturado'];
 
     for (const stParam of statusQueries) {
-        for (let page = 1; page <= 2; page++) {
+        for (let page = 1; page <= 5; page++) {
             const bodyParams = new URLSearchParams({
                 token: token,
                 formato: 'json',
@@ -2155,33 +2268,48 @@ function _resolveProductType(itemDesc: string = '', itemProductType: string = ''
     return 'Dry Fit';
 }
 
-async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
+async function _syncOlistOrders(
+    daysLimit: number = 30,
+    tokenOverride?: string,
+    specificOrderNumbers?: string[],
+    batchLimit: number = 50
+) {
     const token = (tokenOverride || process.env.OLIST_API_TOKEN || "").trim();
     if (!token) {
-        throw new Error("Token de acesso do Olist ERP n├â┬úo configurado ou expirado.");
+        throw new Error("Token de acesso do Olist ERP não configurado ou expirado.");
     }
 
-    const rawOrders = await _fetchOlistOrders(token, daysLimit);
+    const rawOrders = await _fetchOlistOrders(token, daysLimit, specificOrderNumbers);
     console.log(`[OlistSync] Encontrados ${rawOrders.length} pedidos na API do Olist/Tiny.`);
 
-    const approved = rawOrders.filter(o => _isApprovedOlistStatus(o.situacao));
-    console.log(`[OlistSync] Pedidos aprovados/pagos eleg├â┬¡veis (total hist├â┬│rico): ${approved.length}`);
+    const isSpecific = Boolean(specificOrderNumbers && specificOrderNumbers.length > 0);
 
-    // Filter to only import orders from today onwards (daysLimit=1 includes today & yesterday for safety)
-    const cutoffDate = new Date();
-    cutoffDate.setHours(0, 0, 0, 0);
-    if (daysLimit > 0) {
+    const approved = isSpecific
+        ? rawOrders.filter(o => {
+            const s = (o.situacao || '').toLowerCase();
+            return !s.includes('cancelado') && !s.includes('estornado');
+          })
+        : rawOrders.filter(o => _isApprovedOlistStatus(o.situacao));
+
+    console.log(`[OlistSync] Pedidos aprovados/pagos elegíveis (total histórico): ${approved.length}`);
+
+    // If specific order numbers were provided, bypass the date cutoff so older requested orders are not discarded
+    let eligibleOrders = approved;
+    if (!isSpecific && daysLimit > 0) {
+        const cutoffDate = new Date();
+        cutoffDate.setHours(0, 0, 0, 0);
         cutoffDate.setDate(cutoffDate.getDate() - daysLimit);
+
+        eligibleOrders = approved.filter(o => {
+            const orderDate = _parseOrderDate(o.data_pedido);
+            if (!orderDate) return false;
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate >= cutoffDate;
+        });
+        console.log(`[OlistSync] Pedidos aprovados dos últimos ${daysLimit} dias (de hoje em diante): ${eligibleOrders.length}`);
+    } else {
+        console.log(`[OlistSync] Pedidos elegíveis para importação: ${eligibleOrders.length}`);
     }
-
-    const eligibleOrders = approved.filter(o => {
-        const orderDate = _parseOrderDate(o.data_pedido);
-        if (!orderDate) return false; // Exclude orders with invalid/missing date when filtering
-        orderDate.setHours(0, 0, 0, 0);
-        return orderDate >= cutoffDate;
-    });
-
-    console.log(`[OlistSync] Pedidos aprovados dos ├â┬║ltimos ${daysLimit} dias (de hoje em diante): ${eligibleOrders.length}`);
 
     const importedOrders: any[] = [];
     const skippedOrders: any[] = [];
@@ -2212,8 +2340,12 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
         return !isExisting;
     });
 
-    console.log(`[OlistSync] Pedidos novos a importar nesta rodada: ${unimportedEligible.length} (limitando a 5 por lote)`);
-    const targetOrders = unimportedEligible.slice(0, 5);
+    const maxOrdersToProcess = isSpecific
+        ? Math.min(unimportedEligible.length, Math.max(batchLimit, specificOrderNumbers!.length))
+        : Math.min(unimportedEligible.length, batchLimit);
+
+    console.log(`[OlistSync] Pedidos novos a importar nesta rodada: ${unimportedEligible.length} (limitando a ${maxOrdersToProcess} por lote)`);
+    const targetOrders = unimportedEligible.slice(0, maxOrdersToProcess);
 
     for (const rawOrd of targetOrders) {
         const olistId = String(rawOrd.id);
@@ -2238,7 +2370,7 @@ async function _syncOlistOrders(daysLimit: number = 1, tokenOverride?: string) {
                 productType = _resolveProductType(detail.itens[0].descricao, detail.itens[0].productType);
             }
 
-            let defaultRequiredStages = [1, 17, 8];
+            let defaultRequiredStages = await resolveDefaultProductionStageIds(supabaseAdmin);
             let obsText = `Importado do Olist ERP (ID: ${detail.id}, Nº: ${detail.numero}) - Aguardando revisão de estampa`;
 
             let deadlineIso = new Date().toISOString();
@@ -2472,8 +2604,17 @@ app.get("/api/integrations/olist/debug", isAdmin, async (_req, res) => {
 app.post("/api/integrations/olist/sync", isAdminOrComercial, async (req, res) => {
     try {
         const tokenOverride = await _getEffectiveOlistToken();
-        const days = req.body?.days !== undefined ? Number(req.body.days) : 1; // Default to 1 (de hoje em diante)
-        const result = await _syncOlistOrders(days, tokenOverride);
+        const days = req.body?.days !== undefined ? Number(req.body.days) : 30; // Default to 30 days
+        let orderNumbers: string[] | undefined = undefined;
+        if (req.body?.order_numbers) {
+            if (Array.isArray(req.body.order_numbers)) {
+                orderNumbers = req.body.order_numbers.map(String).map(s => s.trim()).filter(Boolean);
+            } else if (typeof req.body.order_numbers === 'string') {
+                orderNumbers = req.body.order_numbers.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+            }
+        }
+        const batchLimit = req.body?.batch_limit ? Number(req.body.batch_limit) : 50;
+        const result = await _syncOlistOrders(days, tokenOverride, orderNumbers, batchLimit);
         return res.json({ success: true, ...result });
     } catch (err: any) {
         console.error("[OlistSync API Error]:", err);
@@ -2666,8 +2807,11 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
             return res.status(404).json({ error: "Pedido rascunho n├â┬úo encontrado" });
         }
 
-        const rawStages = required_stages || currentOrder.required_stages || [1, 17, 8];
-        const stagesArray = Array.isArray(rawStages) && rawStages.length > 0 ? rawStages.map((id: any) => Number(id)) : [1, 17, 8];
+        const fallbackStages = await resolveDefaultProductionStageIds(supabaseAdmin);
+        const rawStages = required_stages || currentOrder.required_stages || fallbackStages;
+        const stagesArray = Array.isArray(rawStages) && rawStages.length > 0 
+            ? rawStages.map((id: any) => Number(id)).filter((id: number) => !isNaN(id)) 
+            : fallbackStages;
 
         const updates: any = {
             status: "Entrada",
@@ -2971,7 +3115,7 @@ app.get("/api/orders", async (req, res) => {
 
             if (search) {
                 const s = String(search).trim();
-                query = query.or(`order_number.ilike.%${s}%,client_name.ilike.%${s}%`);
+                query = query.or(`order_number.ilike.%${s}%,client_name.ilike.%${s}%,olist_order_number.ilike.%${s}%,observations.ilike.%${s}%`);
             }
             if (product_type) {
                 query = query.eq("product_type", String(product_type));
@@ -3194,7 +3338,14 @@ app.get("/api/orders/:id/stage-observations", async (req, res) => {
 
 app.post("/api/orders", isAdminOrComercial, upload.array("art_files", 10), async (req, res) => {
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors } = req.body;
-    const order_number = `PED-${Date.now().toString().slice(-6)}`;
+    let order_number = (req.body.order_number || '').trim();
+    if (!order_number) {
+        order_number = `PED-${Date.now().toString().slice(-6)}`;
+    } else {
+        if (!order_number.toUpperCase().startsWith('PED-') && !order_number.toUpperCase().startsWith('OLIST-')) {
+            order_number = `PED-${order_number}`;
+        }
+    }
     const art_urls: string[] = [];
 
     const files = (req as any).files;
@@ -4138,69 +4289,6 @@ app.delete("/api/collaborator-goals/:id", isAdmin, async (req, res) => {
     if (checkError(error, res)) return;
     return res.json({ success: true });
 });
-app.get("/api/executions/monitor", isAdmin, async (req, res) => {
-    try {
-        const { data: executions, error } = await supabaseAdmin
-            .from("stage_executions")
-            .select(`
-                id,
-                order_id,
-                stage_id,
-                user_id,
-                start_time,
-                status,
-                pauses (
-                    duration_seconds,
-                    start_pause,
-                    end_pause
-                ),
-                users ( name ),
-                stages ( name, average_time_seconds, ideal_time, real_average_time, execution_count, calculation_type ),
-                orders ( order_number, client_name, product_type, quantity )
-            `)
-            .eq("status", "Em andamento");
-
-        if (error) throw error;
-
-        const now = new Date().getTime();
-
-        const monitorData = (executions || []).map((exec: any) => {
-            const itemPauses = exec.pauses || [];
-            const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(exec, itemPauses, now);
-
-            return {
-                id: exec.id,
-                order_id: exec.order_id,
-                stage_id: exec.stage_id,
-                user_id: exec.user_id,
-                start_time: exec.start_time,
-                status: exec.status,
-                is_paused: isPaused,
-                total_time_seconds: totalAccumulatedSeconds,
-                current_session_seconds: currentSessionSeconds,
-                user_name: exec.users?.name,
-                stage_name: exec.stages?.name,
-                average_time_seconds: exec.stages?.average_time_seconds,
-                ideal_time: exec.stages?.ideal_time,
-                real_average_time: exec.stages?.real_average_time,
-                execution_count: exec.stages?.execution_count,
-                calculation_type: exec.stages?.calculation_type,
-                order_number: exec.orders?.order_number,
-                client_name: exec.orders?.client_name,
-                product_type: exec.orders?.product_type,
-                quantity: exec.orders?.quantity,
-                accumulated_pause_seconds: itemPauses.reduce((sum: number, p: any) => sum + (p.duration_seconds || 0), 0)
-            };
-        });
-
-        monitorData.sort((a, b) => b.total_time_seconds - a.total_time_seconds);
-
-        return res.json(monitorData);
-    } catch (err: any) {
-        console.error("[Monitor] Error:", err);
-        return res.status(500).json({ error: "Erro ao carregar monitoramento em tempo real" });
-    }
-});
 
 app.get("/api/executions/active/:userId", async (req, res) => {
     const { data: executions, error } = await supabaseAdmin
@@ -4554,6 +4642,67 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
     }
 
     const httpStatus = Number(rpcFinishData?.http_status) || 200;
+
+    // Resguardo resiliente para pedidos com etapa legada Conferência:
+    // Garante que o pedido transiciona para 'Pronto' caso todas as etapas ativas de produção estejam concluídas
+    if (httpStatus >= 200 && httpStatus < 300) {
+        try {
+            const { data: execRow } = await supabaseAdmin
+                .from("stage_executions")
+                .select("order_id, stage_id")
+                .eq("id", execution_id)
+                .maybeSingle();
+
+            if (execRow && execRow.order_id) {
+                const { data: ord } = await supabaseAdmin
+                    .from("orders")
+                    .select("id, status, required_stages")
+                    .eq("id", execRow.order_id)
+                    .maybeSingle();
+
+                if (ord && ord.status !== "Pronto" && ord.status !== "Entregue" && ord.status !== "Cancelado") {
+                    const { data: dbStages } = await supabaseAdmin.from("stages").select("id, name, sector_name");
+                    const confStageIds = new Set(
+                        (dbStages || []).filter((s: any) => isConferenciaStage(s)).map((s: any) => Number(s.id))
+                    );
+
+                    const rawReq = Array.isArray(ord.required_stages) ? ord.required_stages.map(Number) : [];
+                    const nonConfReq = rawReq.filter(id => !confStageIds.has(id));
+
+                    if (nonConfReq.length > 0) {
+                        const { data: progressRows } = await supabaseAdmin
+                            .from("order_stage_progress")
+                            .select("stage_id, finished")
+                            .eq("order_id", ord.id);
+
+                        const finishedMap = new Map((progressRows || []).map((p: any) => [Number(p.stage_id), Boolean(p.finished)]));
+                        const allNonConfFinished = nonConfReq.every(id => finishedMap.get(id) === true);
+
+                        if (allNonConfFinished) {
+                            const nowIso = new Date().toISOString();
+                            await supabaseAdmin
+                                .from("orders")
+                                .update({
+                                    status: "Pronto",
+                                    pcp_status: "PRONTO",
+                                    production_finished_at: nowIso,
+                                    updated_at: nowIso
+                                })
+                                .eq("id", ord.id);
+
+                            if (rpcFinishData) {
+                                rpcFinishData.order_status = "Pronto";
+                                rpcFinishData.pcp_status = "PRONTO";
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (autoWaiverErr) {
+            console.warn("[FinishOperation] Aviso ao verificar conclusão resiliente do pedido:", autoWaiverErr);
+        }
+    }
+
     return res.status(httpStatus).json({
         ...rpcFinishData,
         status: rpcFinishData?.status || "Finalizado",

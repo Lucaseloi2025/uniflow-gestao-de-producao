@@ -5,8 +5,6 @@ import {
   Package,
   PackageCheck, 
   Users,
-  Activity,
-  DollarSign,
   Settings, 
   BarChart3, 
   LogOut,
@@ -84,13 +82,6 @@ export const Sidebar = ({
           active={activeTab === 'orders'}
           onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
         />
-        
-        <SidebarItem
-          icon={PackageCheck}
-          label="Conferência (Separação)"
-          active={activeTab === 'conferencia'}
-          onClick={() => { setActiveTab('conferencia'); setIsMobileMenuOpen(false); }}
-        />
 
         <div className="mt-8 mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">GERENCIAL</div>
 
@@ -110,23 +101,7 @@ export const Sidebar = ({
           onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
         />
 
-        {currentUser?.role === 'Administrador' && (
-          <SidebarItem
-            icon={Activity}
-            label="Monitor"
-            active={activeTab === 'monitor'}
-            onClick={() => { setActiveTab('monitor'); setIsMobileMenuOpen(false); }}
-          />
-        )}
-
-        {currentUser?.role === 'Administrador' && (
-          <SidebarItem
-            icon={DollarSign}
-            label="Custos"
-            active={activeTab === 'costs'}
-            onClick={() => { setActiveTab('costs'); setIsMobileMenuOpen(false); }}
-          />
-        )}
+        <div className="mt-8 mb-2 px-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">SISTEMA</div>
         
         <SidebarItem
           icon={Settings}
