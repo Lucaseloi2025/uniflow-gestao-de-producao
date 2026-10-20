@@ -47,12 +47,17 @@ BEGIN
     RAISE EXCEPTION 'Etapas Corte ou Costura não encontradas no cadastro.';
   END IF;
 
+  -- 2.1 Garantir alinhamento de etapas operacionais da Fase 1: Corte e Costura ativas, Conferência desativada
+  UPDATE public.stages SET active = 1 WHERE id IN (v_corte_id, v_costura_id);
+  UPDATE public.stages SET active = 0 WHERE name ILIKE '%conferência%' OR name ILIKE '%conferencia%';
+  RAISE NOTICE '>>> [ETAPAS] Corte e Costura ativadas (active=1). Conferência desativada (active=0).';
+
   -- 3. Criar pedido "TESTE FASE 1"
   INSERT INTO public.orders (
-    order_number, client_name, product_type, quantity, status, required_stages, created_at, updated_at
+    order_number, client_name, product_type, print_type, quantity, status, required_stages, created_at, updated_at
   )
   VALUES (
-    'TESTE FASE 1', 'Cliente Homologação Produção', 'Camiseta Dry Fit', 10, 'Entrada',
+    'TESTE FASE 1', 'Cliente Homologação Produção', 'Dry Fit', 'DTF', 10, 'Entrada',
     jsonb_build_array(v_corte_id, v_costura_id), NOW(), NOW()
   )
   RETURNING id INTO v_order_id;
