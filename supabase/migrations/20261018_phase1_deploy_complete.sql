@@ -442,6 +442,13 @@ BEGIN
         SELECT COUNT(*) FROM auth.users sub_au
         WHERE LOWER(TRIM(sub_au.email)) = LOWER(TRIM(u.email))
       ) = 1;
+
+    -- Usuário legado de teste com domínio inexistente ('Luan@silk') e que não possui correspondente em auth.users é marcado como inativo (active=0), preservando 100% o registro histórico no banco
+    UPDATE public.users
+    SET active = 0
+    WHERE active = 1
+      AND auth_user_id IS NULL
+      AND email ILIKE '%@silk%';
   END IF;
 END $$;
 
