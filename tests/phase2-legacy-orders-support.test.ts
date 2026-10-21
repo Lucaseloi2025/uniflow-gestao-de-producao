@@ -44,10 +44,13 @@ describe('Fase 2 — Suporte a Pedidos Legados Já em Produção e Ocultação d
       ON CONFLICT (id) DO UPDATE SET active = EXCLUDED.active;
     `);
 
-    // 4. Setup operator
+    // 4. Setup operator & admin
     await db.exec(`
       INSERT INTO public.users (id, name, email, role, active, sector_name)
-      VALUES (400, 'Operador Costura', 'operador.costura@comfortpro.com', 'Operador', 1, 'Costura')
+      VALUES 
+        (8, 'Operador Antigo', 'op8@comfortpro.com', 'Operador', 1, 'Costura'),
+        (100, 'Admin Usuário', 'admin@comfortpro.com', 'Administrador', 1, NULL),
+        (400, 'Operador Costura', 'operador.costura@comfortpro.com', 'Operador', 1, 'Costura')
       ON CONFLICT (id) DO NOTHING;
     `);
   });
@@ -184,5 +187,79 @@ describe('Fase 2 — Suporte a Pedidos Legados Já em Produção e Ocultação d
 
     const deliveredFound = res.rows.find((r: any) => r.order_number === 'PED-ENTREGUE-01');
     expect(deliveredFound).toBeUndefined();
+  });
+
+  it('4. Administrador consegue assumir e iniciar etapa aberta por outro operador (#8) e finalizá-la sem impedimentos', async () => {
+    // 1. Criar pedido e simular etapa Costura aberta pelo operador #8 no passado
+    const ordRes = await db.query(`
+      INSERT INTO public.orders (order_number, client_name, product_type, quantity, status, required_stages)
+      VALUES ('PED-OVERRIDE-ADMIN', 'Cliente Teste', 'Dry Fit', 20, 'Em Produção', '[10, 20]'::jsonb)
+      RETURNING id;
+    `);
+    const orderId = Number(ordRes.rows[0].id);
+
+    // Etapa 10 concluída
+    await db.query(`
+      INSERT INTO public.order_stage_progress (order_id, stage_id, quantidade_pedido, quantidade_boa, finished, status, status_operacao)
+      VALUES ($1, 10, 20, 20, true, 'CONCLUIDA', 'CONCLUIDA');
+    `, [orderId]);
+
+    // Sessão aberta pelo operador #8
+    const staleExecRes = await db.query(`
+      INSERT INTO public.stage_executions (order_id, stage_id, user_id, status, start_time, total_time_seconds)
+      VALUES ($1, 20, 8, 'Em andamento', NOW() - INTERVAL '1 hour', 3600)
+      RETURNING id;
+    `, [orderId]);
+    const staleExecId = Number(staleExecRes.rows[0].id);
+
+    // 2. Simula o backend: Administrador (#100) assume e encerra a sessão pendente do operador #8
+    await db.query(`
+      UPDATE public.stage_executions
+      SET status = 'Finalizado', end_time = NOW()
+      WHERE id = $1;
+    `, [staleExecId]);
+
+    // 3. Admin inicia nova execução sem conflito
+    const startRes = await db.query(`
+      SELECT public.rpc_start_operation(
+        p_order_id := $1,
+        p_stage_id := 20,
+        p_user_id := 100,
+        p_order_item_id := NULL,
+        p_supervisor_override := true,
+        p_motivo := 'Assunção direta pelo Administrador'
+      ) AS res;
+    `, [orderId]);
+
+    const startData = (startRes.rows[0].res as any);
+    expect(startData.error).toBeUndefined();
+    expect(startData.success).toBe(true);
+    expect(startData.status_operacao).toBe('EM_ANDAMENTO');
+    const adminExecId = Number(startData.execution_id);
+    expect(adminExecId).toBeGreaterThan(0);
+
+    // 4. Admin finaliza a execução
+    const finishRes = await db.query(`
+      SELECT public.rpc_finish_operation(
+        p_execution_id := $1,
+        p_user_id := 100,
+        p_good_inc := 20,
+        p_partial := false,
+        p_observation := 'Finalizado diretamente pelo Administrador',
+        p_idempotency_key := 'idem_admin_test_01',
+        p_supervisor_override := true
+      ) AS res;
+    `, [adminExecId]);
+
+    const finishData = (finishRes.rows[0].res as any);
+    expect(finishData.error).toBeUndefined();
+    expect(finishData.status_operacao).toBe('CONCLUIDA');
+
+    // 5. Verificar que o pedido atingiu status Pronto
+    const orderCheck = await db.query(`
+      SELECT status, pcp_status FROM public.orders WHERE id = $1;
+    `, [orderId]);
+    expect(orderCheck.rows[0].status).toBe('Pronto');
+    expect(orderCheck.rows[0].pcp_status).toBe('PRONTO');
   });
 });

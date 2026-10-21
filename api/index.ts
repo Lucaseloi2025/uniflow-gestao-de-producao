@@ -4378,6 +4378,10 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
     const orderIdNum = Number(order_id);
     const stageIdNum = Number(stage_id);
     const userIdNum = getActorId(req);
+    const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
+    const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
+    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
+    const effectiveMotivo = motivo || (isPrivileged ? `Assunção direta pelo ${actorRole || 'Administrador'}` : null);
 
     if (!userIdNum || userIdNum <= 0) {
         return res.status(401).json({ error: "Usuário não identificado. Por favor, saia e entre novamente.", code: "USER_ID_REQUIRED" });
@@ -4433,8 +4437,8 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
                 }
             }
 
-            // 3. Se for supervisor_override e existir execução antiga pendente de outro usuário nesta etapa, finalizá-la
-            if (Boolean(supervisor_override)) {
+            // 3. Se for Administrador/Supervisor ou supervisor_override e existir execução antiga pendente de outro usuário nesta etapa, finalizá-la automaticamente
+            if (effectiveOverride) {
                 const { data: staleExec } = await supabaseAdmin
                     .from('stage_executions')
                     .select('id, user_id, status')
@@ -4449,7 +4453,6 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
                         .update({
                             status: 'Finalizado',
                             end_time: new Date().toISOString(),
-                            observations: `Sessão anterior finalizada por Supervisor Override (${motivo || 'Troca de operador'})`,
                             updated_at: new Date().toISOString()
                         })
                         .eq('id', staleExec.id);
@@ -4462,8 +4465,8 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
             p_stage_id: stageIdNum,
             p_user_id: userIdNum,
             p_order_item_id: order_item_id ? Number(order_item_id) : null,
-            p_supervisor_override: Boolean(supervisor_override),
-            p_motivo: motivo || null,
+            p_supervisor_override: effectiveOverride,
+            p_motivo: effectiveMotivo,
         });
 
         if (rpcStartErr) {
@@ -4622,8 +4625,11 @@ app.post("/api/executions/auto-pause", isPcpOrSupervisorOrAdmin, async (req, res
 app.post("/api/executions/:id/pause", canOperateProduction, async (req, res) => {
     const execution_id = Number(req.params.id);
     const { observation, motivo, reason, supervisor_override } = req.body || {};
-    const pauseReason = (motivo || reason || observation || "Pausa operacional").toString().trim();
     const actorId = getActorId(req);
+    const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
+    const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
+    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
+    const pauseReason = (motivo || reason || observation || (isPrivileged ? `Pausa pelo ${actorRole || 'Administrador'}` : "Pausa operacional")).toString().trim();
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
@@ -4633,7 +4639,7 @@ app.post("/api/executions/:id/pause", canOperateProduction, async (req, res) => 
         p_execution_id: execution_id,
         p_user_id: actorId,
         p_motivo: pauseReason,
-        p_supervisor_override: Boolean(supervisor_override),
+        p_supervisor_override: effectiveOverride,
     });
 
     if (rpcPauseErr) {
@@ -4656,6 +4662,10 @@ app.post("/api/executions/:id/resume", canOperateProduction, async (req, res) =>
     const execution_id = Number(req.params.id);
     const { supervisor_override, motivo } = req.body || {};
     const actorId = getActorId(req);
+    const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
+    const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
+    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
+    const effectiveMotivo = motivo || (isPrivileged ? `Retomada pelo ${actorRole || 'Administrador'}` : null);
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
@@ -4664,8 +4674,8 @@ app.post("/api/executions/:id/resume", canOperateProduction, async (req, res) =>
     const { data: rpcResumeData, error: rpcResumeErr } = await supabaseAdmin.rpc("rpc_resume_operation", {
         p_execution_id: execution_id,
         p_user_id: actorId,
-        p_supervisor_override: Boolean(supervisor_override),
-        p_motivo: motivo || null,
+        p_supervisor_override: effectiveOverride,
+        p_motivo: effectiveMotivo,
     });
 
     if (rpcResumeErr) {
@@ -4688,6 +4698,10 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
     const execution_id = Number(req.params.id);
     const { observation, quantidade_boa_incremento, partial, idempotency_key, supervisor_override } = req.body || {};
     const actorId = getActorId(req);
+    const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
+    const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
+    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
+    const effectiveObs = observation || (isPrivileged ? `Finalizado diretamente pelo ${actorRole || 'Administrador'}` : null);
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
@@ -4700,9 +4714,9 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
         p_user_id: actorId,
         p_good_inc: Number(quantidade_boa_incremento) || 0,
         p_partial: Boolean(partial),
-        p_observation: observation || null,
+        p_observation: effectiveObs,
         p_idempotency_key: effectiveKey,
-        p_supervisor_override: Boolean(supervisor_override),
+        p_supervisor_override: effectiveOverride,
     });
 
     if (rpcFinishErr) {

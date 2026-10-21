@@ -1128,11 +1128,19 @@ export function useAppLogic() {
       const confirmStart = window.confirm(`Operador atual: ${currentUser?.name || 'Usuário'}\nEtapa: ${stageName}\nPedido: #${targetOrder.order_number}\n\nDeseja iniciar esta tarefa?`);
       if (!confirmStart) return;
       
+      const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
+
       let res = await apiFetch('/api/executions/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: targetOrder.id, stage_id: stageId, user_id: currentUser?.id })
+        body: JSON.stringify({ 
+          order_id: targetOrder.id, 
+          stage_id: stageId, 
+          user_id: currentUser?.id,
+          supervisor_override: isPrivileged,
+          motivo: isPrivileged ? 'Ação direta do Administrador/Supervisor' : undefined
+        })
       });
 
       let errData: any = null;
@@ -1237,11 +1245,16 @@ export function useAppLogic() {
     if (!targetOrder) return;
     setIsActionLoading(true);
     try {
+      const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
       let pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ observation: '', supervisor_override: false })
+        body: JSON.stringify({ 
+          observation: isPrivileged ? 'Pausa pelo Administrador/Supervisor' : '', 
+          motivo: isPrivileged ? 'Pausa pelo Administrador/Supervisor' : undefined,
+          supervisor_override: isPrivileged 
+        })
       });
 
       let errData: any = null;
@@ -1289,11 +1302,16 @@ export function useAppLogic() {
     if (!targetOrder) return;
     setIsActionLoading(true);
     try {
+      const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
       let finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true, observation: '', supervisor_override: false })
+        body: JSON.stringify({ 
+          force: true, 
+          observation: isPrivileged ? 'Finalizado pelo Administrador/Supervisor' : '', 
+          supervisor_override: isPrivileged 
+        })
       });
 
       let errData: any = null;
@@ -1517,10 +1535,14 @@ export function useAppLogic() {
     const targetOrder = customOrder || selectedOrder;
     setIsActionLoading(true);
     try {
+      const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
       let res = await apiFetch(`/api/executions/${executionId}/resume`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supervisor_override: false })
+        body: JSON.stringify({ 
+          supervisor_override: isPrivileged,
+          motivo: isPrivileged ? 'Retomada pelo Administrador/Supervisor' : undefined
+        })
       });
 
       let errData: any = null;
