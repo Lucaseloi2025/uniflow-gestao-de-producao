@@ -15,6 +15,11 @@
 -- 11. Cancelamento do pedido de teste pelo fluxo normal
 -- ============================================================================
 
+-- 0. Garantir resiliência da constraint orders_status_check contra encoding
+ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_status_check;
+ALTER TABLE public.orders ADD CONSTRAINT orders_status_check
+  CHECK (status IN ('Rascunho', 'Entrada', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado', 'Aguardando Produção', 'Em ProduÃ§Ã£o', 'AGUARDANDO LIBERAÇÃO'));
+
 DO $$
 DECLARE
   v_operator_id BIGINT;
