@@ -1113,25 +1113,50 @@ export function useAppLogic() {
 
   const handleStartStage = async (stageId: number) => {
     if (!selectedOrder) return;
-    
-    // Confirmação ao iniciar tarefa
-    const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
-    const confirmStart = window.confirm(`Operador atual: ${currentUser?.name}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
-    if (!confirmStart) return;
-    
-    const res = await apiFetch('/api/executions/start', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser!.id })
-    });
-    if (res.ok) {
-      fetchExecutions(selectedOrder.id);
-      fetchData();
-      fetchActiveExecution();
-    } else {
-      const err = await res.json();
-      showToast(err.error);
+    if (isActionLoading) return;
+    setIsActionLoading(true);
+    try {
+      // Confirmação ao iniciar tarefa
+      const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
+      const confirmStart = window.confirm(`Operador atual: ${currentUser?.name || 'Usuário'}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
+      if (!confirmStart) return;
+      
+      let res = await apiFetch('/api/executions/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser?.id })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'PREVIOUS_STAGE_NOT_READY') {
+          const motivo = window.prompt(
+            `${err.error}\n\nComo Supervisor/Administrador, informe o motivo para iniciar com override:`
+          );
+          if (motivo && motivo.trim()) {
+            res = await apiFetch('/api/executions/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser?.id, supervisor_override: true, motivo: motivo.trim() })
+            });
+          } else {
+            return;
+          }
+        }
+      }
+
+      if (res.ok) {
+        await fetchExecutions(selectedOrder.id);
+        await fetchData();
+        fetchActiveExecution();
+        showToast("Tarefa iniciada com sucesso!");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Erro ao iniciar tarefa.");
+      }
+    } finally {
+      setIsActionLoading(false);
     }
   };
 
@@ -1194,19 +1219,39 @@ export function useAppLogic() {
     if (!selectedOrder) return;
     setIsActionLoading(true);
     try {
-      const pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
+      let pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ observation: '' })
+        body: JSON.stringify({ observation: '', supervisor_override: false })
       });
+
+      if (!pauseRes.ok) {
+        const err = await pauseRes.json().catch(() => ({}));
+        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'FORBIDDEN_NOT_OWNER') {
+          const motivo = window.prompt(
+            `Esta etapa pertence a outro operador.\n\nInforme o motivo do Supervisor para pausar a etapa:`
+          );
+          if (motivo && motivo.trim()) {
+            pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ observation: motivo.trim(), motivo: motivo.trim(), supervisor_override: true })
+            });
+          } else {
+            return;
+          }
+        }
+      }
+
       if (pauseRes.ok) {
         await fetchExecutions(selectedOrder.id);
         fetchData();
         fetchActiveExecution();
         showToast("Etapa pausada.");
       } else {
-        showToast("Erro ao pausar etapa.");
+        const err = await pauseRes.json().catch(() => ({}));
+        showToast(err.error || "Erro ao pausar etapa.");
       }
     } finally {
       setIsActionLoading(false);
@@ -1218,12 +1263,37 @@ export function useAppLogic() {
     if (!selectedOrder) return;
     setIsActionLoading(true);
     try {
-      const finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
+      let finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true, observation: '' })
+        body: JSON.stringify({ force: true, observation: '', supervisor_override: false })
       });
+
+      if (!finishRes.ok) {
+        const err = await finishRes.json().catch(() => ({}));
+
+        if (err.code === 'EXECUTION_PAUSED') {
+          showToast("A etapa está pausada. Clique em RETOMAR antes de finalizar.");
+          return;
+        }
+
+        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'FORBIDDEN_NOT_OWNER') {
+          const motivo = window.prompt(
+            `Esta etapa pertence a outro operador.\n\nInforme o motivo do Supervisor para finalizar a etapa:`
+          );
+          if (motivo && motivo.trim()) {
+            finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ force: true, observation: motivo.trim(), supervisor_override: true })
+            });
+          } else {
+            return;
+          }
+        }
+      }
+
       if (finishRes.ok) {
         const resData = await finishRes.json().catch(() => ({}));
         const nextStages = (selectedOrder?.stages_status || []).map(s =>
@@ -1410,13 +1480,47 @@ export function useAppLogic() {
   };
 
   const handleResumeStage = async (executionId: number) => {
-    await apiFetch(`/api/executions/${executionId}/resume`, {
-      method: 'POST' });
-    if (selectedOrder) {
-      await fetchExecutions(selectedOrder.id);
+    if (isActionLoading) return;
+    setIsActionLoading(true);
+    try {
+      let res = await apiFetch(`/api/executions/${executionId}/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supervisor_override: false })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'FORBIDDEN_NOT_OWNER') {
+          const motivo = window.prompt(
+            `Esta etapa está vinculada a outro operador.\n\nComo Supervisor/Administrador, informe o motivo para intervir e retomar a etapa:`
+          );
+          if (motivo && motivo.trim()) {
+            res = await apiFetch(`/api/executions/${executionId}/resume`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ supervisor_override: true, motivo: motivo.trim() })
+            });
+          } else {
+            return;
+          }
+        }
+      }
+
+      if (res.ok) {
+        if (selectedOrder) {
+          await fetchExecutions(selectedOrder.id);
+        }
+        await fetchData();
+        fetchActiveExecution();
+        showToast("Etapa retomada com sucesso!");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Erro ao retomar etapa.");
+      }
+    } finally {
+      setIsActionLoading(false);
     }
-    fetchData();
-    fetchActiveExecution();
   };
 
   const handleOpenProgressModal = (stageId: number) => {
