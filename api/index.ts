@@ -6815,26 +6815,33 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
         const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
         const todayStartIso = `${todayStr}T00:00:00.000Z`;
 
-        // If no explicit stageId, see if user has a default_stage_id
-        if (!stageId && userId) {
-            const { data: uData } = await supabaseAdmin
-                .from('users')
-                .select('id, default_stage_id')
-                .eq('id', userId)
-                .maybeSingle();
-            if (uData?.default_stage_id) {
-                stageId = Number(uData.default_stage_id);
-            }
-        }
-
         // 1. Fetch active stages
         const { data: stagesData, error: stagesErr } = await supabaseAdmin
             .from('stages')
-            .select('id, name, sort_order, active')
+            .select('id, name, sector_name, sort_order, active')
             .eq('active', 1)
             .order('sort_order', { ascending: true });
 
         if (stagesErr) throw stagesErr;
+
+        // If no explicit stageId, see if user has a sector_name matching a stage
+        if (!stageId && userId) {
+            const { data: uData } = await supabaseAdmin
+                .from('users')
+                .select('id, sector_name')
+                .eq('id', userId)
+                .maybeSingle();
+            if (uData?.sector_name) {
+                const sNorm = String(uData.sector_name).trim().toLowerCase();
+                const matchedStage = (stagesData || []).find((s: any) => 
+                    s.name?.trim().toLowerCase() === sNorm || 
+                    s.sector_name?.trim().toLowerCase() === sNorm
+                );
+                if (matchedStage) {
+                    stageId = Number(matchedStage.id);
+                }
+            }
+        }
 
         // 2. Fetch orders in pipeline (not Cancelado, not Entregue, not Pronto, not Rascunho)
         const { data: rawOrders, error: ordersErr } = await supabaseAdmin
