@@ -110,6 +110,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 const Orders = lazy(() => import('./pages/Orders').then(m => ({ default: m.Orders })));
 const Kanban = lazy(() => import('./pages/Kanban').then(m => ({ default: m.Kanban })));
+const MinhaFila = lazy(() => import('./pages/MinhaFila').then(m => ({ default: m.MinhaFila })));
 const Reports = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
 const Collaborators = lazy(() => import('./pages/Collaborators').then(m => ({ default: m.Collaborators })));
 const DashboardTab = lazy(() => import('./pages/DashboardTab').then(m => ({ default: m.DashboardTab })));
@@ -389,6 +390,28 @@ export default function App() {
             printTypeFilter={printTypeFilter}
             productTypeFilter={productTypeFilter}
             orders={orders}
+          />
+        )}
+
+        {activeTab === 'minha-fila' && (
+          <MinhaFila
+            orders={orders}
+            stages={stages}
+            users={users}
+            currentUser={currentUser}
+            activeExecutions={activeExecutions}
+            setSelectedOrder={setSelectedOrder}
+            handleStartStage={handleStartStage}
+            handlePauseStage={handlePauseStage}
+            handleResumeStage={handleResumeStage}
+            handleFinishStage={handleFinishStage}
+            handleOpenProgressModal={handleOpenProgressModal}
+            handleOpenActionModal={handleOpenActionModal}
+            fetchData={fetchData}
+            fetchExecutions={fetchExecutions}
+            fetchActiveExecution={fetchActiveExecution}
+            setSelectedFullImage={setSelectedFullImage}
+            safeFetch={safeFetch}
           />
         )}
 

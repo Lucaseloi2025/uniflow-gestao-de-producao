@@ -336,6 +336,12 @@ export function useAppLogic() {
     }
   }, [session]);
 
+  useEffect(() => {
+    if (currentUser?.role === 'Operador' && (!rawTab || rawTab === 'dashboard')) {
+      navigate('/minha-fila', { replace: true });
+    }
+  }, [currentUser, rawTab, navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -1111,21 +1117,22 @@ export function useAppLogic() {
     }
   };
 
-  const handleStartStage = async (stageId: number) => {
-    if (!selectedOrder) return;
+  const handleStartStage = async (stageId: number, customOrder?: Order) => {
+    const targetOrder = customOrder || selectedOrder;
+    if (!targetOrder) return;
     if (isActionLoading) return;
     setIsActionLoading(true);
     try {
       // Confirmação ao iniciar tarefa
       const stageName = stages.find(s => s.id === stageId)?.name || 'Etapa';
-      const confirmStart = window.confirm(`Operador atual: ${currentUser?.name || 'Usuário'}\nEtapa: ${stageName}\n\nDeseja iniciar esta tarefa?`);
+      const confirmStart = window.confirm(`Operador atual: ${currentUser?.name || 'Usuário'}\nEtapa: ${stageName}\nPedido: #${targetOrder.order_number}\n\nDeseja iniciar esta tarefa?`);
       if (!confirmStart) return;
       
       let res = await apiFetch('/api/executions/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser?.id })
+        body: JSON.stringify({ order_id: targetOrder.id, stage_id: stageId, user_id: currentUser?.id })
       });
 
       if (!res.ok) {
@@ -1138,7 +1145,7 @@ export function useAppLogic() {
             res = await apiFetch('/api/executions/start', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ order_id: selectedOrder.id, stage_id: stageId, user_id: currentUser?.id, supervisor_override: true, motivo: motivo.trim() })
+              body: JSON.stringify({ order_id: targetOrder.id, stage_id: stageId, user_id: currentUser?.id, supervisor_override: true, motivo: motivo.trim() })
             });
           } else {
             return;
@@ -1147,7 +1154,9 @@ export function useAppLogic() {
       }
 
       if (res.ok) {
-        await fetchExecutions(selectedOrder.id);
+        if (targetOrder.id) {
+          await fetchExecutions(targetOrder.id);
+        }
         await fetchData();
         fetchActiveExecution();
         showToast("Tarefa iniciada com sucesso!");
@@ -1201,7 +1210,10 @@ export function useAppLogic() {
     }
   };
 
-  const handleOpenActionModal = (type: 'pause' | 'finish', executionId: number, stageId: number) => {
+  const handleOpenActionModal = (type: 'pause' | 'finish', executionId: number, stageId: number, customOrder?: Order) => {
+    if (customOrder) {
+      setSelectedOrder(customOrder);
+    }
     setActionQuantityInput(0);
     setActionLossQuantityInput(0);
     const initialReason = lossReasonsList.length > 0 ? lossReasonsList[0].motivo : 'Defeito de corte';
@@ -1214,9 +1226,10 @@ export function useAppLogic() {
     setExecutionActionModal({ type, executionId, stageId });
   };
 
-  const handlePauseStage = async (executionId: number, _stageId: number) => {
+  const handlePauseStage = async (executionId: number, _stageId: number, customOrder?: Order) => {
     if (isActionLoading) return;
-    if (!selectedOrder) return;
+    const targetOrder = customOrder || selectedOrder;
+    if (!targetOrder) return;
     setIsActionLoading(true);
     try {
       let pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
@@ -1245,7 +1258,9 @@ export function useAppLogic() {
       }
 
       if (pauseRes.ok) {
-        await fetchExecutions(selectedOrder.id);
+        if (targetOrder.id) {
+          await fetchExecutions(targetOrder.id);
+        }
         fetchData();
         fetchActiveExecution();
         showToast("Etapa pausada.");
@@ -1258,9 +1273,10 @@ export function useAppLogic() {
     }
   };
 
-  const handleFinishStage = async (executionId: number, stageId: number) => {
+  const handleFinishStage = async (executionId: number, stageId: number, customOrder?: Order) => {
     if (isActionLoading) return;
-    if (!selectedOrder) return;
+    const targetOrder = customOrder || selectedOrder;
+    if (!targetOrder) return;
     setIsActionLoading(true);
     try {
       let finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
@@ -1296,7 +1312,7 @@ export function useAppLogic() {
 
       if (finishRes.ok) {
         const resData = await finishRes.json().catch(() => ({}));
-        const nextStages = (selectedOrder?.stages_status || []).map(s =>
+        const nextStages = (targetOrder.stages_status || []).map(s =>
           Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
         );
         const allStagesFinished = nextStages.length > 0 && nextStages.every(s => s.finished);
@@ -1316,12 +1332,14 @@ export function useAppLogic() {
           };
         });
 
-        await fetchExecutions(selectedOrder.id);
+        if (targetOrder.id) {
+          await fetchExecutions(targetOrder.id);
+        }
         await fetchData();
         fetchActiveExecution();
 
         if (isDelivered) {
-          showToast("Conferência concluída! Pedido movido para Entregues.");
+          showToast("Produção concluída! Pedido movido para Pronto.");
         } else {
           showToast("Etapa finalizada com sucesso!");
         }
@@ -1479,8 +1497,9 @@ export function useAppLogic() {
     }
   };
 
-  const handleResumeStage = async (executionId: number) => {
+  const handleResumeStage = async (executionId: number, customOrder?: Order) => {
     if (isActionLoading) return;
+    const targetOrder = customOrder || selectedOrder;
     setIsActionLoading(true);
     try {
       let res = await apiFetch(`/api/executions/${executionId}/resume`, {
@@ -1508,8 +1527,8 @@ export function useAppLogic() {
       }
 
       if (res.ok) {
-        if (selectedOrder) {
-          await fetchExecutions(selectedOrder.id);
+        if (targetOrder?.id) {
+          await fetchExecutions(targetOrder.id);
         }
         await fetchData();
         fetchActiveExecution();
@@ -1523,7 +1542,10 @@ export function useAppLogic() {
     }
   };
 
-  const handleOpenProgressModal = (stageId: number) => {
+  const handleOpenProgressModal = (stageId: number, customOrder?: Order) => {
+    if (customOrder) {
+      setSelectedOrder(customOrder);
+    }
     setProgressStageId(stageId);
     setProgressIncrementInput(0);
     setIsProgressModalOpen(true);

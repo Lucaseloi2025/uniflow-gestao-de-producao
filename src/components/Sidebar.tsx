@@ -4,6 +4,7 @@ import {
   ClipboardList, 
   Package,
   PackageCheck, 
+  ListOrdered,
   Users,
   Settings, 
   BarChart3, 
@@ -67,6 +68,13 @@ export const Sidebar = ({
           label="Dashboard"
           active={activeTab === 'dashboard'}
           onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
+        />
+
+        <SidebarItem
+          icon={ListOrdered}
+          label="Minha Fila"
+          active={activeTab === 'minha-fila'}
+          onClick={() => { setActiveTab('minha-fila'); setIsMobileMenuOpen(false); }}
         />
 
         <SidebarItem

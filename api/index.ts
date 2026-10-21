@@ -6766,6 +6766,305 @@ app.get('/api/pcp-phase1/bloqueados', async (_req: any, res: any) => {
     }
 });
 
+function formatBrDateShort(dStr: string | null | undefined): string {
+    if (!dStr) return 'Sem prazo';
+    try {
+        const parts = dStr.split('T')[0].split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}`;
+        }
+        return dStr;
+    } catch {
+        return dStr || '';
+    }
+}
+
+function computeMinhaFilaScore(ord: any, todayStr: string, pcpScore: number): number {
+    let score = pcpScore * 10;
+    const dl = ord.deadline ? ord.deadline.split('T')[0] : null;
+    if (!dl) {
+        return score;
+    }
+    const todayDate = new Date(`${todayStr}T00:00:00`);
+    const dlDate = new Date(`${dl}T00:00:00`);
+    const diffDays = Math.round((dlDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+        score += 2000000 + Math.abs(diffDays) * 50000;
+    } else if (diffDays === 0) {
+        score += 1000000;
+    } else if (diffDays <= 2) {
+        score += 500000 - diffDays * 50000;
+    } else {
+        score += Math.max(0, 100000 - diffDays * 1000);
+    }
+    return score;
+}
+
+app.get('/api/pcp-phase1/minha-fila', async (req: any, res: any) => {
+    try {
+        const userId = req.query.user_id ? Number(req.query.user_id) : null;
+        let stageId = req.query.stage_id ? Number(req.query.stage_id) : null;
+
+        const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+        const todayStartIso = `${todayStr}T00:00:00.000Z`;
+
+        // If no explicit stageId, see if user has a default_stage_id
+        if (!stageId && userId) {
+            const { data: uData } = await supabaseAdmin
+                .from('users')
+                .select('id, default_stage_id')
+                .eq('id', userId)
+                .maybeSingle();
+            if (uData?.default_stage_id) {
+                stageId = Number(uData.default_stage_id);
+            }
+        }
+
+        // 1. Fetch active stages
+        const { data: stagesData, error: stagesErr } = await supabaseAdmin
+            .from('stages')
+            .select('id, name, sort_order, active')
+            .eq('active', 1)
+            .order('sort_order', { ascending: true });
+
+        if (stagesErr) throw stagesErr;
+
+        // 2. Fetch orders in pipeline (not Cancelado, not Entregue, not Pronto, not Rascunho)
+        const { data: rawOrders, error: ordersErr } = await supabaseAdmin
+            .from('orders')
+            .select('*')
+            .is('deleted_at', null)
+            .not('status', 'in', '("Cancelado","Entregue","Pronto","Rascunho")');
+
+        if (ordersErr) throw ordersErr;
+
+        // 3. Fetch progress, blocks, and active executions
+        const orderIds = (rawOrders || []).map((o: any) => o.id);
+        let progressRows: any[] = [];
+        let blocksRows: any[] = [];
+        let activeExecsRows: any[] = [];
+
+        if (orderIds.length > 0) {
+            const [pRes, bRes, eRes] = await Promise.all([
+                supabaseAdmin
+                    .from('order_stage_progress')
+                    .select('*')
+                    .in('order_id', orderIds),
+                supabaseAdmin
+                    .from('pcp_blocks')
+                    .select('*')
+                    .in('order_id', orderIds)
+                    .eq('is_active', true),
+                supabaseAdmin
+                    .from('stage_executions')
+                    .select('*, users(name), stages(name)')
+                    .in('order_id', orderIds)
+                    .in('status', ['Em andamento', 'Pausado']),
+            ]);
+            progressRows = pRes.data || [];
+            blocksRows = bRes.data || [];
+            activeExecsRows = eRes.data || [];
+        }
+
+        // 4. User's active execution (if userId given)
+        let execucaoAtual: any = null;
+        if (userId) {
+            const { data: userExecs } = await supabaseAdmin
+                .from('stage_executions')
+                .select('*, stages(name), orders(order_number, client_name, product_type, print_type, quantity, deadline, items, art_url, art_urls)')
+                .eq('user_id', userId)
+                .in('status', ['Em andamento', 'Pausado'])
+                .order('start_time', { ascending: false })
+                .limit(1);
+
+            if (userExecs && userExecs.length > 0) {
+                const ex = userExecs[0];
+                const { data: pauses } = await supabaseAdmin
+                    .from('pauses')
+                    .select('*')
+                    .eq('execution_id', ex.id);
+                const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(ex, pauses || [], Date.now());
+                execucaoAtual = {
+                    ...ex,
+                    stage_name: ex.stages?.name,
+                    order_number: ex.orders?.order_number,
+                    client_name: ex.orders?.client_name,
+                    product_type: ex.orders?.product_type,
+                    print_type: ex.orders?.print_type,
+                    order_quantity: ex.orders?.quantity,
+                    order_deadline: ex.orders?.deadline,
+                    order_items: ex.orders?.items,
+                    order_art_url: ex.orders?.art_url || (ex.orders?.art_urls && ex.orders?.art_urls[0]),
+                    accumulated_pause_seconds: (pauses || []).reduce((sum: number, p: any) => sum + (p.duration_seconds || 0), 0),
+                    total_time_seconds: totalAccumulatedSeconds,
+                    current_session_seconds: currentSessionSeconds,
+                    is_paused: isPaused,
+                };
+            }
+        }
+
+        // 5. Daily metrics
+        let progressTodayQuery = supabaseAdmin
+            .from('order_progress_logs')
+            .select('quantidade_boa_incremento, user_id')
+            .gte('created_at', todayStartIso);
+
+        if (userId) {
+            progressTodayQuery = progressTodayQuery.eq('user_id', userId);
+        }
+        const { data: logsToday } = await progressTodayQuery;
+        const pecasProduzidasHoje = (logsToday || []).reduce((acc: number, l: any) => acc + (Number(l.quantidade_boa_incremento) || 0), 0);
+
+        let execsTodayQuery = supabaseAdmin
+            .from('stage_executions')
+            .select('total_time_seconds, user_id')
+            .gte('start_time', todayStartIso);
+
+        if (userId) {
+            execsTodayQuery = execsTodayQuery.eq('user_id', userId);
+        }
+        const { data: execsToday } = await execsTodayQuery;
+        const tempoProdutivoHojeSegundos = (execsToday || []).reduce((acc: number, e: any) => acc + (Number(e.total_time_seconds) || 0), 0);
+
+        // Group by order
+        const progressByOrder = new Map<number, any[]>();
+        for (const p of progressRows) {
+            if (!progressByOrder.has(p.order_id)) progressByOrder.set(p.order_id, []);
+            progressByOrder.get(p.order_id)!.push(p);
+        }
+
+        const blockByOrder = new Map<number, any>();
+        for (const b of blocksRows) {
+            blockByOrder.set(b.order_id, b);
+        }
+
+        const activeExecByOrder = new Map<number, any[]>();
+        for (const e of activeExecsRows) {
+            if (!activeExecByOrder.has(e.order_id)) activeExecByOrder.set(e.order_id, []);
+            activeExecByOrder.get(e.order_id)!.push(e);
+        }
+
+        const fila: any[] = [];
+        const bloqueados: any[] = [];
+
+        for (const ord of rawOrders || []) {
+            const isBlocked = ord.pcp_is_blocked === true;
+            const blockInfo = blockByOrder.get(ord.id) || null;
+            const ordProgress = progressByOrder.get(ord.id) || [];
+            const ordExecs = activeExecByOrder.get(ord.id) || [];
+
+            if (isBlocked) {
+                bloqueados.push({
+                    ...ord,
+                    block_info: blockInfo,
+                    motivo_bloqueio: blockInfo?.motivo || ord.observations || 'Bloqueado pelo PCP',
+                    data_bloqueio: blockInfo?.data_bloqueio || ord.updated_at,
+                    bloqueado_por: blockInfo?.bloqueado_por || 'PCP',
+                });
+                continue;
+            }
+
+            const reqStageIds: number[] = Array.isArray(ord.required_stages) ? ord.required_stages : [];
+            const progMap = new Map<number, any>(ordProgress.map((p: any) => [Number(p.stage_id), p]));
+
+            let currentStageId: number | null = null;
+            let currentStageStatus: string = 'AGUARDANDO';
+            let isCurrentStageReady = false;
+
+            for (let i = 0; i < reqStageIds.length; i++) {
+                const sId = reqStageIds[i];
+                const p = progMap.get(sId);
+                const isFinished = p?.finished === true;
+                if (!isFinished) {
+                    currentStageId = sId;
+                    const activeEx = ordExecs.find((e: any) => Number(e.stage_id) === Number(sId));
+                    if (activeEx) {
+                        currentStageStatus = activeEx.status === 'Pausado' ? 'PAUSADA' : 'EM_ANDAMENTO';
+                    } else if (p?.status_operacao) {
+                        currentStageStatus = p.status_operacao;
+                    } else {
+                        const prevStageFinished = i === 0 || progMap.get(reqStageIds[i - 1])?.finished === true;
+                        currentStageStatus = prevStageFinished ? 'LIBERADA' : 'AGUARDANDO';
+                    }
+                    isCurrentStageReady = currentStageStatus === 'LIBERADA' || currentStageStatus === 'EM_ANDAMENTO' || currentStageStatus === 'PAUSADA';
+                    break;
+                }
+            }
+
+            // If filtered by stageId, verify match
+            if (stageId) {
+                if (currentStageId !== stageId) {
+                    const targetProg = progMap.get(stageId);
+                    if (!reqStageIds.includes(stageId) || targetProg?.finished) {
+                        continue;
+                    }
+                }
+            }
+
+            const dl = ord.deadline ? ord.deadline.split('T')[0] : null;
+            let urgencia = 'normal';
+            let justificativa = '';
+
+            const pcpScore = Number(ord.pcp_priority_score) || (ord.pcp_priority === 'ALTA' ? 100 : ord.pcp_priority === 'NORMAL' ? 50 : 10);
+            const pcpPriorityLabel = ord.pcp_priority || (pcpScore >= 80 ? 'ALTA' : 'NORMAL');
+
+            if (dl && dl < todayStr) {
+                urgencia = 'critica';
+                justificativa = `🚨 Atrasado (${formatBrDateShort(dl)}) • Prioridade ${pcpPriorityLabel}`;
+            } else if (dl && dl === todayStr) {
+                urgencia = 'alta';
+                justificativa = `⚡ Vence hoje • Prioridade ${pcpPriorityLabel}`;
+            } else {
+                justificativa = `📅 Entrega: ${formatBrDateShort(dl)} • Prioridade ${pcpPriorityLabel}`;
+            }
+
+            const stageObj = (stagesData || []).find((s: any) => s.id === currentStageId);
+
+            fila.push({
+                ...ord,
+                current_stage_id: currentStageId,
+                current_stage_name: stageObj?.name || 'Etapa',
+                current_stage_status: currentStageStatus,
+                is_stage_ready: isCurrentStageReady,
+                active_executions: ordExecs,
+                urgencia,
+                justificativa_base: justificativa,
+                score_ordenacao: computeMinhaFilaScore(ord, todayStr, pcpScore),
+            });
+        }
+
+        fila.sort((a, b) => b.score_ordenacao - a.score_ordenacao);
+
+        fila.forEach((item, idx) => {
+            item.posicao_fila = idx + 1;
+            item.justificativa = `${item.posicao_fila}º na Fila • ${item.justificativa_base}`;
+        });
+
+        const pecasPendentesFila = fila.reduce((acc, o) => acc + (Number(o.quantity) || 0), 0);
+        const tarefasEmAndamento = activeExecsRows.filter((e: any) => e.status === 'Em andamento').length;
+
+        res.json({
+            fila,
+            bloqueados,
+            execucao_atual: execucaoAtual,
+            metricas: {
+                pecas_pendentes_fila: pecasPendentesFila,
+                tarefas_em_andamento: tarefasEmAndamento,
+                pecas_produzidas_hoje: pecasProduzidasHoje,
+                tempo_produtivo_hoje_segundos: tempoProdutivoHojeSegundos,
+            },
+            filtro: {
+                user_id: userId,
+                stage_id: stageId,
+            }
+        });
+    } catch (e: any) {
+        console.error('[API] Erro ao carregar minha-fila:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/pcp-phase1/ordens/:id/bloqueio', isPcpOrSupervisorOrAdmin, async (req: any, res: any) => {
     try {
         const orderId = Number(req.params.id);
