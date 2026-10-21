@@ -6801,10 +6801,16 @@ function computeMinhaFilaScore(ord: any, todayStr: string, pcpScore: number): nu
     return score;
 }
 
-app.get('/api/pcp-phase1/minha-fila', async (req: any, res: any) => {
+app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any) => {
     try {
-        const userId = req.query.user_id ? Number(req.query.user_id) : null;
+        const authUser = (req as any).authUser;
+        let userId = req.query.user_id ? Number(req.query.user_id) : null;
         let stageId = req.query.stage_id ? Number(req.query.stage_id) : null;
+
+        // Strict RBAC: Operador can ONLY see their own queue! Cannot change user_id via query
+        if (authUser?.role === 'Operador') {
+            userId = authUser.id;
+        }
 
         const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
         const todayStartIso = `${todayStr}T00:00:00.000Z`;
@@ -7009,10 +7015,13 @@ app.get('/api/pcp-phase1/minha-fila', async (req: any, res: any) => {
             const pcpScore = Number(ord.pcp_priority_score) || (ord.pcp_priority === 'ALTA' ? 100 : ord.pcp_priority === 'NORMAL' ? 50 : 10);
             const pcpPriorityLabel = ord.pcp_priority || (pcpScore >= 80 ? 'ALTA' : 'NORMAL');
 
-            if (dl && dl < todayStr) {
+            if (!dl) {
+                urgencia = 'normal';
+                justificativa = `📅 Sem prazo definido • Prioridade ${pcpPriorityLabel}`;
+            } else if (dl < todayStr) {
                 urgencia = 'critica';
                 justificativa = `🚨 Atrasado (${formatBrDateShort(dl)}) • Prioridade ${pcpPriorityLabel}`;
-            } else if (dl && dl === todayStr) {
+            } else if (dl === todayStr) {
                 urgencia = 'alta';
                 justificativa = `⚡ Vence hoje • Prioridade ${pcpPriorityLabel}`;
             } else {
