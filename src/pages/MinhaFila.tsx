@@ -108,6 +108,15 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     loadMinhaFila();
   }, [loadMinhaFila]);
 
+  // Immediate reload on global execution actions
+  useEffect(() => {
+    const handleReload = () => {
+      loadMinhaFila();
+    };
+    window.addEventListener('reload-minha-fila', handleReload);
+    return () => window.removeEventListener('reload-minha-fila', handleReload);
+  }, [loadMinhaFila]);
+
   // Periodic polling every 20 seconds
   useEffect(() => {
     const timer = setInterval(() => {

@@ -799,7 +799,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="fixed bottom-6 right-6 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold z-[100] flex items-center gap-3"
+            className="fixed bottom-6 right-6 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold z-[9999] flex items-center gap-3"
           >
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
             <span>{toastMessage}</span>

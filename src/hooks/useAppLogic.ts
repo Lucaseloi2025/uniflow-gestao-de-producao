@@ -1445,20 +1445,30 @@ export function useAppLogic() {
 
     setIsActionLoading(true);
     try {
+      const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
+      const actorReason = actionObservationInput || (isPrivileged ? `Apontamento por ${currentUser?.role || 'Administrador'}` : 'Apontamento de produção');
+      const progKey = `prog_${selectedOrder.id}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
       // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
       if (actionQuantityInput > 0) {
         const progRes = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json' },
+            'Content-Type': 'application/json',
+            'x-idempotency-key': progKey
+          },
           body: JSON.stringify({
             incremento: actionQuantityInput,
+            idempotency_key: progKey,
+            supervisor_override: isPrivileged,
+            override_reason: actorReason,
+            observacao: actionObservationInput || undefined,
             user_id: currentUser?.id || 1,
             user_name: currentUser?.name || 'Operador'
           })
         });
         if (!progRes.ok) {
-          const err = await progRes.json();
+          const err = await progRes.json().catch(() => ({}));
           showToast(err.error || "Erro ao registrar progresso.");
           return;
         }
@@ -1466,21 +1476,27 @@ export function useAppLogic() {
 
       // 2. Se informou peças perdidas > 0, registra a perda
       if (actionLossQuantityInput > 0) {
+        const lossKey = `loss_${selectedOrder.id}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const lossRes = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/loss`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json' },
+            'Content-Type': 'application/json',
+            'x-idempotency-key': lossKey
+          },
           body: JSON.stringify({
             quantidade_perdida: actionLossQuantityInput,
             motivo: actionLossReasonInput,
             motivo_detalhe: actionLossReasonDetailInput,
             etapa_reentrada_id: actionLossReentryStageIdInput || stageId,
+            idempotency_key: lossKey,
+            supervisor_override: isPrivileged,
+            override_reason: actorReason,
             user_id: currentUser?.id || 1,
             user_name: currentUser?.name || 'Operador'
           })
         });
         if (!lossRes.ok) {
-          const err = await lossRes.json();
+          const err = await lossRes.json().catch(() => ({}));
           showToast(err.error || "Erro ao registrar perda.");
           return;
         }
@@ -1488,31 +1504,73 @@ export function useAppLogic() {
 
       // 3. Executa a Pausa ou a Finalização
       if (type === 'pause') {
-        await apiFetch(`/api/executions/${executionId}/pause`, {
+        const pauseRes = await apiFetch(`/api/executions/${executionId}/pause`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json' },
-          body: JSON.stringify({ observation: actionObservationInput })
+          body: JSON.stringify({ 
+            observation: actionObservationInput || (isPrivileged ? `Pausa pelo ${currentUser?.role || 'Administrador'}` : ''),
+            motivo: actionObservationInput || (isPrivileged ? `Pausa pelo ${currentUser?.role || 'Administrador'}` : undefined),
+            supervisor_override: isPrivileged
+          })
         });
+        if (!pauseRes.ok) {
+          const err = await pauseRes.json().catch(() => ({}));
+          showToast(err.error || "Erro ao pausar etapa.");
+          return;
+        }
         setExecutionActionModal(null);
-        fetchExecutions(selectedOrder.id);
-        fetchData();
-        fetchActiveExecution();
+        showToast("Etapa pausada com sucesso!");
+        await fetchExecutions(selectedOrder.id);
+        await fetchData();
+        await fetchActiveExecution();
+        window.dispatchEvent(new CustomEvent('reload-minha-fila'));
       } else if (type === 'finish') {
+        const finishKey = `fin_${executionId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json' },
-          body: JSON.stringify({ force: true, observation: actionObservationInput })
+            'Content-Type': 'application/json',
+            'x-idempotency-key': finishKey
+          },
+          body: JSON.stringify({ 
+            force: true, 
+            observation: actionObservationInput || (isPrivileged ? `Finalizado pelo ${currentUser?.role || 'Administrador'}` : 'Finalizado no apontamento'),
+            supervisor_override: isPrivileged,
+            idempotency_key: finishKey
+          })
         });
 
         if (finishRes.ok) {
+          const resData = await finishRes.json().catch(() => ({}));
           setExecutionActionModal(null);
-          fetchExecutions(selectedOrder.id);
-          fetchData();
-          fetchActiveExecution();
+          showToast("Etapa finalizada com sucesso!");
+
+          const nextStages = (selectedOrder.stages_status || []).map(s =>
+            Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
+          );
+          const allStagesFinished = nextStages.length > 0 && nextStages.every(s => s.finished);
+          const isDelivered = resData?.order_status === 'Entregue' || resData?.order_status === 'Pronto' || allStagesFinished;
+
+          setSelectedOrder(prev => {
+            if (!prev) return null;
+            if (isDelivered && !showCompletedOrders) return null;
+            const updatedStages = (prev.stages_status || []).map(s =>
+              Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
+            );
+            return {
+              ...prev,
+              status: resData?.order_status || (allStagesFinished ? 'Pronto' : prev.status),
+              stages_status: updatedStages
+            };
+          });
+
+          await fetchExecutions(selectedOrder.id);
+          await fetchData();
+          await fetchActiveExecution();
+          window.dispatchEvent(new CustomEvent('reload-minha-fila'));
         } else {
-          const err = await finishRes.json();
+          const err = await finishRes.json().catch(() => ({}));
           if (err.canForce && !forceFinish) {
             const confirmForce = window.confirm(
               `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
@@ -1595,23 +1653,32 @@ export function useAppLogic() {
 
   const handleSaveProgress = async () => {
     if (!selectedOrder || !progressStageId || progressIncrementInput <= 0) return;
+    const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
+    const idempKey = `prog_${selectedOrder.id}_${progressStageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const res = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${progressStageId}/progress`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json' },
+        'Content-Type': 'application/json',
+        'x-idempotency-key': idempKey
+      },
       body: JSON.stringify({
         incremento: progressIncrementInput,
+        idempotency_key: idempKey,
+        supervisor_override: isPrivileged,
+        override_reason: isPrivileged ? `Apontamento manual por ${currentUser?.role || 'Administrador'}` : undefined,
         user_id: currentUser?.id || 1,
         user_name: currentUser?.name || 'Operador'
       })
     });
     if (res.ok) {
       setIsProgressModalOpen(false);
+      showToast("Progresso registrado com sucesso!");
       fetchData();
       fetchExecutions(selectedOrder.id);
       fetchActiveExecution();
+      window.dispatchEvent(new CustomEvent('reload-minha-fila'));
     } else {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       showToast(err.error || "Erro ao registrar progresso");
     }
   };
@@ -1633,15 +1700,22 @@ export function useAppLogic() {
       showToast("Por favor, informe o detalhamento do motivo 'Outro'.");
       return;
     }
+    const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
+    const idempKey = `loss_${selectedOrder.id}_${lossStageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const res = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${lossStageId}/loss`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json' },
+        'Content-Type': 'application/json',
+        'x-idempotency-key': idempKey
+      },
       body: JSON.stringify({
         quantidade_perdida: lossQtyInput,
         motivo: lossReasonInput,
         motivo_detalhe: lossReasonDetailInput,
         etapa_reentrada_id: lossReentryStageIdInput,
+        idempotency_key: idempKey,
+        supervisor_override: isPrivileged,
+        override_reason: isPrivileged ? `Registro de perda por ${currentUser?.role || 'Administrador'}` : undefined,
         user_id: currentUser?.id || 1,
         user_name: currentUser?.name || 'Operador'
       })
@@ -1652,8 +1726,9 @@ export function useAppLogic() {
       fetchData();
       fetchExecutions(selectedOrder.id);
       fetchActiveExecution();
+      window.dispatchEvent(new CustomEvent('reload-minha-fila'));
     } else {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       showToast(err.error || "Erro ao registrar perda");
     }
   };

@@ -4100,13 +4100,12 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
             return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
         }
 
-        const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string);
-        if (!effectiveKey || !String(effectiveKey).trim()) {
-            return res.status(400).json({
-                error: "Chave de idempotência (idempotency_key ou x-idempotency-key) é obrigatória para apontamento de produção.",
-                code: "IDEMPOTENCY_KEY_REQUIRED",
-            });
-        }
+        const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
+        const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
+        const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
+        const effectiveReason = override_reason || observacao || (isPrivileged ? `Apontamento por ${actorRole || 'Administrador'}` : null);
+        const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || `prog_${orderId}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
         const transferInc = quantidade_transferida !== undefined ? Number(quantidade_transferida) : (transfer_to_next ? Number(incremento) || 0 : 0);
 
         const { data: rpcRecordData, error: rpcRecordErr } = await supabaseAdmin.rpc("rpc_record_production", {
@@ -4122,8 +4121,8 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
             p_observation: observacao || null,
             p_is_reposition: Boolean(is_reposition),
             p_order_item_id: order_item_id ? Number(order_item_id) : null,
-            p_supervisor_override: Boolean(supervisor_override),
-            p_override_reason: override_reason || observacao || null,
+            p_supervisor_override: effectiveOverride,
+            p_override_reason: effectiveReason,
         });
 
         if (rpcRecordErr) {
@@ -4198,6 +4197,11 @@ app.post("/api/orders/:id/stages/:stageId/loss", canOperateProduction, async (re
             return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
         }
 
+        const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
+        const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
+        const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
+        const effectiveReason = override_reason || (isPrivileged ? `Registro de perda por ${actorRole || 'Administrador'}` : null);
+
         const { data: rpcLossData, error: rpcLossErr } = await supabaseAdmin.rpc("rpc_record_loss", {
             p_order_id: orderId,
             p_stage_id: stageId,
@@ -4208,8 +4212,8 @@ app.post("/api/orders/:id/stages/:stageId/loss", canOperateProduction, async (re
             p_reentry_stage_id: etapa_reentrada_id ? Number(etapa_reentrada_id) : null,
             p_order_item_id: order_item_id ? Number(order_item_id) : null,
             p_idempotency_key: sanitizedIdempotencyKey,
-            p_supervisor_override: Boolean(supervisor_override),
-            p_override_reason: override_reason || null,
+            p_supervisor_override: effectiveOverride,
+            p_override_reason: effectiveReason,
         });
 
         if (rpcLossErr) {
@@ -4701,7 +4705,7 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
     const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
     const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
     const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-    const effectiveObs = observation || (isPrivileged ? `Finalizado diretamente pelo ${actorRole || 'Administrador'}` : null);
+    const effectiveObs = (observation && String(observation).trim()) || (isPrivileged ? `Finalizado diretamente pelo ${actorRole || 'Administrador'}` : 'Finalizado no apontamento');
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
