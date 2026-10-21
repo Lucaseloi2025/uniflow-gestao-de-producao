@@ -4384,6 +4384,79 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
     }
 
     try {
+        // --- AUTO-HEALING & COMPATIBILIDADE PARA PEDIDOS JÁ EM PRODUÇÃO ---
+        const { data: ordRow } = await supabaseAdmin
+            .from('orders')
+            .select('id, quantity, required_stages, stages_status, status')
+            .eq('id', orderIdNum)
+            .maybeSingle();
+
+        if (ordRow) {
+            let reqStages: number[] = Array.isArray(ordRow.required_stages) && ordRow.required_stages.length > 0
+                ? ordRow.required_stages
+                : [];
+
+            const stageIdsFromStatus = Array.isArray(ordRow.stages_status)
+                ? ordRow.stages_status.map((s: any) => Number(s.id)).filter((id: number) => id && id !== 12)
+                : [];
+
+            // 1. Se required_stages estiver vazio ou não contiver a etapa atual, atualizar com a rota de stages_status
+            if (reqStages.length === 0 || (!reqStages.includes(stageIdNum) && stageIdsFromStatus.includes(stageIdNum))) {
+                reqStages = stageIdsFromStatus.length > 0 ? stageIdsFromStatus : (reqStages.includes(stageIdNum) ? reqStages : [...reqStages, stageIdNum]);
+                await supabaseAdmin
+                    .from('orders')
+                    .update({ required_stages: reqStages })
+                    .eq('id', orderIdNum);
+            }
+
+            // 2. Sincronizar order_stage_progress para todas as etapas concluídas antes desta
+            if (Array.isArray(ordRow.stages_status) && ordRow.stages_status.length > 0) {
+                const targetQty = ordRow.quantity || 1;
+                const finishedStages = ordRow.stages_status.filter((s: any) => 
+                    (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado') && Number(s.id) !== 12
+                );
+
+                for (const fs of finishedStages) {
+                    const fsId = Number(fs.id);
+                    await supabaseAdmin.from('order_stage_progress').upsert({
+                        order_id: orderIdNum,
+                        stage_id: fsId,
+                        quantidade_pedido: targetQty,
+                        quantidade_boa: targetQty,
+                        saldo_pendente: 0,
+                        pendencia_reposicao: 0,
+                        finished: true,
+                        status: 'CONCLUIDA',
+                        status_operacao: 'CONCLUIDA',
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'order_id,stage_id' });
+                }
+            }
+
+            // 3. Se for supervisor_override e existir execução antiga pendente de outro usuário nesta etapa, finalizá-la
+            if (Boolean(supervisor_override)) {
+                const { data: staleExec } = await supabaseAdmin
+                    .from('stage_executions')
+                    .select('id, user_id, status')
+                    .eq('order_id', orderIdNum)
+                    .eq('stage_id', stageIdNum)
+                    .in('status', ['Em andamento', 'Pausado'])
+                    .maybeSingle();
+
+                if (staleExec && staleExec.user_id !== userIdNum) {
+                    await supabaseAdmin
+                        .from('stage_executions')
+                        .update({
+                            status: 'Finalizado',
+                            end_time: new Date().toISOString(),
+                            observations: `Sessão anterior finalizada por Supervisor Override (${motivo || 'Troca de operador'})`,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', staleExec.id);
+                }
+            }
+        }
+
         const { data: rpcStartData, error: rpcStartErr } = await supabaseAdmin.rpc("rpc_start_operation", {
             p_order_id: orderIdNum,
             p_stage_id: stageIdNum,
@@ -6978,7 +7051,17 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 continue;
             }
 
-            const reqStageIds: number[] = Array.isArray(ord.required_stages) ? ord.required_stages : [];
+            let reqStageIds: number[] = Array.isArray(ord.required_stages) && ord.required_stages.length > 0 
+                ? ord.required_stages 
+                : [];
+
+            // Auto-derivação a partir de stages_status para pedidos legados já em produção
+            if (reqStageIds.length === 0 && Array.isArray(ord.stages_status) && ord.stages_status.length > 0) {
+                reqStageIds = ord.stages_status
+                    .map((s: any) => Number(s.id))
+                    .filter((id: number) => id && id !== 12);
+            }
+
             const progMap = new Map<number, any>(ordProgress.map((p: any) => [Number(p.stage_id), p]));
 
             let currentStageId: number | null = null;
@@ -6988,7 +7071,11 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             for (let i = 0; i < reqStageIds.length; i++) {
                 const sId = reqStageIds[i];
                 const p = progMap.get(sId);
-                const isFinished = p?.finished === true;
+                const sStatusJson = Array.isArray(ord.stages_status)
+                    ? ord.stages_status.find((s: any) => Number(s.id) === Number(sId))
+                    : null;
+                const isFinished = p?.finished === true || sStatusJson?.finished === true || sStatusJson?.status === 'Concluído' || sStatusJson?.status === 'Finalizado';
+
                 if (!isFinished) {
                     currentStageId = sId;
                     const activeEx = ordExecs.find((e: any) => Number(e.stage_id) === Number(sId));
@@ -6997,7 +7084,15 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                     } else if (p?.status_operacao) {
                         currentStageStatus = p.status_operacao;
                     } else {
-                        const prevStageFinished = i === 0 || progMap.get(reqStageIds[i - 1])?.finished === true;
+                        let prevStageFinished = i === 0;
+                        if (i > 0) {
+                            const prevSId = reqStageIds[i - 1];
+                            const prevP = progMap.get(prevSId);
+                            const prevSJson = Array.isArray(ord.stages_status)
+                                ? ord.stages_status.find((s: any) => Number(s.id) === Number(prevSId))
+                                : null;
+                            prevStageFinished = prevP?.finished === true || prevSJson?.finished === true || prevSJson?.status === 'Concluído' || prevSJson?.status === 'Finalizado';
+                        }
                         currentStageStatus = prevStageFinished ? 'LIBERADA' : 'AGUARDANDO';
                     }
                     isCurrentStageReady = currentStageStatus === 'LIBERADA' || currentStageStatus === 'EM_ANDAMENTO' || currentStageStatus === 'PAUSADA';

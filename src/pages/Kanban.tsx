@@ -1,18 +1,20 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { differenceInDays, endOfDay, isPast, parseISO } from 'date-fns';
-import { Clock, FileText, Scissors } from 'lucide-react';
+import { Clock, FileText, Scissors, Eye, EyeOff } from 'lucide-react';
 import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat } from '../lib/utils';
 import { Order } from '../types';
 import { Badge } from '../components/Badge';
 
-export interface KanbanProPÇS {
+export interface KanbanProps {
   orders: Order[];
   searchTerm: string;
   printTypeFilter: string;
   productTypeFilter: string;
   setSelectedOrder: (order: Order) => void;
   fetchExecutions: (orderId: number) => void;
+  showCompletedOrders?: boolean;
+  setShowCompletedOrders?: (show: boolean) => void;
 }
 
 export const Kanban = ({
@@ -21,11 +23,39 @@ export const Kanban = ({
   printTypeFilter,
   productTypeFilter,
   setSelectedOrder,
-  fetchExecutions
-}: KanbanProPÇS) => {
+  fetchExecutions,
+  showCompletedOrders = false,
+  setShowCompletedOrders
+}: KanbanProps) => {
+  const columns = showCompletedOrders
+    ? ['Entrada', 'Em Produção', 'Finalização', 'Pronto', 'Entregue']
+    : ['Entrada', 'Em Produção', 'Finalização', 'Pronto'];
+
   return (
-    <div className="flex lg:grid lg:grid-cols-4 gap-6 h-[calc(100vh-250px)] overflow-x-auto pb-4 lg:overflow-x-visible">
-      {['Entrada', 'Em Produção', 'Finalização', 'Entregue'].map((status) => (
+    <div className="flex flex-col gap-4">
+      {setShowCompletedOrders && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setShowCompletedOrders(!showCompletedOrders)}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all border shadow-xs whitespace-nowrap",
+              showCompletedOrders 
+                ? "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800" 
+                : "bg-white border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
+            )}
+            title="Alternar exibição de pedidos já entregues"
+          >
+            {showCompletedOrders ? <Eye size={14} /> : <EyeOff size={14} />}
+            {showCompletedOrders ? 'Ocultar Entregues' : 'Mostrar Entregues'}
+          </button>
+        </div>
+      )}
+
+      <div className={cn(
+        "flex gap-6 h-[calc(100vh-270px)] overflow-x-auto pb-4",
+        columns.length === 4 ? "lg:grid lg:grid-cols-4 lg:overflow-x-visible" : "lg:grid lg:grid-cols-5 lg:overflow-x-visible"
+      )}>
+        {columns.map((status) => (
         <div key={status} className="flex flex-col gap-4 min-w-[280px] lg:min-w-0">
           <div className="flex items-center justify-between px-2">
             <h3 className="font-bold text-sm uppercase tracking-widest text-zinc-500">{status}</h3>
@@ -154,6 +184,7 @@ export const Kanban = ({
           </div>
         </div>
       ))}
+      </div>
     </div>
   );
 };

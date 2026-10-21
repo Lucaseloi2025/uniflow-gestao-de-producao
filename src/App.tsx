@@ -428,6 +428,8 @@ export default function App() {
             delaysReportData={delaysReportData}
             deliveryReportData={deliveryReportData}
             fetchExecutions={fetchExecutions}
+            showCompletedOrders={showCompletedOrders}
+            setShowCompletedOrders={setShowCompletedOrders}
           />
         )}
 

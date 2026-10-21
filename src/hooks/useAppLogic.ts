@@ -131,7 +131,7 @@ export function useAppLogic() {
   const [reportEndDate, setReportEndDate] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
   const [autoPauseTimeWeekend, setAutoPauseTimeWeekend] = useState<string>('13:00');
-  const [showCompletedOrders, setShowCompletedOrders] = useState(true);
+  const [showCompletedOrders, setShowCompletedOrders] = useState(false);
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -1135,11 +1135,12 @@ export function useAppLogic() {
         body: JSON.stringify({ order_id: targetOrder.id, stage_id: stageId, user_id: currentUser?.id })
       });
 
+      let errData: any = null;
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'PREVIOUS_STAGE_NOT_READY') {
+        errData = await res.json().catch(() => ({}));
+        if (errData.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || errData.code === 'PREVIOUS_STAGE_NOT_READY' || errData.code === 'CONCURRENT_STAGE_EXECUTION') {
           const motivo = window.prompt(
-            `${err.error}\n\nComo Supervisor/Administrador, informe o motivo para iniciar com override:`
+            `${errData.error || 'Ação requer override de supervisor.'}\n\nComo Supervisor/Administrador, informe o motivo para iniciar com override:`
           );
           if (motivo && motivo.trim()) {
             res = await apiFetch('/api/executions/start', {
@@ -1147,6 +1148,11 @@ export function useAppLogic() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ order_id: targetOrder.id, stage_id: stageId, user_id: currentUser?.id, supervisor_override: true, motivo: motivo.trim() })
             });
+            if (!res.ok) {
+              errData = await res.json().catch(() => ({}));
+            } else {
+              errData = null;
+            }
           } else {
             return;
           }
@@ -1161,8 +1167,7 @@ export function useAppLogic() {
         fetchActiveExecution();
         showToast("Tarefa iniciada com sucesso!");
       } else {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.error || "Erro ao iniciar tarefa.");
+        showToast(errData?.error || "Erro ao iniciar tarefa.");
       }
     } finally {
       setIsActionLoading(false);
@@ -1239,9 +1244,10 @@ export function useAppLogic() {
         body: JSON.stringify({ observation: '', supervisor_override: false })
       });
 
+      let errData: any = null;
       if (!pauseRes.ok) {
-        const err = await pauseRes.json().catch(() => ({}));
-        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'FORBIDDEN_NOT_OWNER') {
+        errData = await pauseRes.json().catch(() => ({}));
+        if (errData.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || errData.code === 'FORBIDDEN_NOT_OWNER') {
           const motivo = window.prompt(
             `Esta etapa pertence a outro operador.\n\nInforme o motivo do Supervisor para pausar a etapa:`
           );
@@ -1251,6 +1257,11 @@ export function useAppLogic() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ observation: motivo.trim(), motivo: motivo.trim(), supervisor_override: true })
             });
+            if (!pauseRes.ok) {
+              errData = await pauseRes.json().catch(() => ({}));
+            } else {
+              errData = null;
+            }
           } else {
             return;
           }
@@ -1265,8 +1276,7 @@ export function useAppLogic() {
         fetchActiveExecution();
         showToast("Etapa pausada.");
       } else {
-        const err = await pauseRes.json().catch(() => ({}));
-        showToast(err.error || "Erro ao pausar etapa.");
+        showToast(errData?.error || "Erro ao pausar etapa.");
       }
     } finally {
       setIsActionLoading(false);
@@ -1286,15 +1296,16 @@ export function useAppLogic() {
         body: JSON.stringify({ force: true, observation: '', supervisor_override: false })
       });
 
+      let errData: any = null;
       if (!finishRes.ok) {
-        const err = await finishRes.json().catch(() => ({}));
+        errData = await finishRes.json().catch(() => ({}));
 
-        if (err.code === 'EXECUTION_PAUSED') {
+        if (errData.code === 'EXECUTION_PAUSED') {
           showToast("A etapa está pausada. Clique em RETOMAR antes de finalizar.");
           return;
         }
 
-        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'FORBIDDEN_NOT_OWNER') {
+        if (errData.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || errData.code === 'FORBIDDEN_NOT_OWNER') {
           const motivo = window.prompt(
             `Esta etapa pertence a outro operador.\n\nInforme o motivo do Supervisor para finalizar a etapa:`
           );
@@ -1304,6 +1315,11 @@ export function useAppLogic() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ force: true, observation: motivo.trim(), supervisor_override: true })
             });
+            if (!finishRes.ok) {
+              errData = await finishRes.json().catch(() => ({}));
+            } else {
+              errData = null;
+            }
           } else {
             return;
           }
@@ -1344,8 +1360,7 @@ export function useAppLogic() {
           showToast("Etapa finalizada com sucesso!");
         }
       } else {
-        const err = await finishRes.json().catch(() => ({}));
-        showToast(err.error || "Erro ao finalizar etapa");
+        showToast(errData?.error || "Erro ao finalizar etapa");
       }
     } finally {
       setIsActionLoading(false);
@@ -1508,9 +1523,10 @@ export function useAppLogic() {
         body: JSON.stringify({ supervisor_override: false })
       });
 
+      let errData: any = null;
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        if (err.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || err.code === 'FORBIDDEN_NOT_OWNER') {
+        errData = await res.json().catch(() => ({}));
+        if (errData.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || errData.code === 'FORBIDDEN_NOT_OWNER') {
           const motivo = window.prompt(
             `Esta etapa está vinculada a outro operador.\n\nComo Supervisor/Administrador, informe o motivo para intervir e retomar a etapa:`
           );
@@ -1520,6 +1536,11 @@ export function useAppLogic() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ supervisor_override: true, motivo: motivo.trim() })
             });
+            if (!res.ok) {
+              errData = await res.json().catch(() => ({}));
+            } else {
+              errData = null;
+            }
           } else {
             return;
           }
@@ -1534,8 +1555,7 @@ export function useAppLogic() {
         fetchActiveExecution();
         showToast("Etapa retomada com sucesso!");
       } else {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.error || "Erro ao retomar etapa.");
+        showToast(errData?.error || "Erro ao retomar etapa.");
       }
     } finally {
       setIsActionLoading(false);
