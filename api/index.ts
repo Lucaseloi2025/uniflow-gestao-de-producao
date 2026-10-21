@@ -4745,9 +4745,44 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                 .maybeSingle();
 
             if (execRow && execRow.order_id) {
+                const nowIso = new Date().toISOString();
+
+                // 1. Marca explicitamente a etapa atual como concluída em order_stage_progress e order_item_stage_progress
+                if (!partial) {
+                    await supabaseAdmin
+                        .from("order_stage_progress")
+                        .update({
+                            finished: true,
+                            status_operacao: "CONCLUIDA",
+                            completed_at: nowIso,
+                            updated_at: nowIso,
+                        })
+                        .eq("order_id", execRow.order_id)
+                        .eq("stage_id", execRow.stage_id);
+
+                    const { data: itemRows } = await supabaseAdmin
+                        .from("order_items")
+                        .select("id")
+                        .eq("order_id", execRow.order_id);
+
+                    if (itemRows && itemRows.length > 0) {
+                        await supabaseAdmin
+                            .from("order_item_stage_progress")
+                            .update({
+                                finished: true,
+                                status_operacao: "CONCLUIDA",
+                                completed_at: nowIso,
+                                updated_at: nowIso,
+                            })
+                            .eq("stage_id", execRow.stage_id)
+                            .in("order_item_id", itemRows.map((i: any) => i.id));
+                    }
+                }
+
+                // 2. Consulta o pedido com suas rotas e etapas
                 const { data: ord } = await supabaseAdmin
                     .from("orders")
-                    .select("id, status, required_stages")
+                    .select("id, status, required_stages, stages_status")
                     .eq("id", execRow.order_id)
                     .maybeSingle();
 
@@ -4757,26 +4792,38 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                         (dbStages || []).filter((s: any) => isConferenciaStage(s)).map((s: any) => Number(s.id))
                     );
 
-                    const rawReq = Array.isArray(ord.required_stages) ? ord.required_stages.map(Number) : [];
-                    const nonConfReq = rawReq.filter(id => !confStageIds.has(id));
+                    let rawReq = Array.isArray(ord.required_stages) ? ord.required_stages.map(Number) : [];
+                    if (rawReq.length === 0 && Array.isArray(ord.stages_status) && ord.stages_status.length > 0) {
+                        rawReq = ord.stages_status.map((s: any) => Number(s.id)).filter((id: number) => id && id !== 12);
+                    }
+
+                    const nonConfReq = rawReq.filter((id: number) => !confStageIds.has(id));
+
+                    // Atualiza stages_status na tabela orders
+                    const updatedStagesStatus = Array.isArray(ord.stages_status)
+                        ? ord.stages_status.map((s: any) => Number(s.id) === Number(execRow.stage_id) ? { ...s, finished: true, status: 'Concluído' } : s)
+                        : ord.stages_status;
 
                     if (nonConfReq.length > 0) {
                         const { data: progressRows } = await supabaseAdmin
                             .from("order_stage_progress")
-                            .select("stage_id, finished")
+                            .select("stage_id, finished, status_operacao")
                             .eq("order_id", ord.id);
 
-                        const finishedMap = new Map((progressRows || []).map((p: any) => [Number(p.stage_id), Boolean(p.finished)]));
-                        const allNonConfFinished = nonConfReq.every(id => finishedMap.get(id) === true);
+                        const finishedMap = new Map((progressRows || []).map((p: any) => [Number(p.stage_id), Boolean(p.finished || p.status_operacao === 'CONCLUIDA')]));
+                        if (!partial) {
+                            finishedMap.set(Number(execRow.stage_id), true);
+                        }
+                        const allNonConfFinished = nonConfReq.every((id: number) => finishedMap.get(id) === true);
 
                         if (allNonConfFinished) {
-                            const nowIso = new Date().toISOString();
                             await supabaseAdmin
                                 .from("orders")
                                 .update({
                                     status: "Pronto",
                                     pcp_status: "PRONTO",
                                     production_finished_at: nowIso,
+                                    stages_status: updatedStagesStatus,
                                     updated_at: nowIso
                                 })
                                 .eq("id", ord.id);
@@ -4785,6 +4832,14 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                                 rpcFinishData.order_status = "Pronto";
                                 rpcFinishData.pcp_status = "PRONTO";
                             }
+                        } else {
+                            await supabaseAdmin
+                                .from("orders")
+                                .update({
+                                    stages_status: updatedStagesStatus,
+                                    updated_at: nowIso
+                                })
+                                .eq("id", ord.id);
                         }
                     }
                 }
@@ -7092,7 +7147,13 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 const sStatusJson = Array.isArray(ord.stages_status)
                     ? ord.stages_status.find((s: any) => Number(s.id) === Number(sId))
                     : null;
-                const isFinished = p?.finished === true || sStatusJson?.finished === true || sStatusJson?.status === 'Concluído' || sStatusJson?.status === 'Finalizado';
+                const isFinished = p?.finished === true || 
+                                   p?.status_operacao === 'CONCLUIDA' ||
+                                   sStatusJson?.finished === true || 
+                                   sStatusJson?.status === 'Concluído' || 
+                                   sStatusJson?.status === 'Finalizado' ||
+                                   (Number(ord.quantity) > 0 && Number(p?.quantidade_boa) >= Number(ord.quantity) && !p?.pendencia_reposicao) ||
+                                   (Number(ord.quantity) > 0 && Number(sStatusJson?.quantidade_boa) >= Number(ord.quantity) && !sStatusJson?.quantidade_perdida);
 
                 if (!isFinished) {
                     currentStageId = sId;
@@ -7109,13 +7170,31 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                             const prevSJson = Array.isArray(ord.stages_status)
                                 ? ord.stages_status.find((s: any) => Number(s.id) === Number(prevSId))
                                 : null;
-                            prevStageFinished = prevP?.finished === true || prevSJson?.finished === true || prevSJson?.status === 'Concluído' || prevSJson?.status === 'Finalizado';
+                            prevStageFinished = prevP?.finished === true || prevP?.status_operacao === 'CONCLUIDA' || prevSJson?.finished === true || prevSJson?.status === 'Concluído' || prevSJson?.status === 'Finalizado' || (Number(ord.quantity) > 0 && Number(prevP?.quantidade_boa) >= Number(ord.quantity));
                         }
                         currentStageStatus = prevStageFinished ? 'LIBERADA' : 'AGUARDANDO';
                     }
                     isCurrentStageReady = currentStageStatus === 'LIBERADA' || currentStageStatus === 'EM_ANDAMENTO' || currentStageStatus === 'PAUSADA';
                     break;
                 }
+            }
+
+            if (!currentStageId) {
+                // Todas as etapas de produção foram finalizadas! O pedido está PRONTO!
+                if (ord.status !== 'Pronto' && ord.status !== 'Entregue' && ord.status !== 'Cancelado') {
+                    const nowIso = new Date().toISOString();
+                    await supabaseAdmin
+                        .from('orders')
+                        .update({
+                            status: 'Pronto',
+                            pcp_status: 'PRONTO',
+                            production_finished_at: nowIso,
+                            updated_at: nowIso,
+                        })
+                        .eq('id', ord.id);
+                }
+                // Concluído não entra na fila de produção pendente
+                continue;
             }
 
             // If filtered by stageId, verify match
@@ -7148,7 +7227,7 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 justificativa = `📅 Entrega: ${formatBrDateShort(dl)} • Prioridade ${pcpPriorityLabel}`;
             }
 
-            const stageObj = (stagesData || []).find((s: any) => s.id === currentStageId);
+            const stageObj = (stagesData || []).find((s: any) => Number(s.id) === Number(currentStageId));
 
             fila.push({
                 ...ord,

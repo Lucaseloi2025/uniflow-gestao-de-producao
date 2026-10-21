@@ -177,9 +177,9 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     return orders.find(o => o.id === heroExecution.order_id) || null;
   }, [heroExecution, orders]);
 
-  // Filtered queue
+  // Filtered queue (only orders with active, executable current stage)
   const displayFila = useMemo(() => {
-    let list = apiData?.fila || [];
+    let list = (apiData?.fila || []).filter((item: any) => Boolean(item.current_stage_id) && item.status !== 'Pronto' && item.status !== 'Entregue');
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       list = list.filter((item: any) => 
@@ -709,15 +709,16 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
 
                     {/* Stage status indicator */}
                     <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
-                      <span className="text-slate-500 font-bold">
-                        Etapa Atual:
-                      </span>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span className="text-slate-400">Etapa:</span>
+                        <span className="text-slate-800">{item.current_stage_name || 'Etapa'}</span>
+                      </div>
                       <span className={cn(
-                        "font-black text-[11px] uppercase tracking-wide",
-                        item.current_stage_status === 'EM_ANDAMENTO' ? "text-emerald-600" :
-                        item.current_stage_status === 'PAUSADA' ? "text-amber-600" :
-                        item.current_stage_status === 'LIBERADA' ? "text-indigo-600" :
-                        "text-slate-600"
+                        "font-black text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-md border",
+                        item.current_stage_status === 'EM_ANDAMENTO' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                        item.current_stage_status === 'PAUSADA' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                        item.current_stage_status === 'LIBERADA' ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                        "bg-slate-100 text-slate-600 border-slate-200"
                       )}>
                         {item.current_stage_status || 'Aguardando'}
                       </span>
