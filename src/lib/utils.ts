@@ -42,13 +42,23 @@ export function getOrderCuttingQty(order: any): number {
 export function safeFormat(dateStr: string | null | undefined, formatStr: string): string {
   if (!dateStr) return '-';
   try {
-    
     return format(parseISO(dateStr), formatStr);
   } catch (e) {
     return '-';
   }
 }
 
-
-
-
+export function isOrderCompleted(order: any): boolean {
+  if (!order) return false;
+  const status = typeof order.status === 'string' ? order.status.trim() : '';
+  if (status === 'Pronto' || status === 'Entregue' || status === 'Cancelado' || status === 'Finalizado' || status === 'Concluído') {
+    return true;
+  }
+  // Exclui etapa legada Conferência da obrigatoriedade para não reter pedidos
+  const stagesList = (Array.isArray(order.stages_status) ? order.stages_status : [])
+    .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
+  if (stagesList.length > 0 && stagesList.every((s: any) => s && (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado'))) {
+    return true;
+  }
+  return false;
+}

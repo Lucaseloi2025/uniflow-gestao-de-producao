@@ -1,7 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { safeFormat } from '../lib/utils';
+import { safeFormat, isOrderCompleted } from '../lib/utils';
 import type { Order, Stage } from '../types';
 
 interface PrintContainerProps {
@@ -14,6 +14,7 @@ interface PrintContainerProps {
   searchTerm: string;
   selectedStageStatus: 'Pending' | 'Finished';
   isPrintModalOpen?: boolean;
+  showCompletedOrders?: boolean;
 }
 
 export const PrintContainer: React.FC<PrintContainerProps> = ({
@@ -26,6 +27,7 @@ export const PrintContainer: React.FC<PrintContainerProps> = ({
   searchTerm,
   selectedStageStatus,
   isPrintModalOpen,
+  showCompletedOrders,
 }) => {
   // Se o modal de relatório gerencial estiver aberto, não renderiza a sequência para evitar colisão
   if (isPrintModalOpen) return null;
@@ -34,7 +36,11 @@ export const PrintContainer: React.FC<PrintContainerProps> = ({
   if (activeTab !== 'kanban' && activeTab !== 'orders') return null;
 
   const filteredOrders = (orders || [])
-    .filter((o) => o.status !== 'Entregue' && o.status !== 'Cancelado')
+    .filter((o) => {
+      if (selectedStageFilter && selectedStageStatus === 'Finished') return true;
+      if (showCompletedOrders) return true;
+      return !isOrderCompleted(o);
+    })
     .filter((o) => !printTypeFilter || o.print_type === printTypeFilter)
     .filter((o) => !productTypeFilter || o.product_type === productTypeFilter)
     .filter((o) => {

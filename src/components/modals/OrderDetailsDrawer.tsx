@@ -6,7 +6,7 @@ import { calculateExecutionTimes } from '../../lib/timerUtils';
 import { 
   ArrowLeft, Archive, Trash2, Edit2, LinkIcon, RefreshCw, Upload, FileText, Search, ImageIcon,
   CheckCircle, Plus, AlertTriangle, ChevronRight, Play, Pause, Check, Clock, Scissors, Package,
-  Layers, CheckSquare, X, CheckCircle2, User as UserIcon, AlertCircle, ClipboardList, Timer
+  Layers, CheckSquare, X, CheckCircle2, User as UserIcon, AlertCircle, ClipboardList, Timer, Download
 } from 'lucide-react';
 import { Badge } from '../Badge';
 import type { Order, Stage } from '../../types';
@@ -29,6 +29,7 @@ export const OrderDetailsDrawer = ({
   setSelectedFullImage,
   handleGenerateTrackingLink,
   handleAddImages,
+  handleRemoveImage,
   handleCancelOrder,
   handleDeleteOrder,
   handleViewHistory,
@@ -553,26 +554,34 @@ export const OrderDetailsDrawer = ({
                           <h3 className="text-xs font-black text-zinc-900 flex items-center gap-2">
                             <ImageIcon size={16} className="text-sky-500" /> FICHAS E ARQUIVOS
                           </h3>
-                          <label className={cn(
-                            "flex items-center gap-1.5 px-2 py-1 bg-zinc-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-zinc-800 transition-all cursor-pointer shadow-sm active:scale-95",
-                            isUploadingArt && "opacity-50 cursor-not-allowed"
-                          )}>
+                          <label
+                            htmlFor="drawer-art-files-upload"
+                            className={cn(
+                              "flex items-center gap-1.5 px-2 py-1 bg-zinc-900 text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-zinc-800 transition-all cursor-pointer shadow-sm active:scale-95",
+                              isUploadingArt && "opacity-50 cursor-not-allowed pointer-events-none"
+                            )}
+                          >
                             {isUploadingArt ? (
                               <RefreshCw size={12} className="animate-spin" />
                             ) : (
                                 <Plus size={12} />
                             )}
-                            <span>{isUploadingArt ? '...' : 'Adicionar'}</span>
-                            <input
-                              type="file"
-                              multiple
-                              className="hidden"
-                              disabled={isUploadingArt}
-                              onChange={(e) => {
-                                if (e.target.files) handleAddImages(selectedOrder.id, e.target.files);
-                              }}
-                            />
+                            <span>{isUploadingArt ? 'Enviando...' : 'Adicionar'}</span>
                           </label>
+                          <input
+                            id="drawer-art-files-upload"
+                            type="file"
+                            accept="image/*,application/pdf"
+                            multiple
+                            className="hidden"
+                            disabled={isUploadingArt}
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files.length > 0) {
+                                handleAddImages(selectedOrder.id, e.target.files);
+                              }
+                              e.target.value = '';
+                            }}
+                          />
                         </div>
 
                         <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar space-y-4">
@@ -635,6 +644,34 @@ export const OrderDetailsDrawer = ({
                                     )}
                                     <div className="pointer-events-none absolute inset-0 bg-zinc-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-[10px] gap-2">
                                       <Search size={14} /> AMPLIAR / VISUALIZAR
+                                    </div>
+                                    <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                      <a
+                                        href={url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="p-1.5 bg-zinc-900/80 hover:bg-zinc-900 text-white rounded-lg shadow-sm backdrop-blur-sm transition-all flex items-center justify-center"
+                                        title="Baixar arquivo"
+                                      >
+                                        <Download size={14} />
+                                      </a>
+                                      {(currentUser?.role === 'Administrador' || currentUser?.role === 'Comercial' || currentUser?.role === 'PCP' || currentUser?.role === 'Supervisor') && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (window.confirm('Tem certeza de que deseja remover este anexo do pedido?')) {
+                                              handleRemoveImage?.(selectedOrder.id, url);
+                                            }
+                                          }}
+                                          className="p-1.5 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg shadow-sm backdrop-blur-sm transition-all flex items-center justify-center cursor-pointer"
+                                          title="Remover anexo"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 ))}

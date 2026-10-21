@@ -132,6 +132,14 @@ export function useAppLogic() {
   const [autoPauseTimeWeekday, setAutoPauseTimeWeekday] = useState<string>('18:00');
   const [autoPauseTimeWeekend, setAutoPauseTimeWeekend] = useState<string>('13:00');
   const [showCompletedOrders, setShowCompletedOrders] = useState(false);
+  const [orderStatusTab, setOrderStatusTab] = useState<'ativos' | 'prontos' | 'entregues' | 'cancelados' | 'todos'>('ativos');
+  const [orderCounts, setOrderCounts] = useState<{ ativos: number; prontos: number; entregues: number; cancelados: number; todos: number }>({
+    ativos: 0,
+    prontos: 0,
+    entregues: 0,
+    cancelados: 0,
+    todos: 0
+  });
   const [autoPauseTimeFriday, setAutoPauseTimeFriday] = useState<string>('17:00');
   const [autoPauseTimeLunch, setAutoPauseTimeLunch] = useState<string>('12:00');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -395,7 +403,7 @@ export function useAppLogic() {
       statsUrl += `print_type=${printTypeFilter}&`;
     }
 
-    let ordersUrl = `/api/orders?search=${encodeURIComponent(searchTerm)}&include_delivered=${showCompletedOrders ? 'true' : 'false'}`;
+    let ordersUrl = `/api/orders?search=${encodeURIComponent(searchTerm)}&include_delivered=${showCompletedOrders ? 'true' : 'false'}&status_tab=${orderStatusTab}`;
     if (selectedStageFilter) {
       ordersUrl += `&stage_id=${selectedStageFilter}&stage_status=${selectedStageStatus}`;
     }
@@ -406,12 +414,17 @@ export function useAppLogic() {
       ordersUrl += `&print_type=${encodeURIComponent(printTypeFilter)}`;
     }
 
-    let [ordersData, stagesData, statsData, templatesData] = await Promise.all([
+    let [ordersData, stagesData, statsData, templatesData, countsData] = await Promise.all([
       safeFetch(ordersUrl),
       safeFetch('/api/stages'),
       safeFetch(statsUrl),
-      safeFetch('/api/order-templates')
+      safeFetch('/api/order-templates'),
+      safeFetch('/api/orders/counts')
     ]);
+
+    if (countsData && typeof countsData.ativos === 'number') {
+      setOrderCounts(countsData);
+    }
 
     // Fallback para consulta direta ao Supabase caso a API REST do backend falhe ou retorne nulo
     if (!Array.isArray(ordersData)) {
@@ -1073,13 +1086,22 @@ export function useAppLogic() {
   };
 
   const handleAddImages = async (orderId: number, files: FileList) => {
-    // Check file sizes (max 4MB to avoid Vercel limit)
-    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+    if (!files || files.length === 0) return;
+
+    // Check individual file size and total payload size (max 4MB total to avoid Vercel 4.5MB limit)
+    const MAX_TOTAL_SIZE = 4 * 1024 * 1024; // 4MB
+    let totalSize = 0;
     for (let i = 0; i < files.length; i++) {
-      if (files[i].size > MAX_FILE_SIZE) {
+      totalSize += files[i].size;
+      if (files[i].size > MAX_TOTAL_SIZE) {
         showToast(`O arquivo "${files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
         return;
       }
+    }
+
+    if (totalSize > MAX_TOTAL_SIZE) {
+      showToast('O tamanho total das imagens selecionadas excede 4MB. Por favor, envie menos arquivos por vez.');
+      return;
     }
 
     setIsUploadingArt(true);
@@ -1098,7 +1120,7 @@ export function useAppLogic() {
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
         const details = errData?.details ? `\n\nDetalhes:\n${errData.details.join('\n')}` : '';
-        throw new Error(`${errData?.error || 'Falha no upload'}${details}`);
+        throw new Error(errData?.error ? `${errData.error}${details}` : `Falha no upload (HTTP ${res.status})`);
       }
 
       const data = await res.json();
@@ -1106,14 +1128,44 @@ export function useAppLogic() {
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder({
           ...selectedOrder,
-          art_urls: data.art_urls
+          art_urls: data.art_urls,
+          art_url: data.art_url || selectedOrder.art_url || (data.art_urls && data.art_urls[0])
         });
       }
-      fetchData(); // Refresh all orders
-    } catch (err) {
-      showToast('Erro ao adicionar imagens. Tente novamente.');
+      showToast('Imagens adicionadas com sucesso!');
+      await fetchData(); // Refresh all orders
+    } catch (err: any) {
+      console.error('[Upload] Falha ao adicionar imagens:', err);
+      showToast(err?.message || 'Erro ao adicionar imagens. Tente novamente.');
     } finally {
       setIsUploadingArt(false);
+    }
+  };
+
+  const handleRemoveImage = async (orderId: number, imageUrl: string) => {
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/images`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: imageUrl })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || `Falha ao remover imagem (HTTP ${res.status})`);
+      }
+      const data = await res.json();
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder({
+          ...selectedOrder,
+          art_urls: data.art_urls,
+          art_url: data.art_url
+        });
+      }
+      showToast('Imagem removida com sucesso!');
+      await fetchData();
+    } catch (err: any) {
+      console.error('[RemoveImage] Falha ao remover imagem:', err);
+      showToast(err?.message || 'Erro ao remover imagem.');
     }
   };
 
@@ -1767,7 +1819,7 @@ export function useAppLogic() {
       fetchUsers();
       fetchCollaboratorGoals();
     }
-  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, showCompletedOrders, activeTab, currentUser]);
+  }, [searchTerm, dateRange, selectedStageFilter, selectedStageStatus, productTypeFilter, printTypeFilter, showCompletedOrders, orderStatusTab, activeTab, currentUser]);
 
   useEffect(() => {
     if (activeTab === 'collaborators') {
@@ -2205,6 +2257,10 @@ export function useAppLogic() {
     setSelectedDraftOrder,
     setSelectedFullImage,
     setSelectedOrder,
+    orderStatusTab,
+    setOrderStatusTab,
+    orderCounts,
+    handleRemoveImage,
     setSelectedStageFilter,
     setSelectedStageId,
     setSelectedStageStatus,

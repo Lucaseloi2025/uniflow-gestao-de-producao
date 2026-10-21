@@ -1382,6 +1382,10 @@ export const isPcpOrSupervisorOrAdmin = (req: express.Request, res: express.Resp
 export const isAdminOrComercial = (req: express.Request, res: express.Response, next: express.NextFunction) =>
     verifyAuthAndRole(req, res, next, VALID_COMMERCIAL_OR_MANAGEMENT_ROLES, "Acesso negado. Ação permitida apenas para Administração, PCP, Supervisor ou Comercial.");
 
+export const VALID_ORDER_ATTACHMENT_ROLES = ['Administrador', 'PCP', 'Supervisor', 'Operador', 'Comercial'];
+export const canUploadOrderImages = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+    verifyAuthAndRole(req, res, next, VALID_ORDER_ATTACHMENT_ROLES, "Acesso negado. Perfil sem permissão para anexar imagens ao pedido.");
+
 export const canOperateProduction = (req: express.Request, res: express.Response, next: express.NextFunction) =>
     verifyAuthAndRole(req, res, next, VALID_PRODUCTION_OPERATION_ROLES, "Acesso negado. Seu perfil não possui permissão para executar apontamentos de produção.");
 
@@ -3084,7 +3088,7 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
 
 // ├óÔÇØÔé¼├óÔÇØÔé¼ Orders ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
 app.get("/api/orders", async (req, res) => {
-    const { search, stage_id, stage_status, product_type, print_type, include_delivered } = req.query;
+    const { search, stage_id, stage_status, product_type, print_type, include_delivered, status_tab } = req.query;
     let data: any[] | null = null;
     let error: any = null;
 
@@ -3137,12 +3141,6 @@ app.get("/api/orders", async (req, res) => {
     }
 
     if (checkError(error, res, "Erro ao buscar pedidos")) return;
-
-    if (data && data.length > 0) {
-        if (include_delivered === "false" && !search) {
-            data = data.filter((o: any) => o.status !== "Entregue" && o.status !== "Cancelado");
-        }
-    }
 
     if (data && data.length > 0) {
         const orderIds = data.map((o: any) => o.id);
@@ -3267,12 +3265,28 @@ app.get("/api/orders", async (req, res) => {
             order.current_operator = operatorMap.get(order.id) || null;
             order.active_stage_execution = activeStageExecutionMap.get(order.id) || null;
             
-            // Enrich with active stage name and active stage observation
-            const activeStage = (order.stages_status || []).find((s: any) => !s.finished);
-            order.active_stage_name = activeStage?.name || null;
+            // Etapas produtivas desconsideram a etapa legada Conferência
+            const prodStages = (Array.isArray(order.stages_status) ? order.stages_status : [])
+                .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
+            const isAllProdStagesFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
+
+            // Auto-heal: transiciona pedido com todas as etapas produtivas concluídas para 'Pronto'
+            if (isAllProdStagesFinished && order.status !== 'Pronto' && order.status !== 'Entregue' && order.status !== 'Cancelado') {
+                order.status = 'Pronto';
+                order.pcp_status = 'PRONTO';
+                supabaseAdmin.from('orders').update({
+                    status: 'Pronto',
+                    pcp_status: 'PRONTO',
+                    production_finished_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', order.id).then(() => {}, (err: any) => console.warn('[AutoSync] Error updating order to Pronto:', err));
+            }
+
+            const activeStage = prodStages.find((s: any) => !s.finished);
+            order.active_stage_name = activeStage?.name || (isAllProdStagesFinished ? 'Concluído' : null);
             order.active_stage_observation = null;
             
-            const unfinishedStages = (order.stages_status || []).filter((s: any) => !s.finished);
+            const unfinishedStages = prodStages.filter((s: any) => !s.finished);
             let newestObs = null;
             for (const st of unfinishedStages) {
                 const obsKey = `${order.id}_${st.id}`;
@@ -3310,9 +3324,95 @@ app.get("/api/orders", async (req, res) => {
                 }
             }
         }
+
+        // ── CONTAGEM OFICIAL NO BACKEND PARA ABAS / STATUS ──────────────────────
+        const orderCounts = {
+            ativos: 0,
+            prontos: 0,
+            entregues: 0,
+            cancelados: 0,
+            todos: data.length
+        };
+        for (const o of data) {
+            const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
+                .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
+            const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
+            const isPronto = o.status === 'Pronto' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
+            if (o.status === 'Entregue') {
+                orderCounts.entregues++;
+            } else if (o.status === 'Cancelado') {
+                orderCounts.cancelados++;
+            } else if (isPronto) {
+                orderCounts.prontos++;
+            } else {
+                orderCounts.ativos++;
+            }
+        }
+        res.setHeader('X-Order-Counts', JSON.stringify(orderCounts));
+
+        // ── FILTRAGEM OFICIAL NO BACKEND POR ABAS / STATUS ──────────────────────
+        const selectedTab = String(status_tab || (include_delivered === 'true' ? 'todos' : 'ativos')).toLowerCase();
+        if (selectedTab === 'ativos') {
+            data = data.filter((o: any) => {
+                const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
+                    .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
+                const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
+                return o.status !== 'Pronto' && o.status !== 'Entregue' && o.status !== 'Cancelado' && o.status !== 'Concluído' && !isAllFinished;
+            });
+        } else if (selectedTab === 'prontos') {
+            data = data.filter((o: any) => {
+                const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
+                    .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
+                const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
+                return o.status === 'Pronto' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
+            });
+        } else if (selectedTab === 'entregues') {
+            data = data.filter((o: any) => o.status === 'Entregue');
+        } else if (selectedTab === 'cancelados') {
+            data = data.filter((o: any) => o.status === 'Cancelado');
+        } else if (selectedTab === 'todos') {
+            // Retorna todos os pedidos
+        }
     }
 
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.json(data);
+});
+
+// Endpoint leve para contadores de pedidos por aba
+app.get("/api/orders/counts", async (_req, res) => {
+    try {
+        const client = supabaseAdmin || supabase;
+        const { data: orders, error } = await client
+            .from("orders")
+            .select("id, status, stages_status")
+            .is("deleted_at", null);
+        if (error || !orders) {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            return res.json({ ativos: 0, prontos: 0, entregues: 0, cancelados: 0, todos: 0 });
+        }
+        const counts = { ativos: 0, prontos: 0, entregues: 0, cancelados: 0, todos: orders.length };
+        for (const o of orders) {
+            const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
+                .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
+            const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
+            const isPronto = o.status === 'Pronto' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
+            if (o.status === 'Entregue') {
+                counts.entregues++;
+            } else if (o.status === 'Cancelado') {
+                counts.cancelados++;
+            } else if (isPronto) {
+                counts.prontos++;
+            } else {
+                counts.ativos++;
+            }
+        }
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.json(counts);
+    } catch (_e) {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.json({ ativos: 0, prontos: 0, entregues: 0, cancelados: 0, todos: 0 });
+    }
 });
 
 app.get("/api/orders/:id/stage-observations", async (req, res) => {
@@ -3461,12 +3561,37 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-app.post("/api/orders/:id/images", isAdminOrComercial, upload.array("art_files", 10), async (req, res) => {
+const handleArtFilesUpload = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    upload.array("art_files", 10)(req, res, (err: any) => {
+        if (err) {
+            console.error("[Upload] Erro no multer ao processar art_files:", err);
+            return res.status(400).json({ error: `Erro no upload do arquivo: ${err.message || 'Arquivo inválido ou excede o limite permitido'}` });
+        }
+        next();
+    });
+};
+
+app.post("/api/orders/:id/images", canUploadOrderImages, handleArtFilesUpload, async (req, res) => {
     const { id } = req.params;
     const files = (req as any).files;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
         return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    }
+
+    const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+    const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf'];
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+
+    // Validação estrita de cada arquivo
+    for (const file of files) {
+        const rawExt = (file.originalname || '').split('.').pop()?.toLowerCase() || '';
+        if (!ALLOWED_EXTENSIONS.includes(rawExt) || !ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+            return res.status(400).json({ error: `Tipo de arquivo não permitido (${file.originalname}). São permitidos apenas PNG, JPG/JPEG, WEBP, GIF e PDF.` });
+        }
+        if (file.size > MAX_FILE_SIZE) {
+            return res.status(400).json({ error: `O arquivo ${file.originalname} excede o limite máximo permitido de 4MB.` });
+        }
     }
 
     // 1. Get current order images
@@ -3480,15 +3605,22 @@ app.post("/api/orders/:id/images", isAdminOrComercial, upload.array("art_files",
         return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    const current_urls = order.art_urls || [];
+    const current_urls = Array.isArray(order.art_urls) ? order.art_urls : (order.art_urls ? [order.art_urls] : []);
     const new_urls: string[] = [];
 
-    // 2. Upload new files
+    // 2. Upload new files com caminho isolado por pedido e UUID anti-colisão
     const uploadErrors: string[] = [];
     for (const file of files) {
-        const fileExt = file.originalname.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const filePath = `pedidos/${fileName}`;
+        const rawExt = (file.originalname || '').split('.').pop()?.toLowerCase() || 'png';
+        const cleanExt = ALLOWED_EXTENSIONS.includes(rawExt) ? rawExt : 'png';
+        const safeBaseName = (file.originalname || 'imagem')
+            .replace(/\.[^/.]+$/, "")
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9_-]/g, "_")
+            .substring(0, 30);
+        const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const filePath = `pedidos/${Number(id)}/${uniqueSuffix}-${safeBaseName}.${cleanExt}`;
 
         const { error: uploadError } = await supabaseAdmin.storage
             .from('artes')
@@ -3514,20 +3646,89 @@ app.post("/api/orders/:id/images", isAdminOrComercial, upload.array("art_files",
         });
     }
 
-    const updated_urls = [...current_urls, ...new_urls];
+    const updated_urls = Array.from(new Set([...current_urls, ...new_urls]));
+    const primaryUrl = order.art_url || updated_urls[0] || null;
 
-    // 3. Update order
+    // 3. Update order somente após upload bem-sucedido
     const { error: updateError } = await supabaseAdmin
         .from("orders")
         .update({
             art_urls: updated_urls,
-            art_url: order.art_url || updated_urls[0] // Set primary if missing
+            art_url: primaryUrl
         })
         .eq("id", Number(id));
 
     if (checkError(updateError, res, "Erro ao atualizar imagens do pedido")) return;
 
-    return res.json({ success: true, art_urls: updated_urls });
+    // 4. Registro formal de auditoria
+    const usuario = getActorName(req, "Operador");
+    await logOrderHistory(supabaseAdmin, {
+        order_id: Number(id),
+        usuario,
+        acao: "anexou_imagem",
+        antes: { art_urls: current_urls },
+        depois: { art_urls: updated_urls, art_url: primaryUrl },
+        detalhes: `Upload de ${new_urls.length} arquivo(s): ${files.map((f: any) => f.originalname).join(', ')}`
+    });
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.json({ success: true, art_urls: updated_urls, art_url: primaryUrl });
+});
+
+app.delete("/api/orders/:id/images", isAdminOrComercial, async (req, res) => {
+    const { id } = req.params;
+    const { image_url } = req.body;
+
+    if (!image_url) {
+        return res.status(400).json({ error: "URL da imagem não informada." });
+    }
+
+    const { data: order, error: fetchError } = await supabaseAdmin
+        .from("orders")
+        .select("art_urls, art_url")
+        .eq("id", Number(id))
+        .single();
+
+    if (fetchError || !order) {
+        return res.status(404).json({ error: "Pedido não encontrado." });
+    }
+
+    const current_urls: string[] = Array.isArray(order.art_urls) ? order.art_urls : (order.art_urls ? [order.art_urls] : []);
+    const updated_urls = current_urls.filter((u: string) => u !== image_url);
+    const primaryUrl = (order.art_url === image_url ? (updated_urls[0] || null) : order.art_url);
+
+    try {
+        const marker = '/storage/v1/object/public/artes/';
+        const idx = image_url.indexOf(marker);
+        if (idx !== -1) {
+            const storagePath = decodeURIComponent(image_url.substring(idx + marker.length));
+            await supabaseAdmin.storage.from('artes').remove([storagePath]);
+        }
+    } catch (stErr) {
+        console.warn("[Storage] Falha não impeditiva ao remover do storage:", stErr);
+    }
+
+    const { error: updateError } = await supabaseAdmin
+        .from("orders")
+        .update({
+            art_urls: updated_urls,
+            art_url: primaryUrl
+        })
+        .eq("id", Number(id));
+
+    if (checkError(updateError, res, "Erro ao remover imagem do pedido")) return;
+
+    await logOrderHistory(supabaseAdmin, {
+        order_id: Number(id),
+        usuario: getActorName(req, "Administrador"),
+        acao: "removeu_imagem",
+        antes: { total_imagens: current_urls.length, imagem_removida: image_url },
+        depois: { total_imagens: updated_urls.length },
+        detalhes: `Remoção de anexo de imagem do pedido #${id}`
+    });
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.json({ success: true, art_urls: updated_urls, art_url: primaryUrl });
 });
 
 app.patch("/api/orders/:id/status", isPcpOrSupervisorOrAdmin, async (req, res) => {
@@ -4813,6 +5014,13 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                         const finishedMap = new Map((progressRows || []).map((p: any) => [Number(p.stage_id), Boolean(p.finished || p.status_operacao === 'CONCLUIDA')]));
                         if (!partial) {
                             finishedMap.set(Number(execRow.stage_id), true);
+                        }
+                        if (Array.isArray(updatedStagesStatus)) {
+                            for (const s of updatedStagesStatus) {
+                                if (s && (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado')) {
+                                    finishedMap.set(Number(s.id), true);
+                                }
+                            }
                         }
                         const allNonConfFinished = nonConfReq.every((id: number) => finishedMap.get(id) === true);
 

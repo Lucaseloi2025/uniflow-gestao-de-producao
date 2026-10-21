@@ -171,10 +171,27 @@ export const EditOrderModal = ({
                         <input
                           id="edit-modal-upload"
                           type="file"
+                          accept="image/*,application/pdf"
                           multiple
                           className="hidden"
+                          disabled={isUploadingArt}
                           onChange={async (e) => {
-                            if (e.target.files && selectedOrder) {
+                            if (e.target.files && e.target.files.length > 0 && selectedOrder) {
+                              const MAX_TOTAL_SIZE = 4 * 1024 * 1024;
+                              let totalSize = 0;
+                              for (let i = 0; i < e.target.files.length; i++) {
+                                totalSize += e.target.files[i].size;
+                                if (e.target.files[i].size > MAX_TOTAL_SIZE) {
+                                  alert(`O arquivo "${e.target.files[i].name}" é muito grande. O limite máximo é de 4MB por arquivo.`);
+                                  e.target.value = '';
+                                  return;
+                                }
+                              }
+                              if (totalSize > MAX_TOTAL_SIZE) {
+                                alert('O tamanho total dos arquivos excede 4MB. Por favor, envie menos arquivos por vez.');
+                                e.target.value = '';
+                                return;
+                              }
                               setIsUploadingArt(true);
                               const formData = new FormData();
                               for (let i = 0; i < e.target.files.length; i++) {
@@ -187,24 +204,30 @@ export const EditOrderModal = ({
                                 });
                                 if (res.ok) {
                                   const data = await res.json();
+                                  const newUrls = data.art_urls || [];
+                                  const newPrimary = data.art_url || newUrls[0] || null;
                                   setEditOrderForm({
                                     ...editOrderForm,
-                                    art_urls: data.art_urls,
-                                    art_url: data.art_urls[0]
+                                    art_urls: newUrls,
+                                    art_url: newPrimary
                                   });
                                   if (selectedOrder) {
                                     setSelectedOrder({
                                       ...selectedOrder,
-                                      art_urls: data.art_urls,
-                                      art_url: data.art_urls[0]
+                                      art_urls: newUrls,
+                                      art_url: newPrimary
                                     });
                                   }
                                   fetchData();
+                                } else {
+                                  const errData = await res.json().catch(() => null);
+                                  alert(errData?.error || 'Falha no upload do arquivo.');
                                 }
-                              } catch (err) {
-                                alert('Erro no upload');
+                              } catch (err: any) {
+                                alert(err?.message || 'Erro no upload');
                               } finally {
                                 setIsUploadingArt(false);
+                                e.target.value = '';
                               }
                             }
                           }}

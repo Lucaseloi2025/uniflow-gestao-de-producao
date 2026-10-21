@@ -3,7 +3,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/Badge';
 import { Package, Layers, AlertCircle, List, Users, Filter, Trash2, CheckCircle2, Clock, AlertTriangle, Activity, Shirt, Scissors, Edit2, Target } from 'lucide-react';
 import { ProductionProgressPanel } from '../components/ProductionProgressPanel';
-import { cn, safeFormat, getOrderCuttingQty } from '../lib/utils';
+import { cn, safeFormat, getOrderCuttingQty, isOrderCompleted } from '../lib/utils';
 import {
   BarChart,
   Bar,
@@ -220,7 +220,7 @@ export const DashboardTab = ({
                       </thead>
                       <tbody className="divide-y divide-zinc-50">
                         {orders
-                          .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                          .filter(o => !isOrderCompleted(o))
                           .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
                           .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                           .map(order => {
@@ -269,7 +269,7 @@ export const DashboardTab = ({
                           );
                         })}
                         {orders
-                          .filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado')
+                          .filter(o => !isOrderCompleted(o))
                           .filter(o => !printTypeFilter || o.print_type === printTypeFilter)
                           .filter(o => !productTypeFilter || o.product_type === productTypeFilter)
                           .length === 0 && (
