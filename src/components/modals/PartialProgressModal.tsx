@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { X, TrendingUp } from 'lucide-react';
@@ -17,10 +17,10 @@ export const PartialProgressModal = ({
   return (
     <AnimatePresence>
             {isProgressModalOpen && selectedOrder && progressStageId && (() => {
-        const stage = stages.find(s => s.id === progressStageId);
-        const orderStage = (selectedOrder.stages_status || []).find(s => s.id === progressStageId);
-        const currentGood = orderStage?.quantidade_boa || 0;
-        const totalReq = selectedOrder.quantity || 0;
+        const stage = stages.find((s: any) => Number(s.id) === Number(progressStageId));
+        const orderStage = (selectedOrder.stages_status || []).find((s: any) => Number(s.id) === Number(progressStageId));
+        const currentGood = Number(orderStage?.quantidade_boa) || 0;
+        const totalReq = Number(selectedOrder.quantity) || 0;
         const remaining = Math.max(0, totalReq - currentGood);
 
         return (
@@ -54,9 +54,25 @@ export const PartialProgressModal = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Quantidade de peças concluídas agora (+):
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-zinc-700">
+                      Quantidade de peças concluídas agora (+):
+                    </label>
+  
+  
+  
+                    {remaining > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setProgressIncrementInput(remaining)}
+                        className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors cursor-pointer"
+                      >
+                        + Preencher restantes ({remaining})
+                      </button>
+                    )}
+                  </div>
+
+
                   <input
                     type="number"
                     min="0"

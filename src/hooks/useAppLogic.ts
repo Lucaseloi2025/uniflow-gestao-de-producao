@@ -1572,6 +1572,32 @@ export function useAppLogic() {
           return;
         }
         setExecutionActionModal(null);
+        if (actionQuantityInput > 0) {
+          setSelectedOrder(prev => {
+            if (!prev) return null;
+            const totalReq = prev.quantity || 0;
+            const updatedStages = (prev.stages_status || []).map(s => {
+              if (Number(s.id) === Number(stageId)) {
+                const nextGood = (s.quantidade_boa || 0) + actionQuantityInput;
+                const nextPending = Math.max(0, totalReq - nextGood);
+                const isFin = nextPending === 0 && nextGood > 0;
+                return {
+                  ...s,
+                  quantidade_boa: nextGood,
+                  saldo_pendente: nextPending,
+                  status_operacao: isFin ? 'CONCLUIDA' : 'PARCIAL',
+                  finished: isFin,
+                  status: isFin ? 'Concluído' : s.status,
+                };
+              }
+              return s;
+            });
+            return {
+              ...prev,
+              stages_status: updatedStages
+            };
+          });
+        }
         showToast("Etapa pausada com sucesso!");
         await fetchExecutions(selectedOrder.id);
         await fetchData();
@@ -1723,6 +1749,30 @@ export function useAppLogic() {
       })
     });
     if (res.ok) {
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const totalReq = prev.quantity || 0;
+        const updatedStages = (prev.stages_status || []).map(s => {
+          if (Number(s.id) === Number(progressStageId)) {
+            const nextGood = (s.quantidade_boa || 0) + progressIncrementInput;
+            const nextPending = Math.max(0, totalReq - nextGood);
+            const isFin = nextPending === 0 && nextGood > 0;
+            return {
+              ...s,
+              quantidade_boa: nextGood,
+              saldo_pendente: nextPending,
+              status_operacao: isFin ? 'CONCLUIDA' : 'PARCIAL',
+              finished: isFin,
+              status: isFin ? 'Concluído' : s.status,
+            };
+          }
+          return s;
+        });
+        return {
+          ...prev,
+          stages_status: updatedStages
+        };
+      });
       setIsProgressModalOpen(false);
       showToast("Progresso registrado com sucesso!");
       fetchData();

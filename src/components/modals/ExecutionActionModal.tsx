@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { X, Loader2, Pause, CheckCircle, AlertTriangle, TrendingUp, ClipboardList } from 'lucide-react';
@@ -32,11 +32,11 @@ export const ExecutionActionModal = ({
             {executionActionModal && selectedOrder && (() => {
         const { type, executionId, stageId } = executionActionModal;
         const isPause = type === 'pause';
-        const stage = stages.find(s => s.id === stageId);
-        const orderStage = (selectedOrder.stages_status || []).find(s => s.id === stageId);
-        const currentGood = orderStage?.quantidade_boa || 0;
-        const currentLoss = orderStage?.quantidade_perdida || 0;
-        const totalReq = selectedOrder.quantity || 0;
+        const stage = stages.find((s: any) => Number(s.id) === Number(stageId));
+        const orderStage = (selectedOrder.stages_status || []).find((s: any) => Number(s.id) === Number(stageId));
+        const currentGood = Number(orderStage?.quantidade_boa) || 0;
+        const currentLoss = Number(orderStage?.quantidade_perdida) || 0;
+        const totalReq = Number(selectedOrder.quantity) || 0;
         const remaining = Math.max(0, totalReq - currentGood);
 
         return (

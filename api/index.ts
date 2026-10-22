@@ -4349,6 +4349,48 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
         }
 
         const httpStatus = Number(rpcRecordData?.http_status) || 200;
+
+        // Sincronização atômica de stages_status no pedido para garantir fonte única da verdade
+        if (httpStatus >= 200 && httpStatus < 300) {
+            try {
+                const { data: ordRow } = await supabaseAdmin
+                    .from("orders")
+                    .select("stages_status, quantity")
+                    .eq("id", orderId)
+                    .maybeSingle();
+
+                if (ordRow && Array.isArray(ordRow.stages_status)) {
+                    const updatedStagesStatus = ordRow.stages_status.map((st: any) => {
+                        if (Number(st.id) === stageId) {
+                            const newGood = rpcRecordData?.quantidade_boa !== undefined ? Number(rpcRecordData.quantidade_boa) : ((st.quantidade_boa || 0) + (Number(incremento) || 0));
+                            const newPending = rpcRecordData?.saldo_pendente !== undefined ? Number(rpcRecordData.saldo_pendente) : Math.max(0, (ordRow.quantity || 0) - newGood);
+                            const newStatusOp = rpcRecordData?.status_operacao || (newPending === 0 ? 'CONCLUIDA' : 'PARCIAL');
+                            const isFin = Boolean(rpcRecordData?.finished || (newPending === 0 && newGood > 0));
+                            return {
+                                ...st,
+                                quantidade_boa: newGood,
+                                saldo_pendente: newPending,
+                                status_operacao: newStatusOp,
+                                finished: isFin,
+                                status: isFin ? 'Concluído' : st.status,
+                            };
+                        }
+                        return st;
+                    });
+
+                    await supabaseAdmin
+                        .from("orders")
+                        .update({
+                            stages_status: updatedStagesStatus,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq("id", orderId);
+                }
+            } catch (syncErr) {
+                console.warn("[API] Aviso ao sincronizar stages_status após progresso:", syncErr);
+            }
+        }
+
         return res.status(httpStatus).json({
             ...rpcRecordData,
             progress: rpcRecordData,
