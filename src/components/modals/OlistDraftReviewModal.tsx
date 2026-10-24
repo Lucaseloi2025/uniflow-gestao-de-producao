@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn, safeFormat } from '../../lib/utils';
+import { cn, safeFormat, getStageSlugFromStage } from '../../lib/utils';
 import { getItemDisplaySize } from '../../lib/cuttingUtils';
-import { X, RefreshCw, Trash2, Package, Check } from 'lucide-react';
+import { X, RefreshCw, Trash2, Package, Check, Settings2, CopyCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Stage } from '../../types';
 
 export const OlistDraftReviewModal = ({
@@ -15,11 +15,135 @@ export const OlistDraftReviewModal = ({
   handleDeleteDraftOrder,
   stages
 }: any) => {
+  const [expandedItemIdx, setExpandedItemIdx] = useState<number | null>(null);
+
+  const activeAllowedStages = (stages || []).filter(
+    (st: Stage) => st.active && ![2, 7, 12].includes(Number(st.id))
+  );
+
+  const computeOrderedUnionStages = (itemsList: any[], fallbackStages: number[]) => {
+    const stageIdsSet = new Set<number>();
+    (itemsList || []).forEach((it: any) => {
+      if (Array.isArray(it.required_stages)) {
+        it.required_stages.forEach((sid: any) => {
+          const n = Number(sid);
+          if (Number.isFinite(n) && n > 0) stageIdsSet.add(n);
+        });
+      }
+    });
+    if (stageIdsSet.size === 0) return fallbackStages;
+    return activeAllowedStages
+      .map((s: Stage) => Number(s.id))
+      .filter((sid: number) => stageIdsSet.has(sid));
+  };
+
+  const getRecommendedStagesForTechnique = (printType: string): number[] => {
+    const norm = (printType || '').toLowerCase();
+    return activeAllowedStages
+      .filter((s: Stage) => {
+        const slug = getStageSlugFromStage(s);
+        if (norm.includes('sublima')) {
+          if (slug === 'IMPRESSAO_DTF') return false;
+          return ['FICHA_APROVACAO', 'SUBLIMACAO', 'CORTE', 'COSTURA', 'ESTAMPARIA'].includes(slug);
+        }
+        if (norm.includes('lisa') || norm.includes('sem estampa')) {
+          if (slug === 'IMPRESSAO_DTF' || slug === 'SUBLIMACAO' || slug === 'ESTAMPARIA') return false;
+          return ['CORTE', 'COSTURA'].includes(slug);
+        }
+        if (norm.includes('silk') || norm.includes('bordado')) {
+          if (slug === 'IMPRESSAO_DTF' || slug === 'SUBLIMACAO') return false;
+          return ['FICHA_APROVACAO', 'ESTAMPARIA', 'CORTE', 'COSTURA'].includes(slug);
+        }
+        // Default DTF
+        if (slug === 'SUBLIMACAO') return false;
+        return ['FICHA_APROVACAO', 'IMPRESSAO_DTF', 'ESTAMPARIA', 'CORTE', 'COSTURA'].includes(slug);
+      })
+      .map((s: Stage) => Number(s.id));
+  };
+
+  const itemsList: any[] =
+    Array.isArray(confirmDraftForm.items) && confirmDraftForm.items.length > 0
+      ? confirmDraftForm.items
+      : Array.isArray(selectedDraftOrder?.items)
+        ? selectedDraftOrder.items
+        : [];
+
+  const handleUpdateItemTechnique = (idx: number, newTechnique: string) => {
+    const recommended = getRecommendedStagesForTechnique(newTechnique);
+    setConfirmDraftForm((prev: any) => {
+      const baseItems =
+        Array.isArray(prev.items) && prev.items.length > 0
+          ? [...prev.items]
+          : [...(selectedDraftOrder?.items || [])];
+      const current = baseItems[idx] || {};
+      baseItems[idx] = {
+        ...current,
+        print_type: newTechnique,
+        required_stages: recommended.length > 0 ? recommended : current.required_stages || prev.required_stages
+      };
+      const unionStages = computeOrderedUnionStages(baseItems, prev.required_stages);
+      return {
+        ...prev,
+        items: baseItems,
+        required_stages: unionStages
+      };
+    });
+  };
+
+  const handleToggleItemStage = (idx: number, stageId: number, checked: boolean) => {
+    setConfirmDraftForm((prev: any) => {
+      const baseItems =
+        Array.isArray(prev.items) && prev.items.length > 0
+          ? [...prev.items]
+          : [...(selectedDraftOrder?.items || [])];
+      const current = baseItems[idx] || {};
+      const currentStages: number[] = Array.isArray(current.required_stages)
+        ? current.required_stages.map(Number)
+        : [...(prev.required_stages || [])];
+      const nextItemStages = checked
+        ? Array.from(new Set([...currentStages, Number(stageId)]))
+        : currentStages.filter((id) => Number(id) !== Number(stageId));
+      // Sort by activeAllowedStages order
+      const orderedItemStages = activeAllowedStages
+        .map((s: Stage) => Number(s.id))
+        .filter((sid: number) => nextItemStages.includes(sid));
+      baseItems[idx] = {
+        ...current,
+        required_stages: orderedItemStages
+      };
+      const unionStages = computeOrderedUnionStages(baseItems, prev.required_stages);
+      return {
+        ...prev,
+        items: baseItems,
+        required_stages: unionStages
+      };
+    });
+  };
+
+  const handleApplyGlobalStagesToAllItems = () => {
+    setConfirmDraftForm((prev: any) => {
+      const globalStages = Array.isArray(prev.required_stages) ? [...prev.required_stages] : [];
+      const baseItems =
+        Array.isArray(prev.items) && prev.items.length > 0
+          ? [...prev.items]
+          : [...(selectedDraftOrder?.items || [])];
+      const updatedItems = baseItems.map((it: any) => ({
+        ...it,
+        print_type: prev.print_type || it.print_type || 'DTF',
+        required_stages: [...globalStages]
+      }));
+      return {
+        ...prev,
+        items: updatedItems
+      };
+    });
+  };
+
   return (
     <AnimatePresence>
       {selectedDraftOrder && (
         <div className="fixed inset-0 z-[270] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
+          <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden border border-zinc-100 my-8">
             <div className="bg-indigo-900 text-white p-6 relative">
               <button
                 onClick={() => setSelectedDraftOrder(null)}
@@ -51,39 +175,161 @@ export const OlistDraftReviewModal = ({
                 </div>
               </div>
 
-              {/* Grade de Tamanhos Table */}
-              {selectedDraftOrder.items && selectedDraftOrder.items.length > 0 && (
+              {/* Grade de Tamanhos & Etapas Individuais por Item */}
+              {itemsList.length > 0 && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <Package size={14} className="text-indigo-600" /> Lista de Itens do Pedido ({selectedDraftOrder.items.length} SKUs)
-                      </h3>
-                      <span className="text-[10px] font-bold text-zinc-400 font-mono">Total: {selectedDraftOrder.quantity} pcs</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider flex items-center gap-1.5">
+                          <Package size={14} className="text-indigo-600" /> Lista de Itens do Pedido ({itemsList.length} SKUs)
+                        </h3>
+                        <p className="text-[11px] text-zinc-500">
+                          Configure a técnica e o fluxo de etapas individualmente por item ou aplique um padrão a todos.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleApplyGlobalStagesToAllItems}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[11px] font-bold transition-colors cursor-pointer"
+                          title="Aplica as etapas selecionadas abaixo para todos os itens desta lista"
+                        >
+                          <CopyCheck size={13} />
+                          Aplicar etapas a todos
+                        </button>
+                        <span className="text-[10px] font-bold text-zinc-400 font-mono">Total: {selectedDraftOrder.quantity} pcs</span>
+                      </div>
                     </div>
+
                     <div className="overflow-x-auto border border-zinc-200 rounded-xl bg-white shadow-sm">
                       <table className="w-full text-left text-xs">
                         <thead>
                           <tr className="bg-zinc-50 text-zinc-600 font-bold uppercase text-[9px] border-b border-zinc-200">
-                            <th className="px-3 py-2">Item / Descrição</th>
+                            <th className="px-3 py-2">Produto / Variação (SKU)</th>
                             <th className="px-2 py-2 text-center">Tamanho</th>
-                            <th className="px-2 py-2 text-right">Qtd Total</th>
+                            <th className="px-2 py-2 text-right">Qtd</th>
+                            <th className="px-2 py-2">Técnica</th>
+                            <th className="px-2 py-2">Etapas Aplicáveis</th>
+                            <th className="px-3 py-2 text-right">Ação</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {selectedDraftOrder.items.map((item: any, idx: number) => {
+                          {itemsList.map((item: any, idx: number) => {
                             const qty = item.quantity ?? item.quantidade ?? 1;
                             const displaySize = getItemDisplaySize(item);
+                            const skuCode = item.sku || item.codigo || `ITEM-${idx + 1}`;
+                            const itemTechnique = item.print_type || confirmDraftForm.print_type || 'DTF';
+                            const itemStageIds: number[] = Array.isArray(item.required_stages)
+                              ? item.required_stages.map(Number)
+                              : (confirmDraftForm.required_stages || []).map(Number);
+                            const itemStageNames = activeAllowedStages
+                              .filter((st: Stage) => itemStageIds.includes(Number(st.id)))
+                              .map((st: Stage) => st.name);
+                            const isExpanded = expandedItemIdx === idx;
+
                             return (
-                              <tr key={idx} className="hover:bg-zinc-50/50 text-xs">
-                                <td className="px-3 py-2.5 font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</td>
-                                <td className="px-3 py-2.5 text-center">
-                                  <span className="inline-block px-3 py-1 bg-indigo-600 text-white rounded-lg text-sm font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
-                                    {displaySize}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-sm font-black text-zinc-900">{qty} un</td>
-                              </tr>
+                              <React.Fragment key={item.id || item.order_item_id || idx}>
+                                <tr className={cn("hover:bg-zinc-50/50 text-xs transition-colors", isExpanded && "bg-indigo-50/30")}>
+                                  <td className="px-3 py-2.5">
+                                    <div className="font-bold text-zinc-900">{item.description || item.descricao || 'Item sem descrição'}</div>
+                                    <div className="text-[10px] font-mono text-zinc-400">SKU: {skuCode}</div>
+                                  </td>
+                                  <td className="px-2 py-2.5 text-center">
+                                    <span className="inline-block px-2.5 py-0.5 bg-indigo-600 text-white rounded-lg text-xs font-black uppercase font-mono shadow-xs border border-indigo-700 tracking-wider">
+                                      {displaySize}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-2.5 text-right font-mono text-xs font-black text-zinc-900 whitespace-nowrap">
+                                    {qty} un
+                                  </td>
+                                  <td className="px-2 py-2.5">
+                                    <select
+                                      value={itemTechnique}
+                                      onChange={(e) => handleUpdateItemTechnique(idx, e.target.value)}
+                                      className="p-1.5 border border-zinc-200 rounded-lg text-[11px] font-bold bg-white text-zinc-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    >
+                                      <option value="DTF">DTF</option>
+                                      <option value="Sublimação">Sublimação Total</option>
+                                      <option value="Silk">Silk-screen</option>
+                                      <option value="Bordado">Bordado</option>
+                                      <option value="Lisa">Peça Lisa (Sem estampa)</option>
+                                    </select>
+                                  </td>
+                                  <td className="px-2 py-2.5">
+                                    <div className="flex flex-wrap gap-1 max-w-[260px]">
+                                      {itemStageNames.length > 0 ? (
+                                        itemStageNames.map((name: string, sIdx: number) => (
+                                          <span
+                                            key={sIdx}
+                                            className="inline-flex px-1.5 py-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded text-[10px] font-bold"
+                                          >
+                                            {name}
+                                          </span>
+                                        ))
+                                      ) : (
+                                        <span className="text-[10px] text-rose-500 font-bold">Nenhuma etapa</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedItemIdx(isExpanded ? null : idx)}
+                                      className={cn(
+                                        "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer",
+                                        isExpanded
+                                          ? "bg-indigo-600 text-white border-indigo-700"
+                                          : "bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200"
+                                      )}
+                                    >
+                                      <Settings2 size={12} />
+                                      <span>Configurar etapas</span>
+                                      {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </button>
+                                  </td>
+                                </tr>
+                                {isExpanded && (
+                                  <tr className="bg-indigo-50/40 border-b border-indigo-100">
+                                    <td colSpan={6} className="px-4 py-3">
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[11px] font-black text-indigo-950 uppercase tracking-wider">
+                                            Etapas exclusivas deste item ({item.description || item.descricao} — {qty} un)
+                                          </span>
+                                          <span className="text-[10px] font-bold text-indigo-600">
+                                            Técnica: {itemTechnique}
+                                          </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                                          {activeAllowedStages.map((st: Stage) => {
+                                            const checked = itemStageIds.includes(Number(st.id));
+                                            return (
+                                              <label
+                                                key={st.id}
+                                                className={cn(
+                                                  "flex items-center gap-2 p-2 rounded-xl border text-[11px] font-medium cursor-pointer transition-all",
+                                                  checked
+                                                    ? "bg-indigo-600 border-indigo-700 text-white font-bold shadow-xs"
+                                                    : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                                                )}
+                                              >
+                                                <input
+                                                  type="checkbox"
+                                                  checked={checked}
+                                                  onChange={(e) => handleToggleItemStage(idx, Number(st.id), e.target.checked)}
+                                                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span className="truncate">{st.name}</span>
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </tbody>
@@ -95,13 +341,13 @@ export const OlistDraftReviewModal = ({
 
               {/* Form Controls */}
               <div className="space-y-4 pt-2 border-t border-zinc-100">
-                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Definições para Produção</h3>
+                <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">Definições Gerais do Pedido</h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Tipo de Estampa */}
                   <div>
                     <label className="block text-xs font-bold text-zinc-700 mb-1">
-                      Tipo de Estampa <span className="text-rose-500">*</span>
+                      Técnica Principal / Padrão <span className="text-rose-500">*</span>
                     </label>
                     <select
                       value={confirmDraftForm.print_type}
@@ -163,11 +409,22 @@ export const OlistDraftReviewModal = ({
 
                 {/* Required Stages Checkboxes */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-2">
-                    Etapas do Fluxo de Produção
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-zinc-700">
+                      Etapas Consolidadas do Pedido (União dos Itens / Padrão)
+                    </label>
+                    {itemsList.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleApplyGlobalStagesToAllItems}
+                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                      >
+                        <CopyCheck size={12} /> Aplicar esta seleção a todos os itens
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {stages.filter((st: Stage) => st.active && ![2, 7, 12].includes(Number(st.id))).map((st: Stage) => {
+                    {activeAllowedStages.map((st: Stage) => {
                       const isChecked = confirmDraftForm.required_stages.includes(st.id);
                       return (
                         <label

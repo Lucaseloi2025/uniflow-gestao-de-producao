@@ -77,9 +77,9 @@ import {
 } from 'recharts';
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, isPast, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat } from '../lib/utils';
+import { cn, formatSeconds, isImage, isPdf, getOrderCuttingQty, safeFormat, getStageProductivityUnit, getStageSlugFromStage } from '../lib/utils';
 import { calculateExecutionTimes } from '../lib/timerUtils';
-import { Order, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod, OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData, CollaboratorStageGoal } from '../types';
+import { Order, OrderItem, Stage, StageExecution, DashboardStats, User, StageStatus, OrderTemplate, OrderHistory, OrderForecast, DeliveryReportData, OperationalReportData, OperationalStep, OrderProgress, FinishedOrder, CollaboratorProductivity, GoalsProductivityResponse, ProductivityPeriod, OrderStageProgress, OrderLossLog, LossReasonSetting, LossReportData, CollaboratorStageGoal } from '../types';
 
 
 // Components
@@ -155,7 +155,7 @@ export function useAppLogic() {
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null);
   const [newStageName, setNewStageName] = useState('');
   const [newStageTime, setNewStageTime] = useState<number>(0);
-  const [newStageCalculationType, setNewStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
+  const [newStageCalculationType, setNewStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_kit_dtf' | 'por_lote'>('por_peca');
   const [newStageMetaDiaria, setNewStageMetaDiaria] = useState<number | ''>('');
   const [editingStageMetaDiaria, setEditingStageMetaDiaria] = useState<number | ''>('');
   const [isUploadingArt, setIsUploadingArt] = useState(false);
@@ -165,7 +165,7 @@ export function useAppLogic() {
   const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [editingStageName, setEditingStageName] = useState('');
   const [editingStageTime, setEditingStageTime] = useState<number>(0);
-  const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_lote'>('por_peca');
+  const [editingStageCalculationType, setEditingStageCalculationType] = useState<'por_pedido' | 'por_peca' | 'por_kit_dtf' | 'por_lote'>('por_peca');
   const [expandedGoalStageId, setExpandedGoalStageId] = useState<number | null>(null);
   const [goalEditValues, setGoalEditValues] = useState<Record<string, string>>({}); // key: `${stageId}-${userId}`
   const [lossReportData, setLossReportData] = useState<LossReportData | null>(null);
@@ -183,7 +183,8 @@ export function useAppLogic() {
     product_type: '',
     num_colors: 1,
     observations: '',
-    required_stages: [] as number[]
+    required_stages: [] as number[],
+    items: [] as OrderItem[]
   });
 
   // Modal State: Progresso Parcial
@@ -644,14 +645,92 @@ export function useAppLogic() {
 
   const handleOpenDraftReview = (order: Order) => {
     setSelectedDraftOrder(order);
-    const activeIds = stages.filter(s => s.active && ![2, 7, 12].includes(Number(s.id))).map(s => s.id);
-    const cleanedOrderStages = (order.required_stages || []).filter(id => ![2, 7, 12].includes(Number(id)));
+    const eligibleStages = stages
+      .filter(s => s.active && ![2, 7, 12].includes(Number(s.id)))
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const activeIds = eligibleStages.map(s => Number(s.id));
+    const cleanedOrderStages = (order.required_stages || []).map(Number).filter(id => ![2, 7, 12].includes(id));
+    const baseStages = cleanedOrderStages.length > 0 ? cleanedOrderStages : activeIds;
+    const defaultPrintType = (order.print_type && ['DTF', 'Silk', 'Sublimação', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as 'DTF' | 'Silk' | 'Sublimação' | 'Bordado';
+
+    const inferItemTechnique = (it: OrderItem): string => {
+      if (it.print_type && String(it.print_type).trim()) return String(it.print_type).trim();
+      const desc = `${it.description || it.descricao || ''} ${it.sku || it.codigo || ''}`.toUpperCase();
+      if (desc.includes('SUBLIMA')) return 'Sublimação';
+      if (desc.includes('SILK') || desc.includes('SERIGRAF')) return 'Silk';
+      if (desc.includes('BORDADO')) return 'Bordado';
+      if (desc.includes('LISA') || desc.includes('SEM ESTAMPA')) return 'Lisa';
+      if (desc.includes('DTF')) return 'DTF';
+      return defaultPrintType;
+    };
+
+    const filterStagesForTechnique = (tech: string, itemBaseStages: number[], needsCut: boolean): number[] => {
+      const tUpper = String(tech || '').toUpperCase();
+      return eligibleStages
+        .filter(st => {
+          const slug = getStageSlugFromStage(st);
+          const inBase = itemBaseStages.includes(Number(st.id));
+          if (slug === 'CORTE' || slug === 'COSTURA') {
+            return needsCut || inBase;
+          }
+          if (tUpper.includes('LISA') || tUpper.includes('SEM ESTAMPA')) {
+            return !['FICHA_APROVACAO', 'DTF', 'ESTAMPAGEM', 'SUBLIMACAO', 'SILK', 'BORDADO'].includes(slug) && inBase;
+          }
+          if (tUpper.includes('SUBLIMA')) {
+            if (slug === 'DTF' || slug === 'SILK' || slug === 'BORDADO') return false;
+            if (slug === 'FICHA_APROVACAO' || slug === 'SUBLIMACAO') return true;
+            return inBase;
+          }
+          if (tUpper.includes('SILK')) {
+            if (slug === 'DTF' || slug === 'SUBLIMACAO' || slug === 'BORDADO') return false;
+            if (slug === 'FICHA_APROVACAO' || slug === 'SILK') return true;
+            return inBase;
+          }
+          if (tUpper.includes('BORDADO')) {
+            if (slug === 'DTF' || slug === 'ESTAMPAGEM' || slug === 'SUBLIMACAO' || slug === 'SILK') return false;
+            if (slug === 'FICHA_APROVACAO' || slug === 'BORDADO') return true;
+            return inBase;
+          }
+          // Default: DTF
+          if (slug === 'SUBLIMACAO' || slug === 'SILK' || slug === 'BORDADO') return false;
+          if (slug === 'FICHA_APROVACAO' || slug === 'DTF' || slug === 'ESTAMPAGEM') return true;
+          return inBase;
+        })
+        .map(st => Number(st.id));
+    };
+
+    const rawItems: OrderItem[] = Array.isArray(order.items) ? order.items : [];
+    const preparedItems: OrderItem[] = rawItems.map(it => {
+      const tech = inferItemTechnique(it);
+      const qCorte = Number(it.qty_corte ?? it.total_via_corte ?? 0);
+      const existingReq = Array.isArray(it.required_stages) && it.required_stages.length > 0
+        ? it.required_stages.map(Number).filter(id => ![2, 7, 12].includes(id))
+        : null;
+      const itemStages = existingReq || filterStagesForTechnique(tech, baseStages, qCorte > 0);
+      return {
+        ...it,
+        print_type: tech,
+        required_stages: itemStages.length > 0 ? itemStages : baseStages,
+      };
+    });
+
+    const unionSet = new Set<number>();
+    if (preparedItems.length > 0) {
+      preparedItems.forEach(it => (it.required_stages || []).forEach(id => unionSet.add(Number(id))));
+    } else {
+      baseStages.forEach(id => unionSet.add(Number(id)));
+    }
+    const orderedUnion = eligibleStages
+      .map(s => Number(s.id))
+      .filter(id => unionSet.has(id));
+
     setConfirmDraftForm({
-      print_type: (order.print_type && ['DTF', 'Silk', 'Sublimação', 'Bordado'].includes(order.print_type) ? order.print_type : 'DTF') as any,
+      print_type: defaultPrintType,
       product_type: order.product_type || 'Dry Fit',
       num_colors: order.num_colors || 1,
       observations: order.observations || '',
-      required_stages: cleanedOrderStages.length > 0 ? cleanedOrderStages : activeIds
+      required_stages: orderedUnion.length > 0 ? orderedUnion : baseStages,
+      items: preparedItems,
     });
   };
 
@@ -1327,7 +1406,9 @@ export function useAppLogic() {
       setSelectedOrder(targetOrder);
       syncOrderStageProgress(targetOrder);
     }
-    setActionQuantityInput(0);
+    const stageObj = stages.find(s => Number(s.id) === Number(stageId));
+    const unitInfo = getStageProductivityUnit(stageObj);
+    setActionQuantityInput(type === 'finish' && unitInfo.isPerOrderUnit ? 1 : 0);
     setActionLossQuantityInput(0);
     const initialReason = lossReasonsList.length > 0 ? lossReasonsList[0].motivo : 'Defeito de corte';
     setActionLossReasonInput(initialReason);
@@ -1628,11 +1709,20 @@ export function useAppLogic() {
         await fetchActiveExecution();
         window.dispatchEvent(new CustomEvent('reload-minha-fila'));
       } else if (type === 'finish') {
+        const stObj = stages.find(s => Number(s.id) === Number(stageId));
         const stInfo = (selectedOrder.stages_status || []).find((s: any) => Number(s.id) === Number(stageId));
-        const curGood = Number(stInfo?.quantidade_boa) || 0;
-        const totalExpected = Number(selectedOrder.quantity) || 0;
-        const projectedGood = curGood + (Number(actionQuantityInput) || 0);
-        const isPartialFinish = forceFinish || (totalExpected > 0 && projectedGood < totalExpected);
+        const unitInfo = getStageProductivityUnit(stObj || stInfo);
+        const curGood = unitInfo.isPerOrderUnit ? (stInfo?.finished ? 1 : 0) : (Number(stInfo?.quantidade_boa) || 0);
+        const rawStageTarget = Number(stInfo?.quantidade_prevista ?? stInfo?.quantidade_pedido ?? selectedOrder.quantity) || 0;
+        const totalExpected = unitInfo.isPerOrderUnit ? 1 : (rawStageTarget > 0 ? rawStageTarget : (Number(selectedOrder.quantity) || 0));
+        const defaultPayload = {
+          quantidade_boa_incremento: Number(actionQuantityInput) || 0,
+        };
+        const effectiveGoodInc = unitInfo.isPerOrderUnit
+          ? 1
+          : defaultPayload.quantidade_boa_incremento;
+        const projectedGood = unitInfo.isPerOrderUnit ? 1 : curGood + effectiveGoodInc;
+        const isPartialFinish = unitInfo.isPerOrderUnit ? false : (forceFinish || (totalExpected > 0 && projectedGood < totalExpected));
 
         const finishKey = `fin_${executionId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
@@ -1642,7 +1732,7 @@ export function useAppLogic() {
             'x-idempotency-key': finishKey
           },
           body: JSON.stringify({ 
-            quantidade_boa_incremento: Number(actionQuantityInput) || 0,
+            quantidade_boa_incremento: effectiveGoodInc,
             partial: isPartialFinish,
             observation: actionObservationInput || 'Finalizado no apontamento',
             supervisor_override: false,
@@ -1654,13 +1744,13 @@ export function useAppLogic() {
           const resData = await finishRes.json().catch(() => ({}));
           setExecutionActionModal(null);
 
-          const isStageTrulyDone = Boolean(resData?.finished === true || resData?.status_operacao === 'CONCLUIDA');
+          const isStageTrulyDone = Boolean(unitInfo.isPerOrderUnit || resData?.finished === true || resData?.status_operacao === 'CONCLUIDA');
           const nextStages = (selectedOrder.stages_status || []).map(s =>
             Number(s.id) === Number(stageId)
               ? {
                   ...s,
-                  quantidade_boa: resData?.quantidade_boa !== undefined ? Number(resData.quantidade_boa) : projectedGood,
-                  saldo_pendente: resData?.saldo_pendente !== undefined ? Number(resData.saldo_pendente) : Math.max(0, totalExpected - projectedGood),
+                  quantidade_boa: unitInfo.isPerOrderUnit ? 1 : (resData?.quantidade_boa !== undefined ? Number(resData.quantidade_boa) : projectedGood),
+                  saldo_pendente: unitInfo.isPerOrderUnit ? 0 : (resData?.saldo_pendente !== undefined ? Number(resData.saldo_pendente) : Math.max(0, totalExpected - projectedGood)),
                   status_operacao: resData?.status_operacao || (isStageTrulyDone ? 'CONCLUIDA' : 'PARCIAL'),
                   finished: isStageTrulyDone,
                 }
@@ -1672,9 +1762,11 @@ export function useAppLogic() {
           if (isDelivered) {
             showToast("Produção concluída! Pedido movido para Pronto.");
           } else if (isStageTrulyDone) {
-            showToast("Etapa finalizada com sucesso!");
+            showToast(unitInfo.isPerOrderUnit
+              ? "Ficha de aprovação concluída! (+1 ficha contabilizada)"
+              : `Etapa finalizada com sucesso! (+${effectiveGoodInc} ${effectiveGoodInc === 1 ? unitInfo.singular : unitInfo.plural})`);
           } else {
-            showToast(`Apontamento parcial registrado (${resData?.quantidade_boa ?? projectedGood}/${totalExpected} peças).`);
+            showToast(`Apontamento parcial registrado (${resData?.quantidade_boa ?? projectedGood}/${totalExpected} ${unitInfo.plural}).`);
           }
 
           setSelectedOrder(prev => {

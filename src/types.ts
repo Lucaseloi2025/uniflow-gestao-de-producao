@@ -27,9 +27,24 @@ export interface User {
   shift?: string;
 }
 
+export type ProductivityUnitCode = 'ficha' | 'kit_dtf' | 'peca' | 'lote';
+
+export interface StageProductivityUnitInfo {
+  unit: ProductivityUnitCode;
+  singular: string;
+  plural: string;
+  actionSingular: string;
+  actionPlural: string;
+  queueLabel: string;
+  todayDoneLabel: string;
+  todayDoneSubLabel: string;
+  isPerOrderUnit: boolean;
+}
+
 export interface StageStatus {
   id: number;
   name: string;
+  slug?: string;
   finished: boolean;
   in_progress?: boolean;
   status_operacao?: OperationStatus;
@@ -41,7 +56,9 @@ export interface StageStatus {
   pendencia_reposicao?: number;
   saldo_pendente?: number;
   quantidade_pedido?: number;
-  calculation_type?: 'por_pedido' | 'por_peca' | 'por_lote';
+  quantidade_prevista?: number;
+  calculation_type?: 'por_pedido' | 'por_peca' | 'por_kit_dtf' | 'por_lote';
+  unidade_produtividade?: ProductivityUnitCode;
 }
 
 export interface OrderStageProgress {
@@ -119,7 +136,11 @@ export interface LossReportData {
 }
 
 export interface OrderItem {
+  id?: number;
+  order_item_id?: number;
   product_type?: string;
+  print_type?: string;
+  required_stages?: number[];
   size?: string;
   tamanho?: string;
   quantity?: number;
@@ -144,6 +165,7 @@ export interface OrderItem {
   largura_util?: string;
   lote?: string;
   orientacao?: string;
+  observations?: string;
 }
 
 export interface OrderCorteDemand {
@@ -311,13 +333,17 @@ export interface OrderTemplate {
 export interface Stage {
   id: number;
   name: string;
+  sector_name?: string;
+  slug?: string;
+  code?: string;
   sort_order: number;
   active: boolean;
   average_time_seconds?: number;
   ideal_time?: number;
   real_average_time?: number;
   execution_count?: number;
-  calculation_type: 'por_pedido' | 'por_peca' | 'por_lote';
+  calculation_type: 'por_pedido' | 'por_peca' | 'por_kit_dtf' | 'por_lote';
+  unidade_produtividade?: ProductivityUnitCode;
   meta_diaria?: number | null;
 }
 

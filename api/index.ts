@@ -306,6 +306,171 @@ export function isConferenciaStage(stage: any): boolean {
     return getStageSlug(stage) === 'CONFERENCIA';
 }
 
+export interface StageProductivityUnitBackendInfo {
+    unit: 'ficha' | 'kit_dtf' | 'peca' | 'lote';
+    singular: string;
+    plural: string;
+    actionLabel: string;
+    queueLabel: string;
+    todayLabel: string;
+    goalSuffix: string;
+    hourSuffix: string;
+    dailyGoalLabel: string;
+    hourlyGoalLabel: string;
+    isPerOrderUnit: boolean;
+}
+
+export function getStageProductivityUnitBackend(stage: any): StageProductivityUnitBackendInfo {
+    const slug = getStageSlug(stage);
+    const calcType = String(stage?.calculation_type || '').toLowerCase().trim();
+    const explicitUnit = String(stage?.unidade_produtividade || '').toLowerCase().trim();
+
+    if (
+        explicitUnit === 'ficha' ||
+        calcType === 'por_pedido' ||
+        slug === 'FICHA_APROVACAO'
+    ) {
+        return {
+            unit: 'ficha',
+            singular: 'ficha',
+            plural: 'fichas',
+            actionLabel: 'fichas aprovadas',
+            queueLabel: 'Fichas na Fila',
+            todayLabel: 'Fichas Concluídas Hoje',
+            goalSuffix: 'fichas/dia',
+            hourSuffix: 'fichas/h',
+            dailyGoalLabel: 'fichas/dia',
+            hourlyGoalLabel: 'fichas/h',
+            isPerOrderUnit: true,
+        };
+    }
+
+    if (
+        explicitUnit === 'kit_dtf' ||
+        calcType === 'por_kit_dtf' ||
+        slug === 'DTF' ||
+        slug === 'IMPRESSAO_DTF'
+    ) {
+        return {
+            unit: 'kit_dtf',
+            singular: 'kit DTF',
+            plural: 'kits DTF',
+            actionLabel: 'kits impressos',
+            queueLabel: 'Kits DTF na Fila',
+            todayLabel: 'Kits Impressos Hoje',
+            goalSuffix: 'kits/dia',
+            hourSuffix: 'kits/h',
+            dailyGoalLabel: 'kits/dia',
+            hourlyGoalLabel: 'kits/h',
+            isPerOrderUnit: false,
+        };
+    }
+
+    if (explicitUnit === 'lote' || calcType === 'por_lote') {
+        return {
+            unit: 'lote',
+            singular: 'lote',
+            plural: 'lotes',
+            actionLabel: 'lotes concluídos',
+            queueLabel: 'Lotes na Fila',
+            todayLabel: 'Lotes Concluídos Hoje',
+            goalSuffix: 'lotes/dia',
+            hourSuffix: 'lotes/h',
+            dailyGoalLabel: 'lotes/dia',
+            hourlyGoalLabel: 'lotes/h',
+            isPerOrderUnit: false,
+        };
+    }
+
+    let actionLabel = 'peças produzidas';
+    let todayLabel = 'Peças Produzidas Hoje';
+    if (slug === 'CORTE') {
+        actionLabel = 'peças cortadas';
+        todayLabel = 'Peças Cortadas Hoje';
+    } else if (slug === 'COSTURA') {
+        actionLabel = 'peças costuradas';
+        todayLabel = 'Peças Costuradas Hoje';
+    } else if (slug === 'SUBLIMACAO') {
+        actionLabel = 'peças sublimadas';
+        todayLabel = 'Peças Sublimadas Hoje';
+    } else if (slug === 'ESTAMPAGEM' || slug === 'ESTAMPARIA' || slug === 'SILK') {
+        actionLabel = 'peças estampadas';
+        todayLabel = 'Peças Estampadas Hoje';
+    }
+
+    return {
+        unit: 'peca',
+        singular: 'peça',
+        plural: 'peças',
+        actionLabel,
+        queueLabel: 'Peças na Fila',
+        todayLabel,
+        goalSuffix: 'peças/dia',
+        hourSuffix: 'peças/h',
+        dailyGoalLabel: 'peças/dia',
+        hourlyGoalLabel: 'peças/h',
+        isPerOrderUnit: false,
+    };
+}
+
+export function calculateStageTargetQuantity(order: any, stageId: number, stageObj?: any): number {
+    const unitInfo = getStageProductivityUnitBackend(stageObj || { id: stageId });
+    if (unitInfo.isPerOrderUnit) {
+        return 1;
+    }
+    const itemsList = parseOrderItems(order?.items);
+    const itemsWithStages = itemsList.filter(
+        (it: any) => it && typeof it === 'object' && Array.isArray(it.required_stages) && it.required_stages.length > 0
+    );
+    if (itemsWithStages.length > 0) {
+        const matchingItems = itemsWithStages.filter((it: any) =>
+            it.required_stages.map(Number).includes(Number(stageId))
+        );
+        if (matchingItems.length > 0) {
+            const sumItemQty = matchingItems.reduce(
+                (acc: number, it: any) => acc + Math.max(0, Number(it.quantity ?? it.quantidade ?? 1) || 0),
+                0
+            );
+            if (sumItemQty > 0) {
+                return sumItemQty;
+            }
+        }
+    }
+    return Math.max(1, Number(order?.quantity) || 1);
+}
+
+export function isStagePrevFinishedForOrderItems(
+    order: any,
+    stageId: number,
+    reqStageIds: number[],
+    isStageFinishedFn: (sid: number) => boolean
+): boolean {
+    const itemsList = parseOrderItems(order?.items);
+    const itemsWithStages = itemsList.filter(
+        (it: any) => it && typeof it === 'object' && Array.isArray(it.required_stages) && it.required_stages.length > 0
+    );
+    if (itemsWithStages.length > 0) {
+        const matchingItems = itemsWithStages.filter((it: any) =>
+            it.required_stages.map(Number).includes(Number(stageId))
+        );
+        if (matchingItems.length > 0) {
+            return matchingItems.some((it: any) => {
+                const route = it.required_stages.map(Number).filter((id: number) => id && id !== 12);
+                const pos = route.indexOf(Number(stageId));
+                if (pos <= 0) return true;
+                for (let j = 0; j < pos; j++) {
+                    if (!isStageFinishedFn(route[j])) return false;
+                }
+                return true;
+            });
+        }
+    }
+    const idx = reqStageIds.indexOf(Number(stageId));
+    if (idx <= 0) return true;
+    const prevSId = reqStageIds[idx - 1];
+    return isStageFinishedFn(prevSId);
+}
+
 export async function resolveDefaultProductionStageIds(client: any = supabaseAdmin): Promise<number[]> {
     try {
         const { data: dbStages } = await client
@@ -786,9 +951,10 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
   const requiredStages = rawRequiredStages.map((id: any) => Number(id));
   const stagesStatus: any[] = Array.isArray(order.stages_status) ? order.stages_status : [];
 
-  const [progRes, execRes] = await Promise.all([
+  const [progRes, execRes, stagesRes] = await Promise.all([
     sb.from('order_stage_progress').select('*').eq('order_id', orderId),
     sb.from('stage_executions').select('stage_id, status').eq('order_id', orderId).in('status', ['Em andamento', 'Pausado']),
+    sb.from('stages').select('*'),
   ]);
 
   const dbProgMap = new Map<number, any>();
@@ -801,6 +967,11 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
     activeExecMap.set(Number(e.stage_id), e.status);
   });
 
+  const stageCatalogMap = new Map<number, any>();
+  (stagesRes?.data || []).forEach((s: any) => {
+    stageCatalogMap.set(Number(s.id), s);
+  });
+
   const isOrderCancelled = order.status === 'Cancelado' || Boolean(order.deleted_at);
   const isOrderBlocked = Boolean(order.pcp_is_blocked);
 
@@ -808,8 +979,14 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
   for (let idx = 0; idx < requiredStages.length; idx++) {
     const stageId = Number(requiredStages[idx]);
     const st = stagesStatus.find((s: any) => Number(s.id) === stageId);
+    const sMeta = stageCatalogMap.get(stageId) || st || { id: stageId };
+    const unitInfo = getStageProductivityUnitBackend(sMeta);
     const existing = dbProgMap.get(stageId);
-    const defaultQty = Number(order.quantity) || 0;
+    const computedStageTarget = calculateStageTargetQuantity(order, stageId, sMeta);
+    const defaultQty = unitInfo.isPerOrderUnit
+      ? 1
+      : (Number(existing?.quantidade_pedido) > 0 ? Number(existing.quantidade_pedido) : computedStageTarget);
+
     const isFinished = existing
       ? Boolean(
           existing.finished ||
@@ -817,33 +994,42 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
             (defaultQty > 0 && Number(existing.quantidade_boa) >= defaultQty && !(Number(existing.pendencia_reposicao) > 0))
         )
       : Boolean(st?.finished || st?.status === 'Concluído' || st?.status === 'Finalizado');
-    const goodQty = existing
+
+    const rawGood = existing
       ? Number(existing.quantidade_boa) || (isFinished ? defaultQty : 0)
       : isFinished
       ? defaultQty
       : Number(st?.quantidade_boa) || 0;
+    const goodQty = unitInfo.isPerOrderUnit ? (isFinished || rawGood >= 1 ? 1 : 0) : rawGood;
     const lostQty = existing ? Number(existing.quantidade_perdida) || 0 : Number(st?.quantidade_perdida) || 0;
     const reworkQty = existing ? Number(existing.quantidade_retrabalho) || 0 : 0;
     const replQty = existing ? Number(existing.pendencia_reposicao) || 0 : Number(st?.pendencia_reposicao) || 0;
 
     const prevStageProg = idx > 0 ? result[idx - 1] : null;
     const isFirstStage = idx === 0;
-    const prevFinished = isFirstStage ? true : Boolean(prevStageProg?.finished);
-    const prevTransferred = isFirstStage
+    const prevFinished = isStagePrevFinishedForOrderItems(
+      order,
+      stageId,
+      requiredStages,
+      (sid: number) => Boolean(result.find((r) => Number(r.stage_id) === Number(sid))?.finished)
+    );
+    const prevTransferred = isFirstStage || prevFinished
       ? defaultQty
       : Math.max(0, Number(prevStageProg?.quantidade_transferida ?? prevStageProg?.quantidade_boa) || 0);
 
-    const receivedQty =
-      existing?.quantidade_recebida !== undefined && Number(existing.quantidade_recebida) > 0
-        ? Number(existing.quantidade_recebida)
-        : isFirstStage || prevFinished
-        ? defaultQty
-        : prevTransferred;
+    const receivedQty = unitInfo.isPerOrderUnit
+      ? 1
+      : existing?.quantidade_recebida !== undefined && Number(existing.quantidade_recebida) > 0
+      ? Number(existing.quantidade_recebida)
+      : isFirstStage || prevFinished
+      ? defaultQty
+      : prevTransferred;
 
-    const transferredQty =
-      existing?.quantidade_transferida !== undefined && Number(existing.quantidade_transferida) > 0
-        ? Number(existing.quantidade_transferida)
-        : Math.min(defaultQty, goodQty);
+    const transferredQty = unitInfo.isPerOrderUnit
+      ? (isFinished ? 1 : 0)
+      : existing?.quantidade_transferida !== undefined && Number(existing.quantidade_transferida) > 0
+      ? Number(existing.quantidade_transferida)
+      : Math.min(defaultQty, goodQty);
 
     const saldoPendente = Math.max(0, defaultQty - goodQty + replQty);
     const statusOperacao = resolveOperationStatusInline({
@@ -858,7 +1044,7 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
       isFirstStageInRoute: isFirstStage,
       previousStageFinished: prevFinished,
       previousStageTransferredQty: prevTransferred,
-      calculationType: st?.calculation_type || 'por_peca',
+      calculationType: unitInfo.isPerOrderUnit ? 'por_pedido' : (sMeta?.calculation_type || st?.calculation_type || 'por_peca'),
     });
 
     const progObj: OrderStageProgress = {
@@ -930,16 +1116,23 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [],
     const isCancelled = order.status === 'Cancelado' || Boolean(order.deleted_at);
     const isBlocked = Boolean(order.pcp_is_blocked);
     const filteredStages = order.stages_status;
+    const reqStageIds = filteredStages.map((s: any) => Number(s.id));
 
+    const finishedMap = new Map<number, boolean>();
     let prevFinished = true;
     let prevTransferredQty = qty;
 
     order.stages_status = filteredStages.map((st: any, idx: number) => {
       const stageId = Number(st.id);
-      const sMeta = stageById.get(stageId);
+      const sMeta = stageById.get(stageId) || st;
+      const unitInfo = getStageProductivityUnitBackend(sMeta);
       const key = `${order.id}_${stageId}`;
       const existingProg = dbProgByKey.get(key);
-      const targetQty = Number(existingProg?.quantidade_pedido) || qty;
+      const computedTarget = calculateStageTargetQuantity(order, stageId, sMeta);
+      const targetQty = unitInfo.isPerOrderUnit
+        ? 1
+        : (Number(existingProg?.quantidade_pedido) > 0 ? Number(existingProg.quantidade_pedido) : computedTarget);
+
       const isFinished = existingProg
         ? Boolean(
             existingProg.finished ||
@@ -947,54 +1140,57 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [],
               (targetQty > 0 && Number(existingProg.quantidade_boa) >= targetQty && !(Number(existingProg.pendencia_reposicao) > 0))
           )
         : Boolean(st.finished || st.status === 'Concluído' || st.status === 'Finalizado');
-      const prog: any = existingProg
-        ? {
-            ...existingProg,
-            quantidade_pedido: targetQty,
-            finished: isFinished,
-            quantidade_boa:
-              isFinished && !existingProg.quantidade_boa
-                ? targetQty
-                : Number(existingProg.quantidade_boa) || 0,
-          }
-        : {
-            order_id: order.id,
-            stage_id: stageId,
-            quantidade_pedido: qty,
-            quantidade_boa: isFinished ? qty : Number(st.quantidade_boa) || 0,
-            quantidade_perdida: Number(st.quantidade_perdida) || 0,
-            pendencia_reposicao: Number(st.pendencia_reposicao) || 0,
-            finished: isFinished,
-          };
 
-      const goodQty = Number(prog.quantidade_boa) || 0;
-      const lostQty = Number(prog.quantidade_perdida) || 0;
-      const replQty = Number(prog.pendencia_reposicao) || 0;
-      const receivedQty =
-        prog.quantidade_recebida !== undefined && Number(prog.quantidade_recebida) > 0
-          ? Number(prog.quantidade_recebida)
-          : idx === 0 || prevFinished
-          ? qty
-          : prevTransferredQty;
-      const transferredQty =
-        prog.quantidade_transferida !== undefined && Number(prog.quantidade_transferida) > 0
-          ? Number(prog.quantidade_transferida)
-          : Math.min(qty, goodQty);
-      const saldoPendente = Math.max(0, (prog.quantidade_pedido || qty) - goodQty + replQty);
+      finishedMap.set(stageId, isFinished);
+
+      const rawGood = existingProg
+        ? isFinished && !existingProg.quantidade_boa
+          ? targetQty
+          : Number(existingProg.quantidade_boa) || 0
+        : isFinished
+        ? targetQty
+        : Number(st.quantidade_boa) || 0;
+
+      const goodQty = unitInfo.isPerOrderUnit ? (isFinished || rawGood >= 1 ? 1 : 0) : rawGood;
+      const lostQty = Number(existingProg?.quantidade_perdida ?? st.quantidade_perdida) || 0;
+      const replQty = Number(existingProg?.pendencia_reposicao ?? st.pendencia_reposicao) || 0;
+
+      const itemAwarePrevFinished = isStagePrevFinishedForOrderItems(
+        order,
+        stageId,
+        reqStageIds,
+        (sid: number) => Boolean(finishedMap.get(Number(sid)))
+      );
+
+      const receivedQty = unitInfo.isPerOrderUnit
+        ? 1
+        : existingProg?.quantidade_recebida !== undefined && Number(existingProg.quantidade_recebida) > 0
+        ? Number(existingProg.quantidade_recebida)
+        : idx === 0 || itemAwarePrevFinished
+        ? targetQty
+        : prevTransferredQty;
+
+      const transferredQty = unitInfo.isPerOrderUnit
+        ? (isFinished ? qty : 0)
+        : existingProg?.quantidade_transferida !== undefined && Number(existingProg.quantidade_transferida) > 0
+        ? Number(existingProg.quantidade_transferida)
+        : Math.min(targetQty, goodQty);
+
+      const saldoPendente = Math.max(0, targetQty - goodQty + replQty);
 
       const statusOperacao = resolveOperationStatusInline({
         isCancelled,
         isBlocked,
         finished: isFinished,
         activeExecutionStatus: st.in_progress ? 'Em andamento' : null,
-        quantidadePedido: prog.quantidade_pedido || qty,
+        quantidadePedido: targetQty,
         quantidadeRecebida: receivedQty,
         quantidadeBoa: goodQty,
         pendenciaReposicao: replQty,
         isFirstStageInRoute: idx === 0,
-        previousStageFinished: prevFinished,
+        previousStageFinished: itemAwarePrevFinished,
         previousStageTransferredQty: prevTransferredQty,
-        calculationType: st.calculation_type || sMeta?.calculation_type || 'por_peca',
+        calculationType: unitInfo.isPerOrderUnit ? 'por_pedido' : (st.calculation_type || sMeta?.calculation_type || 'por_peca'),
       });
 
       prevFinished = isFinished;
@@ -1004,18 +1200,24 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [],
         ...st,
         name: normalizeUtf8Text(st.name || sMeta?.name || `Etapa #${stageId}`),
         slug: st.slug || (sMeta ? getStageSlug(sMeta) : getStageSlug(st)),
+        calculation_type: unitInfo.isPerOrderUnit
+          ? 'por_pedido'
+          : unitInfo.unit === 'kit_dtf'
+          ? 'por_kit_dtf'
+          : (st.calculation_type || sMeta?.calculation_type || 'por_peca'),
+        unidade_produtividade: unitInfo.unit,
         finished: isFinished,
         status_operacao: statusOperacao,
         quantidade_boa: goodQty,
         quantidade_concluida: goodQty,
         quantidade_perdida: lostQty,
         quantidade_recebida: receivedQty,
-        quantidade_transferida: transferredQty,
+        quantidade_transferida: unitInfo.isPerOrderUnit ? (isFinished ? 1 : 0) : transferredQty,
         pendencia_reposicao: replQty,
         saldo_pendente: saldoPendente,
         saldo_restante: saldoPendente,
-        quantidade_pedido: prog.quantidade_pedido || qty,
-        quantidade_prevista: prog.quantidade_pedido || qty,
+        quantidade_pedido: targetQty,
+        quantidade_prevista: targetQty,
       };
     });
   }
@@ -2919,7 +3121,7 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
     try {
         const orderId = Number(req.params.id);
         const usuario = getActorName(req, "Vendedora");
-        const { print_type, product_type, deadline, observations, required_stages, num_colors } = req.body;
+        const { print_type, product_type, deadline, observations, required_stages, num_colors, items } = req.body;
 
         if (!print_type) {
             return res.status(400).json({ error: "É necessário selecionar o tipo de estampa (DTF, Silk, Sublimação, Bordado)" });
@@ -2935,20 +3137,106 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
             return res.status(404).json({ error: "Pedido rascunho não encontrado" });
         }
 
+        const { data: dbStages } = await supabaseAdmin
+            .from("stages")
+            .select("*")
+            .eq("active", 1)
+            .order("sort_order", { ascending: true });
+        const stageCatalog = dbStages || [];
+        const stageMetaById = new Map<number, any>(stageCatalog.map((s: any) => [Number(s.id), s]));
+
         const fallbackStages = await resolveDefaultProductionStageIds(supabaseAdmin);
-        const rawStages = required_stages || currentOrder.required_stages || fallbackStages;
-        const stagesArray = Array.isArray(rawStages) && rawStages.length > 0 
-            ? rawStages.map((id: any) => Number(id)).filter((id: number) => !isNaN(id)) 
-            : fallbackStages;
+        const existingItems = parseOrderItems(currentOrder.items);
+        const incomingItems = Array.isArray(items) && items.length > 0 ? items : existingItems;
+
+        const mergedItems = incomingItems.map((incIt: any, idx: number) => {
+            const origIt = existingItems[idx] || {};
+            const itemStagesRaw = Array.isArray(incIt?.required_stages) && incIt.required_stages.length > 0
+                ? incIt.required_stages
+                : (Array.isArray(required_stages) && required_stages.length > 0 ? required_stages : fallbackStages);
+            const itemStageIds = itemStagesRaw
+                .map((id: any) => Number(id))
+                .filter((id: number) => Number.isFinite(id) && id > 0 && id !== 12);
+            return {
+                ...origIt,
+                ...incIt,
+                order_id: orderId,
+                order_item_id: incIt?.order_item_id ?? origIt?.order_item_id ?? incIt?.id ?? origIt?.id ?? idx + 1,
+                print_type: incIt?.print_type || origIt?.print_type || print_type,
+                required_stages: itemStageIds,
+            };
+        });
+
+        const unionStageSet = new Set<number>();
+        for (const it of mergedItems) {
+            if (Array.isArray(it.required_stages)) {
+                for (const sid of it.required_stages) {
+                    if (Number.isFinite(Number(sid)) && Number(sid) > 0 && Number(sid) !== 12) {
+                        unionStageSet.add(Number(sid));
+                    }
+                }
+            }
+        }
+        if (unionStageSet.size === 0) {
+            const rawStages = required_stages || currentOrder.required_stages || fallbackStages;
+            if (Array.isArray(rawStages)) {
+                rawStages.forEach((id: any) => {
+                    const n = Number(id);
+                    if (Number.isFinite(n) && n > 0 && n !== 12) unionStageSet.add(n);
+                });
+            }
+        }
+
+        const stagesArray = stageCatalog.length > 0
+            ? stageCatalog
+                  .map((s: any) => Number(s.id))
+                  .filter((sid: number) => unionStageSet.has(sid))
+            : Array.from(unionStageSet);
+        if (stagesArray.length === 0) {
+            fallbackStages.forEach((sid: number) => stagesArray.push(sid));
+        }
+
+        const orderDraftWithItems = {
+            ...currentOrder,
+            items: mergedItems,
+            required_stages: stagesArray,
+        };
+
+        const initialStagesStatus = stagesArray.map((sid: number, idx: number) => {
+            const sMeta = stageMetaById.get(Number(sid)) || { id: sid, name: `Etapa #${sid}` };
+            const unitInfo = getStageProductivityUnitBackend(sMeta);
+            const targetQty = calculateStageTargetQuantity(orderDraftWithItems, Number(sid), sMeta);
+            return {
+                id: Number(sid),
+                name: normalizeUtf8Text(sMeta.name || `Etapa #${sid}`),
+                slug: getStageSlug(sMeta),
+                calculation_type: unitInfo.isPerOrderUnit ? 'por_pedido' : (unitInfo.unit === 'kit_dtf' ? 'por_kit_dtf' : (sMeta.calculation_type || 'por_peca')),
+                unidade_produtividade: unitInfo.unit,
+                quantidade_pedido: targetQty,
+                quantidade_prevista: targetQty,
+                quantidade_boa: 0,
+                quantidade_concluida: 0,
+                saldo_pendente: targetQty,
+                saldo_restante: targetQty,
+                finished: false,
+                in_progress: false,
+                status: 'Pendente',
+                status_operacao: idx === 0 ? 'LIBERADA' : 'AGUARDANDO',
+            };
+        });
 
         const updates: any = {
             status: "Entrada",
             print_type: print_type,
             product_type: product_type || currentOrder.product_type,
             required_stages: stagesArray,
+            stages_status: initialStagesStatus,
             num_colors: Number(num_colors) || currentOrder.num_colors || 1,
         };
 
+        if (mergedItems.length > 0) {
+            updates.items = mergedItems;
+        }
         if (deadline) updates.deadline = deadline;
         if (observations !== undefined) updates.observations = observations;
 
@@ -2961,13 +3249,36 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
 
         if (checkError(updateErr, res, "Erro ao liberar pedido para produção")) return;
 
+        // Inicializa order_stage_progress com quantidade_boa = 0 e quantidade_pedido específica de cada etapa
+        try {
+            for (let idx = 0; idx < stagesArray.length; idx++) {
+                const sid = Number(stagesArray[idx]);
+                const sMeta = stageMetaById.get(sid) || { id: sid };
+                const targetQty = calculateStageTargetQuantity(orderDraftWithItems, sid, sMeta);
+                await safeUpsertOrderStageProgress(supabaseAdmin, {
+                    order_id: orderId,
+                    stage_id: sid,
+                    quantidade_pedido: targetQty,
+                    quantidade_recebida: idx === 0 ? targetQty : 0,
+                    quantidade_boa: 0,
+                    quantidade_perdida: 0,
+                    pendencia_reposicao: 0,
+                    saldo_pendente: targetQty,
+                    finished: false,
+                    status_operacao: idx === 0 ? 'LIBERADA' : 'AGUARDANDO',
+                });
+            }
+        } catch (progInitErr) {
+            console.warn("[ConfirmDraft] Aviso ao inicializar order_stage_progress:", progInitErr);
+        }
+
         await logOrderHistory(supabaseAdmin, {
             order_id: orderId,
             usuario,
             acao: "confirmou_rascunho",
             antes: currentOrder,
             depois: updatedOrder,
-            detalhes: "Confirmação de rascunho de pedido",
+            detalhes: "Confirmação de rascunho de pedido com configuração individual de etapas por item",
         });
 
         return res.json({ success: true, order: updatedOrder });
@@ -4571,14 +4882,46 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
         const effectiveReason = override_reason || observacao || (effectiveOverride ? `Apontamento autorizado por ${actorRole || 'Administrador'}` : null);
         const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || `prog_${orderId}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-        const transferInc = quantidade_transferida !== undefined ? Number(quantidade_transferida) : (transfer_to_next ? Number(incremento) || 0 : 0);
+        const [stageLookupRes, ordLookupRes] = await Promise.all([
+            supabaseAdmin.from("stages").select("*").eq("id", stageId).maybeSingle(),
+            supabaseAdmin.from("orders").select("id, quantity, items, stages_status").eq("id", orderId).maybeSingle(),
+        ]);
+        const stageMeta = stageLookupRes?.data || { id: stageId };
+        const ordMeta = ordLookupRes?.data || { id: orderId, quantity: 1 };
+        const unitInfo = getStageProductivityUnitBackend(stageMeta);
+        const stageTargetQty = calculateStageTargetQuantity(ordMeta, stageId, stageMeta);
+
+        const effectiveGoodInc = unitInfo.isPerOrderUnit
+            ? (Number(incremento) > 0 ? 1 : 0)
+            : (Number(incremento) || 0);
+
+        // Garante que order_stage_progress possua a quantidade_pedido correta da etapa (ex: 1 ficha ou soma dos itens)
+        try {
+            const { data: existingStageProg } = await supabaseAdmin
+                .from("order_stage_progress")
+                .select("order_id, stage_id, quantidade_pedido")
+                .eq("order_id", orderId)
+                .eq("stage_id", stageId)
+                .maybeSingle();
+            if (existingStageProg && Number(existingStageProg.quantidade_pedido) !== stageTargetQty) {
+                await supabaseAdmin
+                    .from("order_stage_progress")
+                    .update({ quantidade_pedido: stageTargetQty })
+                    .eq("order_id", orderId)
+                    .eq("stage_id", stageId);
+            }
+        } catch (_e) {
+            // Best-effort pre-sync
+        }
+
+        const transferInc = quantidade_transferida !== undefined ? Number(quantidade_transferida) : (transfer_to_next ? effectiveGoodInc : 0);
 
         const { data: rpcRecordData, error: rpcRecordErr } = await supabaseAdmin.rpc("rpc_record_production", {
             p_order_id: orderId,
             p_stage_id: stageId,
             p_user_id: actorId,
             p_idempotency_key: String(effectiveKey).trim(),
-            p_good_inc: Number(incremento) || 0,
+            p_good_inc: effectiveGoodInc,
             p_lost_inc: Number(quantidade_perdida) || 0,
             p_rework_inc: Number(quantidade_retrabalho) || 0,
             p_transfer_inc: transferInc,
@@ -5327,11 +5670,57 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
 
     const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || `fin_${execution_id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
+    let preExecRow: any = null;
+    let preStageUnitInfo: StageProductivityUnitBackendInfo | null = null;
+    let preStageTargetQty = 0;
+
+    try {
+        const { data: exLookup } = await supabaseAdmin
+            .from("stage_executions")
+            .select("order_id, stage_id")
+            .eq("id", execution_id)
+            .maybeSingle();
+        if (exLookup && exLookup.order_id && exLookup.stage_id) {
+            preExecRow = exLookup;
+            const [stRes, ordRes] = await Promise.all([
+                supabaseAdmin.from("stages").select("*").eq("id", exLookup.stage_id).maybeSingle(),
+                supabaseAdmin.from("orders").select("id, quantity, items, stages_status").eq("id", exLookup.order_id).maybeSingle(),
+            ]);
+            const stMeta = stRes?.data || { id: exLookup.stage_id };
+            const ordMeta = ordRes?.data || { id: exLookup.order_id, quantity: 1 };
+            preStageUnitInfo = getStageProductivityUnitBackend(stMeta);
+            preStageTargetQty = calculateStageTargetQuantity(ordMeta, exLookup.stage_id, stMeta);
+
+            const { data: exProg } = await supabaseAdmin
+                .from("order_stage_progress")
+                .select("order_id, stage_id, quantidade_pedido")
+                .eq("order_id", exLookup.order_id)
+                .eq("stage_id", exLookup.stage_id)
+                .maybeSingle();
+            if (exProg && Number(exProg.quantidade_pedido) !== preStageTargetQty) {
+                await supabaseAdmin
+                    .from("order_stage_progress")
+                    .update({ quantidade_pedido: preStageTargetQty })
+                    .eq("order_id", exLookup.order_id)
+                    .eq("stage_id", exLookup.stage_id);
+            }
+        }
+    } catch (_e) {
+        // Best-effort pre-sync
+    }
+
+    const effectiveGoodInc = preStageUnitInfo?.isPerOrderUnit
+        ? 1
+        : (Number(quantidade_boa_incremento) || 0);
+    const effectivePartial = preStageUnitInfo?.isPerOrderUnit
+        ? false
+        : Boolean(partial);
+
     const { data: rpcFinishData, error: rpcFinishErr } = await supabaseAdmin.rpc("rpc_finish_operation", {
         p_execution_id: execution_id,
         p_user_id: actorId,
-        p_good_inc: Number(quantidade_boa_incremento) || 0,
-        p_partial: Boolean(partial),
+        p_good_inc: effectiveGoodInc,
+        p_partial: effectivePartial,
         p_observation: effectiveObs,
         p_idempotency_key: effectiveKey,
         p_supervisor_override: effectiveOverride,
@@ -5351,11 +5740,11 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
     // Resguardo resiliente: sincroniza order_stage_progress e orders.stages_status respeitando se foi parcial ou concluída
     if (httpStatus >= 200 && httpStatus < 300 && !rpcFinishData?.error) {
         try {
-            const { data: execRow } = await supabaseAdmin
+            const execRow = preExecRow || (await supabaseAdmin
                 .from("stage_executions")
                 .select("order_id, stage_id")
                 .eq("id", execution_id)
-                .maybeSingle();
+                .maybeSingle()).data;
 
             if (execRow && execRow.order_id) {
                 const nowIso = new Date().toISOString();
@@ -5367,29 +5756,82 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                     .eq("stage_id", execRow.stage_id)
                     .maybeSingle();
 
+                const isPerOrderStage = Boolean(preStageUnitInfo?.isPerOrderUnit);
+
                 const isStageTrulyFinished = Boolean(
-                    !partial && (
-                        rpcFinishData?.finished === true ||
-                        rpcFinishData?.status_operacao === "CONCLUIDA" ||
-                        curProg?.finished === true ||
-                        curProg?.status_operacao === "CONCLUIDA" ||
-                        (curProg && Number(curProg.quantidade_pedido) > 0 && Number(curProg.quantidade_boa) >= Number(curProg.quantidade_pedido) && !(Number(curProg.pendencia_reposicao) > 0))
+                    isPerOrderStage || (
+                        !effectivePartial && (
+                            rpcFinishData?.finished === true ||
+                            rpcFinishData?.status_operacao === "CONCLUIDA" ||
+                            curProg?.finished === true ||
+                            curProg?.status_operacao === "CONCLUIDA" ||
+                            (curProg && Number(curProg.quantidade_pedido) > 0 && Number(curProg.quantidade_boa) >= Number(curProg.quantidade_pedido) && !(Number(curProg.pendencia_reposicao) > 0))
+                        )
                     )
                 );
 
                 // 1. Marca explicitamente a etapa atual como concluída somente se realmente concluída
                 if (isStageTrulyFinished) {
+                    const updateProgPayload: any = {
+                        finished: true,
+                        status_operacao: "CONCLUIDA",
+                        saldo_pendente: 0,
+                        completed_at: nowIso,
+                        updated_at: nowIso,
+                    };
+                    if (isPerOrderStage) {
+                        updateProgPayload.quantidade_pedido = 1;
+                        updateProgPayload.quantidade_boa = 1;
+                    }
                     await supabaseAdmin
                         .from("order_stage_progress")
-                        .update({
-                            finished: true,
-                            status_operacao: "CONCLUIDA",
-                            saldo_pendente: 0,
-                            completed_at: nowIso,
-                            updated_at: nowIso,
-                        })
+                        .update(updateProgPayload)
                         .eq("order_id", execRow.order_id)
                         .eq("stage_id", execRow.stage_id);
+
+                    // Para etapa por_pedido (Ficha de aprovação), garante que order_progress_logs registre exatamente 1 ficha (nunca 300)
+                    if (isPerOrderStage) {
+                        try {
+                            const { data: recentLogs } = await supabaseAdmin
+                                .from("order_progress_logs")
+                                .select("id, quantidade_boa_incremento")
+                                .eq("order_id", execRow.order_id)
+                                .eq("stage_id", execRow.stage_id)
+                                .order("created_at", { ascending: false })
+                                .limit(5);
+                            if (recentLogs && recentLogs.length > 0) {
+                                for (const rl of recentLogs) {
+                                    if (Number(rl.quantidade_boa_incremento) > 1) {
+                                        await supabaseAdmin
+                                            .from("order_progress_logs")
+                                            .update({ quantidade_boa_incremento: 1 })
+                                            .eq("id", rl.id);
+                                    }
+                                }
+                            } else {
+                                await supabaseAdmin
+                                    .from("order_progress_logs")
+                                    .insert({
+                                        order_id: execRow.order_id,
+                                        stage_id: execRow.stage_id,
+                                        user_id: actorId,
+                                        quantidade_boa_incremento: 1,
+                                        observacao: effectiveObs,
+                                        created_at: nowIso,
+                                    });
+                            }
+                            if (rpcFinishData) {
+                                rpcFinishData.quantidade_pedido = 1;
+                                rpcFinishData.quantidade_boa = 1;
+                                rpcFinishData.saldo_pendente = 0;
+                                rpcFinishData.finished = true;
+                                rpcFinishData.status_operacao = "CONCLUIDA";
+                                rpcFinishData.unidade_produtividade = "ficha";
+                            }
+                        } catch (_logErr) {
+                            // Best-effort log normalization
+                        }
+                    }
 
                     const { data: itemRows } = await supabaseAdmin
                         .from("order_items")
@@ -5443,11 +5885,17 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                     const updatedStagesStatus = Array.isArray(ord.stages_status)
                         ? ord.stages_status.map((s: any) => {
                             if (Number(s.id) === Number(execRow.stage_id)) {
-                                const qBoa = curStageProg ? Number(curStageProg.quantidade_boa) || 0 : (Number(rpcFinishData?.quantidade_boa) || Number(s.quantidade_boa) || 0);
-                                const qPrev = curStageProg ? Number(curStageProg.quantidade_pedido) || Number(ord.quantity) || 0 : (Number(ord.quantity) || 0);
+                                const qBoa = isPerOrderStage
+                                    ? 1
+                                    : (curStageProg ? Number(curStageProg.quantidade_boa) || 0 : (Number(rpcFinishData?.quantidade_boa) || Number(s.quantidade_boa) || 0));
+                                const qPrev = isPerOrderStage
+                                    ? 1
+                                    : (curStageProg ? Number(curStageProg.quantidade_pedido) || preStageTargetQty || Number(ord.quantity) || 0 : (preStageTargetQty || Number(ord.quantity) || 0));
                                 const sPend = isStageTrulyFinished ? 0 : Math.max(0, qPrev - qBoa);
                                 return {
                                     ...s,
+                                    quantidade_pedido: qPrev,
+                                    quantidade_prevista: qPrev,
                                     quantidade_boa: qBoa,
                                     saldo_pendente: sPend,
                                     status_operacao: isStageTrulyFinished ? 'CONCLUIDA' : (qBoa > 0 ? 'PARCIAL' : 'LIBERADA'),
@@ -7625,10 +8073,10 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
         const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
         const todayStartIso = `${todayStr}T00:00:00.000Z`;
 
-        // 1. Fetch active stages
+        // 1. Fetch active stages (including calculation_type & meta_diaria)
         const { data: rawStagesData, error: stagesErr } = await supabaseAdmin
             .from('stages')
-            .select('id, name, sector_name, sort_order, active')
+            .select('*')
             .eq('active', 1)
             .order('sort_order', { ascending: true });
 
@@ -7636,12 +8084,17 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
 
         const stagesData = (rawStagesData || [])
             .filter((s: any) => !isConferenciaStage(s))
-            .map((s: any) => ({
-                ...s,
-                name: normalizeUtf8Text(s.name),
-                sector_name: s.sector_name ? normalizeUtf8Text(s.sector_name) : s.sector_name,
-                slug: getStageSlug(s),
-            }));
+            .map((s: any) => {
+                const unitInfo = getStageProductivityUnitBackend(s);
+                return {
+                    ...s,
+                    name: normalizeUtf8Text(s.name),
+                    sector_name: s.sector_name ? normalizeUtf8Text(s.sector_name) : s.sector_name,
+                    slug: getStageSlug(s),
+                    unidade_produtividade: unitInfo.unit,
+                    unit_info: unitInfo,
+                };
+            });
 
         const stageById = new Map<number, any>(stagesData.map((s: any) => [Number(s.id), s]));
 
@@ -7740,7 +8193,7 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
         if (userId) {
             const { data: userExecs } = await supabaseAdmin
                 .from('stage_executions')
-                .select('*, stages(name, sector_name), orders(id, order_number, client_name, product_type, print_type, quantity, deadline, items, art_url, art_urls, stages_status, required_stages, status)')
+                .select('*, stages(name, sector_name, calculation_type), orders(id, order_number, client_name, product_type, print_type, quantity, deadline, items, art_url, art_urls, stages_status, required_stages, status)')
                 .eq('user_id', userId)
                 .in('status', ['Em andamento', 'Pausado'])
                 .order('start_time', { ascending: false })
@@ -7766,20 +8219,32 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                     exProg = singleProg || null;
                 }
 
-                const qPrevista = Math.max(0, Number(exProg?.quantidade_pedido || ex.orders?.quantity || enrichedOrd?.quantity) || 0);
-                const qConcluida = Math.max(0, Number(exProg?.quantidade_boa) || 0);
+                const exStageObj = stageById.get(Number(ex.stage_id)) || ex.stages || { id: ex.stage_id };
+                const exUnitInfo = getStageProductivityUnitBackend(exStageObj);
+                const computedTarget = calculateStageTargetQuantity(enrichedOrd || ex.orders, Number(ex.stage_id), exStageObj);
+                const qPrevista = exUnitInfo.isPerOrderUnit
+                    ? 1
+                    : Math.max(0, Number(exProg?.quantidade_pedido || computedTarget) || 0);
+                const rawConcluida = Math.max(0, Number(exProg?.quantidade_boa) || 0);
+                const qConcluida = exUnitInfo.isPerOrderUnit
+                    ? (exProg?.finished ? 1 : Math.min(1, rawConcluida))
+                    : rawConcluida;
                 const qReposicao = Math.max(0, Number(exProg?.pendencia_reposicao) || 0);
                 const sRestante = Math.max(0, qPrevista - qConcluida + qReposicao);
-                const exStageObj = stageById.get(Number(ex.stage_id)) || ex.stages;
 
                 execucaoAtual = {
                     ...ex,
                     stage_name: normalizeUtf8Text(exStageObj?.name || ex.stages?.name || 'Etapa'),
                     stage_slug: getStageSlug(exStageObj || { id: ex.stage_id, name: ex.stages?.name }),
+                    unidade_produtividade: exUnitInfo.unit,
+                    unidade_singular: exUnitInfo.singular,
+                    unidade_plural: exUnitInfo.plural,
+                    unidade_action_label: exUnitInfo.actionLabel,
                     order_number: normalizeUtf8Text(ex.orders?.order_number || enrichedOrd?.order_number),
                     client_name: normalizeUtf8Text(ex.orders?.client_name || enrichedOrd?.client_name),
                     product_type: normalizeUtf8Text(ex.orders?.product_type || enrichedOrd?.product_type),
                     print_type: normalizeUtf8Text(ex.orders?.print_type || enrichedOrd?.print_type),
+                    order_pieces_quantity: Number(ex.orders?.quantity || enrichedOrd?.quantity) || 0,
                     order_quantity: qPrevista,
                     quantidade_prevista: qPrevista,
                     quantidade_concluida: qConcluida,
@@ -7796,32 +8261,167 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             }
         }
 
-        // 5. Daily metrics (ignoring invalidated/reversed logs)
+        // 5. Daily metrics, hourly timeline & goal projection (ignoring invalidated/reversed logs)
         let progressTodayQuery = supabaseAdmin
             .from('order_progress_logs')
-            .select('quantidade_boa_incremento, user_id, observacao')
+            .select('id, order_id, stage_id, quantidade_boa_incremento, user_id, observacao, created_at')
             .gte('created_at', todayStartIso);
 
         if (userId) {
             progressTodayQuery = progressTodayQuery.eq('user_id', userId);
         }
         const { data: logsToday } = await progressTodayQuery;
-        const pecasProduzidasHoje = (logsToday || [])
-            .filter((l: any) => _isValidProgressLog(l))
-            .reduce((acc: number, l: any) => acc + (Number(l.quantidade_boa_incremento) || 0), 0);
 
         let execsTodayQuery = supabaseAdmin
             .from('stage_executions')
-            .select('total_time_seconds, user_id, observation')
+            .select('id, order_id, stage_id, start_time, end_time, total_time_seconds, status, user_id, observation')
             .gte('start_time', todayStartIso);
 
         if (userId) {
             execsTodayQuery = execsTodayQuery.eq('user_id', userId);
         }
         const { data: execsToday } = await execsTodayQuery;
-        const tempoProdutivoHojeSegundos = (execsToday || [])
-            .filter((e: any) => !String(e.observation || '').toUpperCase().includes('[INVALIDADO'))
-            .reduce((acc: number, e: any) => acc + (Number(e.total_time_seconds) || 0), 0);
+
+        const validExecsToday = (execsToday || []).filter(
+            (e: any) => !String(e.observation || '').toUpperCase().includes('[INVALIDADO')
+        );
+
+        // Fetch pauses for today's executions so pause intervals are accurately accounted for in productive time & projection
+        const todayExecIds = validExecsToday.map((e: any) => e.id).filter(Boolean);
+        let pausesTodayRows: any[] = [];
+        if (todayExecIds.length > 0) {
+            try {
+                const { data: pToday } = await supabaseAdmin
+                    .from('pauses')
+                    .select('*')
+                    .in('execution_id', todayExecIds);
+                pausesTodayRows = pToday || [];
+            } catch (_e) {
+                pausesTodayRows = [];
+            }
+        }
+
+        const nowMs = Date.now();
+        let tempoProdutivoHojeSegundos = 0;
+        let tempoPausasHojeSegundos = 0;
+        for (const e of validExecsToday) {
+            const exPauses = pausesTodayRows.filter((p: any) => Number(p.execution_id) === Number(e.id));
+            const calc = calculateExecutionTimes(e, exPauses, nowMs);
+            tempoProdutivoHojeSegundos += Math.max(0, calc.totalAccumulatedSeconds);
+            for (const p of exPauses) {
+                if (p.duration_seconds !== null && p.duration_seconds !== undefined && p.end_pause) {
+                    tempoPausasHojeSegundos += Math.max(0, Number(p.duration_seconds) || 0);
+                } else if (p.start_pause && p.end_pause) {
+                    tempoPausasHojeSegundos += Math.max(0, Math.floor((new Date(p.end_pause).getTime() - new Date(p.start_pause).getTime()) / 1000));
+                } else if (p.start_pause && !p.end_pause) {
+                    tempoPausasHojeSegundos += Math.max(0, Math.floor((nowMs - new Date(p.start_pause).getTime()) / 1000));
+                }
+            }
+        }
+
+        // Lookup order details for any orders in logsToday/validExecsToday that might already be Pronto
+        const todayOrderIdsSet = new Set<number>();
+        for (const l of logsToday || []) {
+            if (l?.order_id) todayOrderIdsSet.add(Number(l.order_id));
+        }
+        for (const e of validExecsToday) {
+            if (e?.order_id) todayOrderIdsSet.add(Number(e.order_id));
+        }
+        const missingTodayOrderIds = Array.from(todayOrderIdsSet).filter((id) => !enrichedOrderById.has(id));
+        const todayOrderMetaMap = new Map<number, any>();
+        for (const [id, o] of enrichedOrderById.entries()) {
+            todayOrderMetaMap.set(id, o);
+        }
+        if (missingTodayOrderIds.length > 0) {
+            try {
+                const { data: extraOrders } = await supabaseAdmin
+                    .from('orders')
+                    .select('id, order_number, client_name, quantity, items')
+                    .in('id', missingTodayOrderIds);
+                for (const eo of extraOrders || []) {
+                    todayOrderMetaMap.set(Number(eo.id), eo);
+                }
+            } catch (_e) {
+                // Best-effort lookup
+            }
+        }
+
+        // Normalize today's production events with unit-aware rules (Ficha = 1 ficha per order, never 300!)
+        interface NormalizedProdEvent {
+            order_id: number;
+            order_number: string;
+            client_name: string;
+            stage_id: number;
+            stage_name: string;
+            stage_slug: string;
+            unit_info: StageProductivityUnitBackendInfo;
+            quantidade: number;
+            timestamp_iso: string;
+        }
+        const normalizedEventsToday: NormalizedProdEvent[] = [];
+        const fichaSeenOrderStage = new Set<string>();
+        const loggedOrderStagesToday = new Set<string>();
+
+        for (const l of logsToday || []) {
+            if (!_isValidProgressLog(l)) continue;
+            const sId = Number(l.stage_id);
+            const oId = Number(l.order_id);
+            const stObj = stageById.get(sId) || { id: sId, name: `Etapa #${sId}` };
+            const uInfo = getStageProductivityUnitBackend(stObj);
+            const osKey = `${oId}_${sId}`;
+            loggedOrderStagesToday.add(osKey);
+
+            let qty = Math.max(0, Number(l.quantidade_boa_incremento) || 0);
+            if (uInfo.isPerOrderUnit) {
+                if (fichaSeenOrderStage.has(osKey)) continue;
+                fichaSeenOrderStage.add(osKey);
+                qty = 1;
+            }
+            if (qty <= 0) continue;
+
+            const ordMeta = todayOrderMetaMap.get(oId);
+            normalizedEventsToday.push({
+                order_id: oId,
+                order_number: normalizeUtf8Text(ordMeta?.order_number || `PED-${oId}`),
+                client_name: normalizeUtf8Text(ordMeta?.client_name || 'Cliente'),
+                stage_id: sId,
+                stage_name: normalizeUtf8Text(stObj.name || `Etapa #${sId}`),
+                stage_slug: stObj.slug || getStageSlug(stObj),
+                unit_info: uInfo,
+                quantidade: qty,
+                timestamp_iso: l.created_at || new Date().toISOString(),
+            });
+        }
+
+        // Fallback for executions finished today that did not emit a progress log row
+        for (const e of validExecsToday) {
+            if (e.status !== 'Finalizado' || !e.end_time) continue;
+            const sId = Number(e.stage_id);
+            const oId = Number(e.order_id);
+            const osKey = `${oId}_${sId}`;
+            if (loggedOrderStagesToday.has(osKey)) continue;
+            loggedOrderStagesToday.add(osKey);
+
+            const stObj = stageById.get(sId) || { id: sId, name: `Etapa #${sId}` };
+            const uInfo = getStageProductivityUnitBackend(stObj);
+            const ordMeta = todayOrderMetaMap.get(oId);
+            const qty = uInfo.isPerOrderUnit
+                ? 1
+                : calculateStageTargetQuantity(ordMeta || { quantity: 1 }, sId, stObj);
+            if (qty <= 0) continue;
+
+            normalizedEventsToday.push({
+                order_id: oId,
+                order_number: normalizeUtf8Text(ordMeta?.order_number || `PED-${oId}`),
+                client_name: normalizeUtf8Text(ordMeta?.client_name || 'Cliente'),
+                stage_id: sId,
+                stage_name: normalizeUtf8Text(stObj.name || `Etapa #${sId}`),
+                stage_slug: stObj.slug || getStageSlug(stObj),
+                unit_info: uInfo,
+                quantidade: qty,
+                timestamp_iso: e.end_time,
+            });
+        }
 
         const fila: any[] = [];
         const bloqueados: any[] = [];
@@ -7852,54 +8452,76 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                     .filter((id: number) => id && id !== 12 && stageById.has(id));
             }
 
-            const progMap = new Map<number, any>(ordProgress.map((p: any) => [Number(p.stage_id), p]));
-
-            let currentStageId: number | null = null;
-            let currentStageStatus: string = 'AGUARDANDO';
-            let isCurrentStageReady = false;
-            let activeExForCurrentStage: any = null;
-
-            for (let i = 0; i < reqStageIds.length; i++) {
-                const sId = reqStageIds[i];
-                const p = progMap.get(sId);
-                const sStatusJson = Array.isArray(ord.stages_status)
-                    ? ord.stages_status.find((s: any) => Number(s.id) === Number(sId))
-                    : null;
-
-                // FONTE ÚNICA DE VERDADE: Se order_stage_progress existe, ele determina se a etapa está concluída
-                const isFinished = p
-                    ? (p.finished === true || p.status_operacao === 'CONCLUIDA' || (Number(p.quantidade_pedido || ord.quantity) > 0 && Number(p.quantidade_boa) >= Number(p.quantidade_pedido || ord.quantity) && !(Number(p.pendencia_reposicao) > 0)))
-                    : Boolean(sStatusJson?.finished === true || sStatusJson?.status_operacao === 'CONCLUIDA' || sStatusJson?.status === 'Concluído' || sStatusJson?.status === 'Finalizado');
-
-                if (!isFinished) {
-                    currentStageId = sId;
-                    activeExForCurrentStage = ordExecs.find((e: any) => Number(e.stage_id) === Number(sId)) || null;
-                    if (activeExForCurrentStage) {
-                        currentStageStatus = activeExForCurrentStage.status === 'Pausado' ? 'PAUSADA' : 'EM_ANDAMENTO';
-                    } else if (p && Number(p.quantidade_boa) > 0) {
-                        currentStageStatus = 'PARCIAL';
-                    } else if (p?.status_operacao && p.status_operacao !== 'CONCLUIDA' && p.status_operacao !== 'EM_ANDAMENTO' && p.status_operacao !== 'PAUSADA') {
-                        currentStageStatus = p.status_operacao;
-                    } else {
-                        let prevStageFinished = i === 0;
-                        if (i > 0) {
-                            const prevSId = reqStageIds[i - 1];
-                            const prevP = progMap.get(prevSId);
-                            const prevSJson = Array.isArray(ord.stages_status)
-                                ? ord.stages_status.find((s: any) => Number(s.id) === Number(prevSId))
-                                : null;
-                            prevStageFinished = prevP
-                                ? (prevP.finished === true || prevP.status_operacao === 'CONCLUIDA' || (Number(prevP.quantidade_pedido || ord.quantity) > 0 && Number(prevP.quantidade_boa) >= Number(prevP.quantidade_pedido || ord.quantity) && !(Number(prevP.pendencia_reposicao) > 0)))
-                                : Boolean(prevSJson?.finished === true || prevSJson?.status_operacao === 'CONCLUIDA' || prevSJson?.status === 'Concluído' || prevSJson?.status === 'Finalizado');
+            // Também inclui etapas definidas nos itens do pedido (quando houver itens com rotas independentes)
+            const orderItemsParsed = parseOrderItems(ord.items);
+            for (const it of orderItemsParsed) {
+                if (Array.isArray(it?.required_stages)) {
+                    for (const sid of it.required_stages) {
+                        const n = Number(sid);
+                        if (n && n !== 12 && stageById.has(n) && !reqStageIds.includes(n)) {
+                            reqStageIds.push(n);
                         }
-                        currentStageStatus = prevStageFinished ? 'LIBERADA' : 'AGUARDANDO';
                     }
-                    isCurrentStageReady = currentStageStatus === 'LIBERADA' || currentStageStatus === 'PARCIAL' || currentStageStatus === 'EM_ANDAMENTO' || currentStageStatus === 'PAUSADA';
-                    break;
                 }
             }
 
-            if (!currentStageId) {
+            const progMap = new Map<number, any>(ordProgress.map((p: any) => [Number(p.stage_id), p]));
+
+            const isStageFinishedForOrd = (sId: number): boolean => {
+                const p = progMap.get(Number(sId));
+                const sObj = stageById.get(Number(sId));
+                const uInfo = getStageProductivityUnitBackend(sObj || { id: sId });
+                const tQty = uInfo.isPerOrderUnit
+                    ? 1
+                    : (Number(p?.quantidade_pedido) > 0 ? Number(p.quantidade_pedido) : calculateStageTargetQuantity(ord, Number(sId), sObj));
+                const sStatusJson = Array.isArray(ord.stages_status)
+                    ? ord.stages_status.find((s: any) => Number(s.id) === Number(sId))
+                    : null;
+                return p
+                    ? (p.finished === true || p.status_operacao === 'CONCLUIDA' || (tQty > 0 && Number(p.quantidade_boa) >= tQty && !(Number(p.pendencia_reposicao) > 0)))
+                    : Boolean(sStatusJson?.finished === true || sStatusJson?.status_operacao === 'CONCLUIDA' || sStatusJson?.status === 'Concluído' || sStatusJson?.status === 'Finalizado');
+            };
+
+            interface CandidateStageState {
+                stageId: number;
+                stageSlug: string;
+                status: string;
+                isReady: boolean;
+                activeEx: any;
+            }
+            const unfinishedCandidates: CandidateStageState[] = [];
+
+            for (let i = 0; i < reqStageIds.length; i++) {
+                const sId = reqStageIds[i];
+                if (isStageFinishedForOrd(sId)) continue;
+
+                const p = progMap.get(sId);
+                const sObj = stageById.get(Number(sId));
+                const sSlug = sObj?.slug || getStageSlug(sObj || { id: sId });
+                const activeEx = ordExecs.find((e: any) => Number(e.stage_id) === Number(sId)) || null;
+                let stStatus = 'AGUARDANDO';
+
+                if (activeEx) {
+                    stStatus = activeEx.status === 'Pausado' ? 'PAUSADA' : 'EM_ANDAMENTO';
+                } else if (p && Number(p.quantidade_boa) > 0) {
+                    stStatus = 'PARCIAL';
+                } else if (p?.status_operacao && p.status_operacao !== 'CONCLUIDA' && p.status_operacao !== 'EM_ANDAMENTO' && p.status_operacao !== 'PAUSADA' && p.status_operacao !== 'AGUARDANDO') {
+                    stStatus = p.status_operacao;
+                } else {
+                    const prevDone = isStagePrevFinishedForOrderItems(ord, sId, reqStageIds, isStageFinishedForOrd);
+                    stStatus = prevDone ? 'LIBERADA' : 'AGUARDANDO';
+                }
+                const isReady = stStatus === 'LIBERADA' || stStatus === 'PARCIAL' || stStatus === 'EM_ANDAMENTO' || stStatus === 'PAUSADA';
+                unfinishedCandidates.push({
+                    stageId: sId,
+                    stageSlug: sSlug,
+                    status: stStatus,
+                    isReady,
+                    activeEx,
+                });
+            }
+
+            if (unfinishedCandidates.length === 0) {
                 // Todas as etapas de produção foram finalizadas! O pedido está PRONTO!
                 if (ord.status !== 'Pronto' && ord.status !== 'Entregue' && ord.status !== 'Cancelado') {
                     const nowIso = new Date().toISOString();
@@ -7917,18 +8539,35 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 continue;
             }
 
-            const stageObj = stageById.get(Number(currentStageId));
-            const currentStageSlug = stageObj?.slug || getStageSlug(stageObj || { id: currentStageId });
-
-            // Filtro estrito por etapa ativa (corrige Problema 10: Sublimação não mistura outras etapas)
+            // Seleciona a etapa candidata pertinente ao filtro ativo (suporta itens com rotas independentes)
+            let chosenCandidate: CandidateStageState | undefined;
             if (stageSlugFilter) {
-                if (currentStageSlug !== stageSlugFilter) {
+                chosenCandidate = unfinishedCandidates.find((c) => c.stageSlug === stageSlugFilter && c.isReady);
+                if (!chosenCandidate) {
                     continue;
                 }
             } else if (stageId) {
-                if (Number(currentStageId) !== Number(stageId)) {
+                chosenCandidate = unfinishedCandidates.find((c) => Number(c.stageId) === Number(stageId) && c.isReady);
+                if (!chosenCandidate) {
                     continue;
                 }
+            } else {
+                chosenCandidate = unfinishedCandidates.find((c) => c.isReady) || unfinishedCandidates[0];
+            }
+
+            const currentStageId = chosenCandidate.stageId;
+            const currentStageStatus = chosenCandidate.status;
+            const isCurrentStageReady = chosenCandidate.isReady;
+            const activeExForCurrentStage = chosenCandidate.activeEx;
+
+            const stageObj = stageById.get(Number(currentStageId));
+            const currentStageSlug = stageObj?.slug || getStageSlug(stageObj || { id: currentStageId });
+            const stageUnitInfo = getStageProductivityUnitBackend(stageObj || { id: currentStageId });
+
+            if (stageSlugFilter) {
+                if (currentStageSlug !== stageSlugFilter) continue;
+            } else if (stageId) {
+                if (Number(currentStageId) !== Number(stageId)) continue;
             }
 
             if (isBlocked) {
@@ -7946,8 +8585,14 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             }
 
             const curProg = progMap.get(Number(currentStageId));
-            const quantidadePrevista = Math.max(0, Number(curProg?.quantidade_pedido || ord.quantity) || 0);
-            const quantidadeConcluida = Math.max(0, Number(curProg?.quantidade_boa) || 0);
+            const computedStageTarget = calculateStageTargetQuantity(ord, Number(currentStageId), stageObj);
+            const quantidadePrevista = stageUnitInfo.isPerOrderUnit
+                ? 1
+                : Math.max(0, Number(curProg?.quantidade_pedido || computedStageTarget) || 0);
+            const rawConcluida = Math.max(0, Number(curProg?.quantidade_boa) || 0);
+            const quantidadeConcluida = stageUnitInfo.isPerOrderUnit
+                ? (curProg?.finished ? 1 : Math.min(1, rawConcluida))
+                : rawConcluida;
             const pendenciaReposicao = Math.max(0, Number(curProg?.pendencia_reposicao) || 0);
             const saldoRestante = Math.max(0, quantidadePrevista - quantidadeConcluida + pendenciaReposicao);
 
@@ -7995,6 +8640,11 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 current_stage_name: stageObj?.name || 'Etapa',
                 current_stage_slug: currentStageSlug,
                 current_stage_status: currentStageStatus,
+                unidade_produtividade: stageUnitInfo.unit,
+                unidade_singular: stageUnitInfo.singular,
+                unidade_plural: stageUnitInfo.plural,
+                unidade_action_label: stageUnitInfo.actionLabel,
+                order_pieces_quantity: Number(ord.quantity) || 0,
                 is_stage_ready: isCurrentStageReady,
                 can_start: canStart,
                 canStart: canStart,
@@ -8019,19 +8669,305 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             item.justificativa = `${item.posicao_fila}º na Fila • ${item.justificativa_base}`;
         });
 
-        // Soma das peças restantes reais na fila filtrada
-        const pecasPendentesFila = fila.reduce((acc, o) => acc + (Number(o.saldo_restante ?? o.quantity) || 0), 0);
+        // 6. Construir Linha do Tempo Horária (Item 3) e Desempenho / Metas por Etapa (Item 4)
+        let configJornadaHoras = 8;
+        let collaboratorGoalsRows: any[] = [];
+        try {
+            const [cfgRes, goalsRes] = await Promise.all([
+                supabaseAdmin.from('config_producao').select('jornada_horas').limit(1).maybeSingle(),
+                userId
+                    ? supabaseAdmin.from('collaborator_stage_goals').select('*').eq('user_id', userId)
+                    : supabaseAdmin.from('collaborator_stage_goals').select('*'),
+            ]);
+            if (cfgRes?.data?.jornada_horas && Number(cfgRes.data.jornada_horas) > 0) {
+                configJornadaHoras = Number(cfgRes.data.jornada_horas);
+            }
+            collaboratorGoalsRows = goalsRes?.data || [];
+        } catch (_e) {
+            // Fallback to 8h
+        }
+
+        // Eventos filtrados pela etapa selecionada (se houver filtro de etapa ativo)
+        const eventsForCurrentFilter = stageId
+            ? normalizedEventsToday.filter((ev) => Number(ev.stage_id) === Number(stageId))
+            : normalizedEventsToday;
+
+        // Agrupamento horário (fuso America/Sao_Paulo) separado por etapa/unidade (proibido somar unidades diferentes)
+        const hourlyBucketsMap = new Map<string, {
+            hora_inicio: number;
+            intervalo: string;
+            stage_id: number;
+            stage_name: string;
+            stage_slug: string;
+            unidade_codigo: string;
+            unidade_singular: string;
+            unidade_plural: string;
+            action_label: string;
+            total_quantidade: number;
+            pedidosMap: Map<number, {
+                order_id: number;
+                order_number: string;
+                client_name: string;
+                stage_id: number;
+                stage_name: string;
+                quantidade: number;
+                unidade_label: string;
+                horario: string;
+            }>;
+        }>();
+
+        for (const ev of eventsForCurrentFilter) {
+            const d = new Date(ev.timestamp_iso);
+            const spParts = d.toLocaleTimeString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            }).split(':');
+            const hh = parseInt(spParts[0], 10);
+            const mm = spParts[1] || '00';
+            const hourStart = Number.isFinite(hh) ? hh : d.getUTCHours();
+            const hourEnd = (hourStart + 1) % 24;
+            const intervalo = `${String(hourStart).padStart(2, '0')}h–${String(hourEnd).padStart(2, '0')}h`;
+            const bucketKey = `${String(hourStart).padStart(2, '0')}_${ev.stage_id}`;
+
+            if (!hourlyBucketsMap.has(bucketKey)) {
+                hourlyBucketsMap.set(bucketKey, {
+                    hora_inicio: hourStart,
+                    intervalo,
+                    stage_id: ev.stage_id,
+                    stage_name: ev.stage_name,
+                    stage_slug: ev.stage_slug,
+                    unidade_codigo: ev.unit_info.unit,
+                    unidade_singular: ev.unit_info.singular,
+                    unidade_plural: ev.unit_info.plural,
+                    action_label: ev.unit_info.actionLabel,
+                    total_quantidade: 0,
+                    pedidosMap: new Map(),
+                });
+            }
+            const bucket = hourlyBucketsMap.get(bucketKey)!;
+            bucket.total_quantidade += ev.quantidade;
+
+            const existingOrderEntry = bucket.pedidosMap.get(ev.order_id);
+            if (existingOrderEntry) {
+                existingOrderEntry.quantidade += ev.quantidade;
+                existingOrderEntry.horario = `${String(hourStart).padStart(2, '0')}:${mm}`;
+            } else {
+                bucket.pedidosMap.set(ev.order_id, {
+                    order_id: ev.order_id,
+                    order_number: ev.order_number,
+                    client_name: ev.client_name,
+                    stage_id: ev.stage_id,
+                    stage_name: ev.stage_name,
+                    quantidade: ev.quantidade,
+                    unidade_label: ev.quantidade === 1 ? ev.unit_info.singular : ev.unit_info.actionLabel,
+                    horario: `${String(hourStart).padStart(2, '0')}:${mm}`,
+                });
+            }
+        }
+
+        const linhaDoTempoHoraria = Array.from(hourlyBucketsMap.values())
+            .sort((a, b) => a.hora_inicio - b.hora_inicio || a.stage_id - b.stage_id)
+            .map((b) => {
+                const pedidos = Array.from(b.pedidosMap.values());
+                const unitText = b.total_quantidade === 1 ? b.unidade_singular : b.action_label;
+                const resumo_texto = pedidos.length === 1
+                    ? `${b.total_quantidade} ${unitText} — #${pedidos[0].order_number}`
+                    : `${b.total_quantidade} ${unitText} (${pedidos.length} pedidos)`;
+                return {
+                    hora_inicio: b.hora_inicio,
+                    intervalo: b.intervalo,
+                    stage_id: b.stage_id,
+                    stage_name: b.stage_name,
+                    stage_slug: b.stage_slug,
+                    unidade_codigo: b.unidade_codigo,
+                    unidade_singular: b.unidade_singular,
+                    unidade_plural: b.unidade_plural,
+                    action_label: b.action_label,
+                    total_quantidade: b.total_quantidade,
+                    resumo_texto,
+                    multiplos_pedidos: pedidos.length > 1,
+                    pedidos,
+                };
+            });
+
+        // Consolidado por etapa trabalhada hoje (sem nunca misturar unidades diferentes)
+        const stageTotalsTodayMap = new Map<number, number>();
+        for (const ev of normalizedEventsToday) {
+            stageTotalsTodayMap.set(ev.stage_id, (stageTotalsTodayMap.get(ev.stage_id) || 0) + ev.quantidade);
+        }
+
+        const contextStageId = Number(
+            stageId ||
+            execucaoAtual?.stage_id ||
+            (fila.length > 0 ? fila[0].current_stage_id : null) ||
+            Array.from(stageTotalsTodayMap.keys())[0] ||
+            stagesData[0]?.id ||
+            1
+        );
+        const contextStageObj = stageById.get(contextStageId) || stagesData[0] || { id: contextStageId, name: 'Produção' };
+        const contextUnitInfo = getStageProductivityUnitBackend(contextStageObj);
+
+        const resolveStageDailyGoal = (stObj: any, uInfo: StageProductivityUnitBackendInfo): number => {
+            if (userId) {
+                const userGoal = collaboratorGoalsRows.find(
+                    (g: any) => Number(g.user_id) === Number(userId) && Number(g.stage_id) === Number(stObj?.id)
+                );
+                if (userGoal && Number(userGoal.meta_diaria) > 0) {
+                    return Number(userGoal.meta_diaria);
+                }
+            }
+            if (stObj && Number(stObj.meta_diaria) > 0) {
+                return Number(stObj.meta_diaria);
+            }
+            if (uInfo.unit === 'ficha') return 20;
+            if (uInfo.unit === 'kit_dtf') return 160;
+            return 160;
+        };
+
+        const relevantStageIdsForSummary = Array.from(
+            new Set<number>([
+                contextStageId,
+                ...Array.from(stageTotalsTodayMap.keys()),
+            ].filter(Boolean))
+        );
+
+        const porEtapaHoje = relevantStageIdsForSummary.map((sid) => {
+            const stObj = stageById.get(Number(sid)) || { id: sid, name: `Etapa #${sid}` };
+            const uInfo = getStageProductivityUnitBackend(stObj);
+            const realizado = stageTotalsTodayMap.get(Number(sid)) || 0;
+            const metaDiaria = resolveStageDailyGoal(stObj, uInfo);
+            const metaPorHora = Math.round((metaDiaria / configJornadaHoras) * 10) / 10;
+            const percentualMeta = metaDiaria > 0 ? Math.round((realizado / metaDiaria) * 100) : 0;
+            return {
+                stage_id: Number(sid),
+                stage_name: normalizeUtf8Text(stObj.name || `Etapa #${sid}`),
+                stage_slug: stObj.slug || getStageSlug(stObj),
+                unidade_codigo: uInfo.unit,
+                unidade_singular: uInfo.singular,
+                unidade_plural: uInfo.plural,
+                action_label: uInfo.actionLabel,
+                today_label: uInfo.todayLabel,
+                queue_label: uInfo.queueLabel,
+                goal_suffix: uInfo.goalSuffix,
+                hour_suffix: uInfo.hourSuffix,
+                realizado_hoje: realizado,
+                meta_diaria: metaDiaria,
+                meta_por_hora: metaPorHora,
+                percentual_meta: percentualMeta,
+            };
+        });
+
+        const activeStagePerf = porEtapaHoje.find((p) => Number(p.stage_id) === Number(contextStageId)) || porEtapaHoje[0];
+        const realizadoContexto = activeStagePerf?.realizado_hoje || 0;
+        const metaDiariaContexto = activeStagePerf?.meta_diaria || resolveStageDailyGoal(contextStageObj, contextUnitInfo);
+        const metaPorHoraContexto = activeStagePerf?.meta_por_hora || Math.round((metaDiariaContexto / configJornadaHoras) * 10) / 10;
+        const percentualMetaContexto = metaDiariaContexto > 0 ? Math.round((realizadoContexto / metaDiariaContexto) * 100) : 0;
+
+        // Regra anti-distorção de projeção: mínimo de 15 minutos (900s) de tempo produtivo líquido OU pelo menos 2 faixas horárias distintas com apontamento
+        const distinctHoursWorked = new Set(
+            linhaDoTempoHoraria.filter((b) => Number(b.stage_id) === Number(contextStageId)).map((b) => b.hora_inicio)
+        ).size;
+        const effectiveProductiveHours = tempoProdutivoHojeSegundos >= 900
+            ? tempoProdutivoHojeSegundos / 3600
+            : distinctHoursWorked >= 2
+            ? distinctHoursWorked
+            : 0;
+        const dadosSuficientesProjecao = Boolean(realizadoContexto > 0 && effectiveProductiveHours >= 0.25);
+
+        let projecaoDiaQuantidade: number | null = null;
+        let ritmoAtualPorHora = 0;
+        let esperadoAteAgora = 0;
+        let ritmoStatus: 'ACIMA' | 'DENTRO' | 'ABAIXO' | 'INSUFICIENTE' = 'INSUFICIENTE';
+        let ritmoLabel = 'Dados insuficientes para projeção';
+        let projecaoTexto = 'Dados insuficientes para projeção';
+
+        if (dadosSuficientesProjecao && effectiveProductiveHours > 0) {
+            ritmoAtualPorHora = Math.round((realizadoContexto / effectiveProductiveHours) * 10) / 10;
+            esperadoAteAgora = Math.round(effectiveProductiveHours * metaPorHoraContexto);
+            const horasRestantes = Math.max(0, configJornadaHoras - effectiveProductiveHours);
+            projecaoDiaQuantidade = Math.round(realizadoContexto + ritmoAtualPorHora * horasRestantes);
+            projecaoTexto = `Se manter o ritmo atual: ~${projecaoDiaQuantidade} ${contextUnitInfo.plural} até o final do expediente`;
+
+            if (projecaoDiaQuantidade >= metaDiariaContexto * 1.03 || realizadoContexto >= metaDiariaContexto) {
+                ritmoStatus = 'ACIMA';
+                ritmoLabel = 'Ritmo projetado acima da meta';
+            } else if (projecaoDiaQuantidade >= metaDiariaContexto * 0.90) {
+                ritmoStatus = 'DENTRO';
+                ritmoLabel = 'Dentro do ritmo da meta';
+            } else {
+                ritmoStatus = 'ABAIXO';
+                ritmoLabel = 'Abaixo do ritmo da meta';
+            }
+        } else if (realizadoContexto >= metaDiariaContexto && metaDiariaContexto > 0) {
+            ritmoStatus = 'ACIMA';
+            ritmoLabel = 'Meta diária atingida';
+            projecaoDiaQuantidade = realizadoContexto;
+            projecaoTexto = `Meta diária atingida (${realizadoContexto} ${contextUnitInfo.plural})`;
+        }
+
+        const desempenhoHoje = {
+            stage_id: contextStageId,
+            stage_name: normalizeUtf8Text(contextStageObj.name || 'Etapa'),
+            stage_slug: contextStageObj.slug || getStageSlug(contextStageObj),
+            unidade_codigo: contextUnitInfo.unit,
+            unidade_singular: contextUnitInfo.singular,
+            unidade_plural: contextUnitInfo.plural,
+            action_label: contextUnitInfo.actionLabel,
+            today_label: contextUnitInfo.todayLabel,
+            queue_label: contextUnitInfo.queueLabel,
+            goal_suffix: contextUnitInfo.goalSuffix,
+            hour_suffix: contextUnitInfo.hourSuffix,
+            jornada_horas: configJornadaHoras,
+            meta_diaria: metaDiariaContexto,
+            realizado_hoje: realizadoContexto,
+            meta_por_hora: metaPorHoraContexto,
+            ritmo_atual_por_hora: ritmoAtualPorHora,
+            esperado_ate_agora: esperadoAteAgora,
+            percentual_meta: percentualMetaContexto,
+            tempo_produtivo_segundos: tempoProdutivoHojeSegundos,
+            tempo_pausas_segundos: tempoPausasHojeSegundos,
+            dados_suficientes_projecao: dadosSuficientesProjecao,
+            projecao_dia: projecaoDiaQuantidade,
+            projecao_texto: projecaoTexto,
+            ritmo_status: ritmoStatus,
+            ritmo_label: ritmoLabel,
+            por_etapa_hoje: porEtapaHoje,
+        };
+
+        // 7. Métricas de Fila respeitando estritamente a unidade da etapa (sem somar fichas + kits + peças)
+        const filaPorUnidade = {
+            ficha: fila.filter((o) => o.unidade_produtividade === 'ficha').reduce((acc, o) => acc + (Number(o.saldo_restante) || 0), 0),
+            kit_dtf: fila.filter((o) => o.unidade_produtividade === 'kit_dtf').reduce((acc, o) => acc + (Number(o.saldo_restante) || 0), 0),
+            peca: fila.filter((o) => o.unidade_produtividade === 'peca').reduce((acc, o) => acc + (Number(o.saldo_restante) || 0), 0),
+            lote: fila.filter((o) => o.unidade_produtividade === 'lote').reduce((acc, o) => acc + (Number(o.saldo_restante) || 0), 0),
+        };
+
+        const pendentesUnidadeContexto = stageId
+            ? fila.reduce((acc, o) => acc + (Number(o.saldo_restante) || 0), 0)
+            : filaPorUnidade[contextUnitInfo.unit] || fila.reduce((acc, o) => acc + (Number(o.saldo_restante) || 0), 0);
+
         const tarefasEmAndamento = activeExecsRows.filter((e: any) => e.status === 'Em andamento').length;
 
         res.json({
             fila,
             bloqueados,
             execucao_atual: execucaoAtual,
+            desempenho_hoje: desempenhoHoje,
+            linha_do_tempo_horaria: linhaDoTempoHoraria,
             metricas: {
-                pecas_pendentes_fila: pecasPendentesFila,
+                pecas_pendentes_fila: pendentesUnidadeContexto,
                 tarefas_em_andamento: tarefasEmAndamento,
-                pecas_produzidas_hoje: pecasProduzidasHoje,
+                pecas_produzidas_hoje: realizadoContexto,
                 tempo_produtivo_hoje_segundos: tempoProdutivoHojeSegundos,
+                tempo_pausas_hoje_segundos: tempoPausasHojeSegundos,
+                unidade_codigo: contextUnitInfo.unit,
+                unidade_singular: contextUnitInfo.singular,
+                unidade_plural: contextUnitInfo.plural,
+                unidade_fila_label: contextUnitInfo.queueLabel,
+                unidade_hoje_label: contextUnitInfo.todayLabel,
+                fila_por_unidade: filaPorUnidade,
             },
             filtro: {
                 user_id: userId,

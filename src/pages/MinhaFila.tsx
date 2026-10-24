@@ -10,17 +10,16 @@ import {
   Search, 
   RotateCw, 
   Layers, 
-  AlertTriangle,
   Flame,
-  Calendar,
   Sparkles,
   ExternalLink,
-  ChevronRight,
   UserCheck,
-  Tag,
-  ArrowRight
+  TrendingUp,
+  ChevronDown,
+  ChevronUp,
+  Target
 } from 'lucide-react';
-import { formatSeconds, cn, isImage } from '../lib/utils';
+import { formatSeconds, cn, isImage, getStageProductivityUnit } from '../lib/utils';
 import type { Order, Stage, User, StageExecution } from '../types';
 
 interface MinhaFilaProps {
@@ -109,15 +108,27 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
   );
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [expandedTimelineKeys, setExpandedTimelineKeys] = useState<Record<string, boolean>>({});
+  const [selectedPerfStageId, setSelectedPerfStageId] = useState<number | null>(null);
+
   const [apiData, setApiData] = useState<{
     fila: any[];
     bloqueados: any[];
     execucao_atual: any | null;
+    desempenho_hoje?: any;
+    linha_do_tempo_horaria?: any[];
     metricas: {
       pecas_pendentes_fila: number;
       tarefas_em_andamento: number;
       pecas_produzidas_hoje: number;
       tempo_produtivo_hoje_segundos: number;
+      tempo_pausas_hoje_segundos?: number;
+      unidade_codigo?: string;
+      unidade_singular?: string;
+      unidade_plural?: string;
+      unidade_fila_label?: string;
+      unidade_hoje_label?: string;
+      fila_por_unidade?: Record<string, number>;
     };
   } | null>(null);
 
@@ -173,12 +184,22 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     if (activeExecutions && activeExecutions.length > 0) {
       const ex = activeExecutions[0];
       const matchOrder = orders.find(o => o.id === ex.order_id) || (apiData?.fila || []).find((f: any) => f.id === ex.order_id);
-      const matchStage = matchOrder?.stages_status?.find((s: any) => Number(s.id) === Number(ex.stage_id));
-      const qPrevista = Number(matchOrder?.quantity || ex.order_quantity) || 0;
-      const qConcluida = Number(matchStage?.quantidade_boa) || 0;
+      const matchStage = matchOrder?.stages_status?.find((s: any) => Number(s.id) === Number(ex.stage_id)) ||
+                         stages.find(s => Number(s.id) === Number(ex.stage_id));
+      const unitInfo = getStageProductivityUnit(matchStage || { id: ex.stage_id, name: ex.stage_name });
+      const qPrevista = unitInfo.isPerOrderUnit
+        ? 1
+        : (Number((matchStage as any)?.quantidade_prevista || (matchStage as any)?.quantidade_pedido || matchOrder?.quantity || ex.order_quantity) || 0);
+      const qConcluida = unitInfo.isPerOrderUnit
+        ? ((matchStage as any)?.finished ? 1 : Math.min(1, Number((matchStage as any)?.quantidade_boa) || 0))
+        : (Number((matchStage as any)?.quantidade_boa) || 0);
       const sRestante = Math.max(0, qPrevista - qConcluida);
       return {
         ...ex,
+        unidade_produtividade: unitInfo.unit,
+        unidade_singular: unitInfo.singular,
+        unidade_plural: unitInfo.plural,
+        order_pieces_quantity: Number(matchOrder?.quantity || ex.order_quantity) || 0,
         order_number: matchOrder?.order_number || ex.order_number,
         client_name: matchOrder?.client_name || ex.client_name,
         product_type: matchOrder?.product_type || ex.product_type,
@@ -193,7 +214,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
       };
     }
     return null;
-  }, [apiData?.execucao_atual, apiData?.fila, activeExecutions, orders]);
+  }, [apiData?.execucao_atual, apiData?.fila, activeExecutions, orders, stages]);
 
   // Live timer for hero execution
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -225,6 +246,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     const qPrevista = Number(heroExecution.quantidade_prevista ?? heroExecution.order_quantity ?? existing?.quantity) || 0;
     const qConcluida = Number(heroExecution.quantidade_concluida) || 0;
     const sRestante = Number(heroExecution.saldo_restante ?? Math.max(0, qPrevista - qConcluida));
+    const orderPiecesQty = Number(heroExecution.order_pieces_quantity || existing?.quantity || qPrevista) || 0;
 
     const baseStages = Array.isArray(heroExecution.stages_status) && heroExecution.stages_status.length > 0
       ? heroExecution.stages_status
@@ -235,6 +257,8 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
       ? baseStages.map((s: any) => Number(s.id) === Number(heroExecution.stage_id)
           ? {
               ...s,
+              quantidade_pedido: qPrevista,
+              quantidade_prevista: qPrevista,
               quantidade_boa: qConcluida,
               saldo_pendente: sRestante,
               finished: false,
@@ -249,6 +273,8 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
             finished: false,
             status: 'Em andamento',
             status_operacao: heroExecution.is_paused ? 'PAUSADA' : 'EM_ANDAMENTO',
+            quantidade_pedido: qPrevista,
+            quantidade_prevista: qPrevista,
             quantidade_boa: qConcluida,
             saldo_pendente: sRestante,
           },
@@ -257,7 +283,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     if (existing) {
       return {
         ...existing,
-        quantity: qPrevista || existing.quantity,
+        quantity: orderPiecesQty,
         stages_status: syncedStages,
       } as Order;
     }
@@ -268,7 +294,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
       client_name: heroExecution.client_name || 'Cliente',
       product_type: heroExecution.product_type || 'Produto',
       print_type: heroExecution.print_type || '',
-      quantity: qPrevista,
+      quantity: orderPiecesQty,
       deadline: heroExecution.order_deadline || '',
       status: 'Em produção',
       art_url: heroExecution.order_art_url || '',
@@ -323,6 +349,59 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
   const operatorUsers = useMemo(() => {
     return users.filter(u => u.active);
   }, [users]);
+
+  // Performance & Unit Context Resolution
+  const activeStageMeta = useMemo(() => {
+    if (selectedStageSlug && selectedStageSlug !== 'ALL') {
+      return activeStages.find(s => s.slug === selectedStageSlug) || null;
+    }
+    return null;
+  }, [selectedStageSlug, activeStages]);
+
+  const activeUnitInfo = useMemo(() => {
+    if (activeStageMeta) {
+      return getStageProductivityUnit(activeStageMeta);
+    }
+    if (apiData?.desempenho_hoje) {
+      const dh = apiData.desempenho_hoje;
+      return getStageProductivityUnit({
+        id: dh.stage_id,
+        name: dh.stage_name,
+        slug: dh.stage_slug,
+        unidade_produtividade: dh.unidade_codigo as any,
+      });
+    }
+    return getStageProductivityUnit(null);
+  }, [activeStageMeta, apiData?.desempenho_hoje]);
+
+  const porEtapaHojeList: any[] = useMemo(() => {
+    return Array.isArray(apiData?.desempenho_hoje?.por_etapa_hoje)
+      ? apiData!.desempenho_hoje.por_etapa_hoje
+      : [];
+  }, [apiData?.desempenho_hoje]);
+
+  const currentPerfView = useMemo(() => {
+    const dh = apiData?.desempenho_hoje;
+    if (!dh) return null;
+    if (selectedPerfStageId && Array.isArray(dh.por_etapa_hoje)) {
+      const match = dh.por_etapa_hoje.find((e: any) => Number(e.stage_id) === Number(selectedPerfStageId));
+      if (match) {
+        return {
+          ...dh,
+          ...match,
+        };
+      }
+    }
+    return dh;
+  }, [apiData?.desempenho_hoje, selectedPerfStageId]);
+
+  const timelineBuckets = useMemo(() => {
+    const raw = Array.isArray(apiData?.linha_do_tempo_horaria) ? apiData!.linha_do_tempo_horaria : [];
+    if (selectedPerfStageId && selectedStageSlug === 'ALL') {
+      return raw.filter((b: any) => Number(b.stage_id) === Number(selectedPerfStageId));
+    }
+    return raw;
+  }, [apiData?.linha_do_tempo_horaria, selectedPerfStageId, selectedStageSlug]);
 
   // Start Stage from queue card
   const handleStartCard = async (item: any) => {
@@ -379,6 +458,15 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     }
   };
 
+  const toggleTimelineExpand = (key: string) => {
+    setExpandedTimelineKeys(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const selectedOperatorObj = useMemo(() => {
+    if (!selectedUserId) return currentUser;
+    return users.find(u => Number(u.id) === Number(selectedUserId)) || currentUser;
+  }, [selectedUserId, users, currentUser]);
+
   return (
     <div className="flex-1 h-screen overflow-y-auto bg-slate-50/60 p-4 md:p-8 space-y-6">
       {/* Top Header & Context */}
@@ -408,7 +496,10 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
               <select
                 id="select-operador"
                 value={selectedUserId || ''}
-                onChange={(e) => setSelectedUserId(e.target.value ? Number(e.target.value) : null)}
+                onChange={(e) => {
+                  setSelectedUserId(e.target.value ? Number(e.target.value) : null);
+                  setSelectedPerfStageId(null);
+                }}
                 className="bg-transparent text-xs font-bold text-slate-900 focus:outline-none cursor-pointer"
               >
                 <option value="">Todos os Operadores</option>
@@ -437,19 +528,217 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
         </div>
       </div>
 
+      {/* Painel Compacto: Meu Desempenho — Hoje & Linha do Tempo da Produção (Itens 3 e 4) */}
+      {currentPerfView && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 md:p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <Target size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base font-black text-slate-900">
+                    Meu desempenho — Hoje
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-black">
+                    {currentPerfView.stage_name} ({currentPerfView.unidade_plural})
+                  </span>
+                  {selectedOperatorObj && (
+                    <span className="text-xs font-bold text-slate-500">
+                      • {selectedOperatorObj.name}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Se o operador atuou em múltiplas etapas/unidades hoje, permite alternar sem somar unidades diferentes */}
+            {porEtapaHojeList.length > 1 && selectedStageSlug === 'ALL' && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase text-slate-400 mr-1">Etapa/Unidade:</span>
+                {porEtapaHojeList.map((et: any) => {
+                  const isSel = Number(currentPerfView.stage_id) === Number(et.stage_id);
+                  return (
+                    <button
+                      key={et.stage_id}
+                      type="button"
+                      onClick={() => setSelectedPerfStageId(Number(et.stage_id))}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer",
+                        isSel
+                          ? "bg-indigo-600 text-white border-indigo-700 shadow-xs"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      )}
+                    >
+                      {et.stage_name}: {et.realizado_hoje} {et.unidade_plural}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Coluna Esquerda: Meta, Realizado, Barra de Progresso e Projeção */}
+            <div className="lg:col-span-6 space-y-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+                    {currentPerfView.realizado_hoje}{' '}
+                    <span className="text-lg font-bold text-slate-500">
+                      de {currentPerfView.meta_diaria} {currentPerfView.unidade_plural}
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                    Meta por hora: <strong className="text-slate-800">{currentPerfView.meta_por_hora} {currentPerfView.hour_suffix || `${currentPerfView.unidade_plural}/h`}</strong>
+                    {currentPerfView.ritmo_atual_por_hora > 0 && (
+                      <> • Ritmo atual: <strong className="text-indigo-700">{currentPerfView.ritmo_atual_por_hora} {currentPerfView.hour_suffix || `${currentPerfView.unidade_plural}/h`}</strong></>
+                    )}
+                  </p>
+                </div>
+
+                <span className="text-sm font-black text-indigo-700 bg-indigo-50 px-3 py-1 rounded-xl border border-indigo-100">
+                  {currentPerfView.percentual_meta}% da meta concluída
+                </span>
+              </div>
+
+              {/* Barra de Progresso */}
+              <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    currentPerfView.percentual_meta >= 100
+                      ? "bg-emerald-500"
+                      : currentPerfView.ritmo_status === 'ABAIXO'
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                  )}
+                  style={{ width: `${Math.min(100, Math.max(0, Number(currentPerfView.percentual_meta) || 0))}%` }}
+                />
+              </div>
+
+              {/* Projeção do Dia & Status do Ritmo */}
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-700">
+                    {currentPerfView.projecao_texto}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black",
+                      currentPerfView.ritmo_status === 'ACIMA'
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                        : currentPerfView.ritmo_status === 'DENTRO'
+                        ? "bg-blue-100 text-blue-800 border border-blue-200"
+                        : currentPerfView.ritmo_status === 'ABAIXO'
+                        ? "bg-amber-100 text-amber-800 border border-amber-200"
+                        : "bg-slate-200/70 text-slate-600"
+                    )}
+                  >
+                    <TrendingUp size={13} />
+                    {currentPerfView.ritmo_label}
+                  </span>
+                </div>
+                {Number(apiData?.desempenho_hoje?.tempo_pausas_segundos) > 0 && (
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    Intervalos/pausas descontados no cálculo: {formatSeconds(Number(apiData?.desempenho_hoje?.tempo_pausas_segundos) || 0)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Coluna Direita: Linha do Tempo da Produção por Hora */}
+            <div className="lg:col-span-6 space-y-2.5 lg:border-l lg:border-slate-100 lg:pl-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Clock size={14} className="text-indigo-600" />
+                  Linha do tempo da produção
+                </h3>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  Intervalos de 1 hora
+                </span>
+              </div>
+
+              {timelineBuckets.length === 0 ? (
+                <div className="bg-slate-50 rounded-xl border border-dashed border-slate-200 p-4 text-xs font-semibold text-slate-400 text-center">
+                  Nenhum apontamento concluído hoje nesta etapa até o momento.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {timelineBuckets.map((bucket: any) => {
+                    const bKey = `${bucket.hora_inicio}_${bucket.stage_id}`;
+                    const isExpanded = Boolean(expandedTimelineKeys[bKey]);
+                    return (
+                      <div
+                        key={bKey}
+                        className="bg-slate-50/90 hover:bg-slate-100/80 rounded-xl border border-slate-200/80 px-3.5 py-2.5 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-xs md:text-sm">
+                            <span className="font-mono font-black text-indigo-950 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                              {bucket.intervalo}
+                            </span>
+                            <span className="text-slate-400">—</span>
+                            <span className="font-bold text-slate-800">
+                              {bucket.resumo_texto}
+                            </span>
+                          </div>
+
+                          {bucket.multiplos_pedidos && (
+                            <button
+                              type="button"
+                              onClick={() => toggleTimelineExpand(bKey)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer shrink-0"
+                            >
+                              <span>{isExpanded ? 'Ocultar' : 'Expandir'}</span>
+                              {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </button>
+                          )}
+                        </div>
+
+                        {isExpanded && Array.isArray(bucket.pedidos) && bucket.pedidos.length > 1 && (
+                          <div className="mt-2 pt-2 border-t border-slate-200/70 space-y-1.5 pl-2">
+                            {bucket.pedidos.map((p: any, pIdx: number) => (
+                              <div key={`${p.order_id}_${pIdx}`} className="flex items-center justify-between text-xs text-slate-700">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[11px] text-slate-400">{p.horario}</span>
+                                  <span className="font-black text-slate-900">#{p.order_number}</span>
+                                  <span className="text-slate-500 truncate max-w-[160px]">{p.client_name}</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold">
+                                    {p.stage_name}
+                                  </span>
+                                </div>
+                                <span className="font-mono font-black text-emerald-700">
+                                  {p.quantidade} {p.unidade_label}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1: Peças Pendentes */}
+        {/* Metric 1: Unidades Pendentes na Fila */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[11px] font-black tracking-wider uppercase text-slate-400">
-              Peças na Fila
+              {apiData?.metricas?.unidade_fila_label || activeUnitInfo.queueLabel || 'Peças na Fila'}
             </span>
             <div className="text-2xl font-black text-slate-900">
               {apiData?.metricas?.pecas_pendentes_fila ?? 0}
             </div>
             <div className="text-[11px] font-semibold text-slate-500">
-              {displayFila.length} pedidos aguardando
+              {displayFila.length} pedidos aguardando ({apiData?.metricas?.unidade_plural || activeUnitInfo.plural})
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -493,17 +782,17 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
           </div>
         </div>
 
-        {/* Metric 3: Peças Produzidas Hoje */}
+        {/* Metric 3: Produzidas Hoje (Unidade da Etapa) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[11px] font-black tracking-wider uppercase text-slate-400">
-              Produzidas Hoje
+              {apiData?.metricas?.unidade_hoje_label || activeUnitInfo.todayLabel || 'Produzidas Hoje'}
             </span>
             <div className="text-2xl font-black text-emerald-600">
               {apiData?.metricas?.pecas_produzidas_hoje ?? 0}
             </div>
             <div className="text-[11px] font-semibold text-slate-500">
-              Peças boas apontadas
+              {apiData?.metricas?.unidade_plural || activeUnitInfo.plural} apontados hoje
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -521,7 +810,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
               {formatSeconds(apiData?.metricas?.tempo_produtivo_hoje_segundos ?? 0)}
             </div>
             <div className="text-[11px] font-semibold text-slate-500">
-              Horas registradas hoje
+              Horas líquidas hoje
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -601,13 +890,23 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
                     </span>
                   )}
                   <span className="font-bold text-slate-900">
-                    {heroExecution.quantidade_prevista || heroExecution.order_quantity || 0} peças
+                    {heroExecution.quantidade_prevista || heroExecution.order_quantity || 0}{' '}
+                    {(heroExecution.quantidade_prevista || heroExecution.order_quantity) === 1
+                      ? (heroExecution.unidade_singular || 'unidade')
+                      : (heroExecution.unidade_plural || 'peças')}
+                    {heroExecution.unidade_produtividade === 'ficha' && heroExecution.order_pieces_quantity > 0 && (
+                      <span className="text-slate-500 font-medium ml-1">
+                        (Pedido: {heroExecution.order_pieces_quantity} pçs)
+                      </span>
+                    )}
                   </span>
                   <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-black">
-                    Concluídas: {heroExecution.quantidade_concluida ?? 0}/{heroExecution.quantidade_prevista ?? heroExecution.order_quantity ?? 0}
+                    Concluídas: {heroExecution.quantidade_concluida ?? 0}/{heroExecution.quantidade_prevista ?? heroExecution.order_quantity ?? 0}{' '}
+                    {heroExecution.unidade_plural || 'peças'}
                   </span>
                   <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black">
-                    Restantes: {heroExecution.saldo_restante ?? Math.max(0, (heroExecution.quantidade_prevista || heroExecution.order_quantity || 0) - (heroExecution.quantidade_concluida || 0))}
+                    Restantes: {heroExecution.saldo_restante ?? Math.max(0, (heroExecution.quantidade_prevista || heroExecution.order_quantity || 0) - (heroExecution.quantidade_concluida || 0))}{' '}
+                    {heroExecution.unidade_plural || 'peças'}
                   </span>
                   {heroOrder && (
                     <button
@@ -715,7 +1014,10 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
           <button
             type="button"
-            onClick={() => setSelectedStageSlug('ALL')}
+            onClick={() => {
+              setSelectedStageSlug('ALL');
+              setSelectedPerfStageId(null);
+            }}
             className={cn(
               "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all",
               selectedStageSlug === 'ALL'
@@ -729,7 +1031,10 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
             <button
               key={st.id}
               type="button"
-              onClick={() => setSelectedStageSlug(st.slug)}
+              onClick={() => {
+                setSelectedStageSlug(st.slug);
+                setSelectedPerfStageId(Number(st.id));
+              }}
               className={cn(
                 "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5",
                 selectedStageSlug === st.slug
@@ -790,10 +1095,13 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
               const isFirstInQueue = idx === 0;
               const isOverdue = item.urgencia === 'critica';
               const isToday = item.urgencia === 'alta';
+              const itemUnitPlural = item.unidade_plural || 'peças';
+              const itemUnitSingular = item.unidade_singular || 'peça';
+              const itemOrderPieces = Number(item.order_pieces_quantity ?? item.quantity) || 0;
 
               return (
                 <div
-                  key={item.id}
+                  key={`${item.id}_${item.current_stage_id}`}
                   className={cn(
                     "bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between space-y-4 shadow-sm hover:shadow-md",
                     isFirstInQueue ? "border-indigo-400/90 ring-2 ring-indigo-500/10" : "border-slate-200/90"
@@ -856,7 +1164,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-[11px] font-black text-slate-900">
-                            {item.quantity} peças
+                            {itemOrderPieces} peças
                           </span>
                           <span className="text-slate-300">•</span>
                           <span className="text-[11px] text-slate-500 font-semibold truncate">
@@ -887,10 +1195,18 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
 
                       <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/60">
                         <span className="font-bold text-slate-600">
-                          Concluídas: <strong className="text-emerald-700">{item.quantidade_concluida ?? 0}/{item.quantidade_prevista ?? item.quantity}</strong>
+                          Concluídas:{' '}
+                          <strong className="text-emerald-700">
+                            {item.quantidade_concluida ?? 0}/{item.quantidade_prevista ?? item.quantity}{' '}
+                            {(item.quantidade_prevista ?? item.quantity) === 1 ? itemUnitSingular : itemUnitPlural}
+                          </strong>
                         </span>
                         <span className="font-bold text-slate-600">
-                          Restantes: <strong className="text-indigo-700">{item.saldo_restante ?? item.quantity}</strong>
+                          Restantes:{' '}
+                          <strong className="text-indigo-700">
+                            {item.saldo_restante ?? item.quantity}{' '}
+                            {(item.saldo_restante ?? item.quantity) === 1 ? itemUnitSingular : itemUnitPlural}
+                          </strong>
                         </span>
                       </div>
 

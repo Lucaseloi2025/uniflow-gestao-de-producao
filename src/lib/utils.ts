@@ -62,3 +62,157 @@ export function isOrderCompleted(order: any): boolean {
   }
   return false;
 }
+
+export function getStageSlugFromStage(stage: any): string {
+  if (!stage) return '';
+  if (stage.code && typeof stage.code === 'string' && stage.code.trim()) {
+    return stage.code.toUpperCase().trim();
+  }
+  if (stage.slug && typeof stage.slug === 'string' && stage.slug.trim()) {
+    return stage.slug.toUpperCase().trim();
+  }
+  const raw = String(stage.name || stage.sector_name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+  if (raw.includes('FICHA') || raw.includes('APROVA') || raw.includes('ARTE')) return 'FICHA_APROVACAO';
+  if (raw.includes('CORTE') || raw.includes('SEPARA')) return 'CORTE';
+  if (raw.includes('SUBLIMA')) return 'SUBLIMACAO';
+  if (raw.includes('ESTAMPA') || raw.includes('PRENSA')) return 'ESTAMPAGEM';
+  if (raw.includes('SILK') || raw.includes('SERIGRAF')) return 'SILK';
+  if (raw.includes('DTF')) return 'DTF';
+  if (raw.includes('BORDADO')) return 'BORDADO';
+  if (raw.includes('COSTURA')) return 'COSTURA';
+  if (raw.includes('REVIS') || raw.includes('ACABAMENTO')) return 'REVISAO';
+  if (raw.includes('EMBALA') || raw.includes('EXPEDI')) return 'EMBALAGEM';
+  if (raw.includes('CONFER')) return 'CONFERENCIA';
+  return raw.replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+export function getStageProductivityUnit(stage: any): {
+  unit: 'ficha' | 'kit_dtf' | 'peca' | 'lote';
+  singular: string;
+  plural: string;
+  actionSingular: string;
+  actionPlural: string;
+  queueLabel: string;
+  todayDoneLabel: string;
+  todayDoneSubLabel: string;
+  isPerOrderUnit: boolean;
+} {
+  const slug = getStageSlugFromStage(stage);
+  const calcType = String(stage?.calculation_type || '').toLowerCase();
+  const explicitUnit = String(stage?.unidade_produtividade || stage?.productivity_unit || '').toLowerCase();
+
+  if (explicitUnit === 'ficha' || calcType === 'por_pedido' || slug === 'FICHA_APROVACAO') {
+    return {
+      unit: 'ficha',
+      singular: 'ficha',
+      plural: 'fichas',
+      actionSingular: 'ficha aprovada',
+      actionPlural: 'fichas aprovadas',
+      queueLabel: 'Fichas na Fila',
+      todayDoneLabel: 'Fichas Concluídas Hoje',
+      todayDoneSubLabel: 'Fichas aprovadas hoje',
+      isPerOrderUnit: true,
+    };
+  }
+
+  if (explicitUnit === 'kit_dtf' || calcType === 'por_kit_dtf' || slug === 'DTF') {
+    return {
+      unit: 'kit_dtf',
+      singular: 'kit DTF',
+      plural: 'kits DTF',
+      actionSingular: 'kit impresso',
+      actionPlural: 'kits impressos',
+      queueLabel: 'Kits DTF na Fila',
+      todayDoneLabel: 'Kits Impressos Hoje',
+      todayDoneSubLabel: 'Kits de estampas impressos',
+      isPerOrderUnit: false,
+    };
+  }
+
+  if (explicitUnit === 'lote' || calcType === 'por_lote') {
+    return {
+      unit: 'lote',
+      singular: 'lote',
+      plural: 'lotes',
+      actionSingular: 'lote concluído',
+      actionPlural: 'lotes concluídos',
+      queueLabel: 'Lotes na Fila',
+      todayDoneLabel: 'Lotes Concluídos Hoje',
+      todayDoneSubLabel: 'Lotes apontados hoje',
+      isPerOrderUnit: false,
+    };
+  }
+
+  if (slug === 'CORTE') {
+    return {
+      unit: 'peca',
+      singular: 'peça',
+      plural: 'peças',
+      actionSingular: 'peça cortada',
+      actionPlural: 'peças cortadas',
+      queueLabel: 'Peças na Fila',
+      todayDoneLabel: 'Peças Cortadas Hoje',
+      todayDoneSubLabel: 'Peças efetivamente cortadas',
+      isPerOrderUnit: false,
+    };
+  }
+
+  if (slug === 'ESTAMPAGEM') {
+    return {
+      unit: 'peca',
+      singular: 'peça',
+      plural: 'peças',
+      actionSingular: 'peça estampada',
+      actionPlural: 'peças estampadas',
+      queueLabel: 'Peças na Fila',
+      todayDoneLabel: 'Peças Estampadas Hoje',
+      todayDoneSubLabel: 'Peças efetivamente estampadas',
+      isPerOrderUnit: false,
+    };
+  }
+
+  if (slug === 'COSTURA') {
+    return {
+      unit: 'peca',
+      singular: 'peça',
+      plural: 'peças',
+      actionSingular: 'peça costurada',
+      actionPlural: 'peças costuradas',
+      queueLabel: 'Peças na Fila',
+      todayDoneLabel: 'Peças Costuradas Hoje',
+      todayDoneSubLabel: 'Peças efetivamente costuradas',
+      isPerOrderUnit: false,
+    };
+  }
+
+  if (slug === 'SUBLIMACAO') {
+    return {
+      unit: 'peca',
+      singular: 'peça',
+      plural: 'peças',
+      actionSingular: 'peça sublimada',
+      actionPlural: 'peças sublimadas',
+      queueLabel: 'Peças na Fila',
+      todayDoneLabel: 'Peças Sublimadas Hoje',
+      todayDoneSubLabel: 'Peças efetivamente sublimadas',
+      isPerOrderUnit: false,
+    };
+  }
+
+  return {
+    unit: 'peca',
+    singular: 'peça',
+    plural: 'peças',
+    actionSingular: 'peça produzida',
+    actionPlural: 'peças produzidas',
+    queueLabel: 'Peças na Fila',
+    todayDoneLabel: 'Peças Produzidas Hoje',
+    todayDoneSubLabel: 'Peças boas apontadas',
+    isPerOrderUnit: false,
+  };
+}
+

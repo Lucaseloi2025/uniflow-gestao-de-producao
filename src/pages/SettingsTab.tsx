@@ -219,9 +219,10 @@ export const SettingsTab = ({
                   onChange={(e) => setNewStageCalculationType(e.target.value as any)}
                   className="p-2 border border-zinc-200 rounded-lg text-sm bg-white focus:outline-none focus:border-zinc-400"
                 >
-                  <option value="por_pedido">📄 Por pedido</option>
-                  <option value="por_peca">👕 Por peça</option>
-                  <option value="por_lote">📦 Por lote</option>
+                  <option value="por_pedido">📄 Ficha (1 por pedido)</option>
+                  <option value="por_kit_dtf">🎞️ Kit de Estampas DTF</option>
+                  <option value="por_peca">👕 Peça</option>
+                  <option value="por_lote">📦 Lote</option>
                 </select>
                 <input
                   type="number"
@@ -289,9 +290,10 @@ export const SettingsTab = ({
                             onChange={(e) => setEditingStageCalculationType(e.target.value as any)}
                             className="p-1 border border-zinc-300 rounded text-xs bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
                           >
-                            <option value="por_pedido">📄 Por pedido</option>
-                            <option value="por_peca">👕 Por peça</option>
-                            <option value="por_lote">📦 Por lote</option>
+                            <option value="por_pedido">📄 Ficha (1 por pedido)</option>
+                            <option value="por_kit_dtf">🎞️ Kit de Estampas DTF</option>
+                            <option value="por_peca">👕 Peça</option>
+                            <option value="por_lote">📦 Lote</option>
                           </select>
                           <input
                             type="number"
@@ -334,13 +336,14 @@ export const SettingsTab = ({
                         <div className="flex flex-col">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">{stage.name}</span>
-                            {stage.calculation_type === 'por_pedido' && <Badge variant="info" className="lowercase italic opacity-70">por pedido</Badge>}
-                            {stage.calculation_type === 'por_peca' && <Badge variant="success" className="lowercase italic opacity-70">por peça</Badge>}
-                            {stage.calculation_type === 'por_lote' && <Badge variant="warning" className="lowercase italic opacity-70">por lote</Badge>}
+                            {stage.calculation_type === 'por_pedido' && <Badge variant="info" className="lowercase italic opacity-70">unidade: ficha (1 por pedido)</Badge>}
+                            {(stage.calculation_type === 'por_kit_dtf' || (stage.calculation_type !== 'por_pedido' && stage.calculation_type !== 'por_lote' && String(stage.name || '').toUpperCase().includes('DTF'))) && <Badge variant="info" className="lowercase italic opacity-70">unidade: kit DTF</Badge>}
+                            {stage.calculation_type === 'por_peca' && !String(stage.name || '').toUpperCase().includes('DTF') && <Badge variant="success" className="lowercase italic opacity-70">unidade: peça</Badge>}
+                            {stage.calculation_type === 'por_lote' && <Badge variant="warning" className="lowercase italic opacity-70">unidade: lote</Badge>}
                           </div>
                           <div className="flex items-center gap-3 mt-0.5">
                             {idealTimeDisplay > 0 ? <span className="text-[10px] text-zinc-500 font-mono bg-white px-1.5 py-0.5 rounded border border-zinc-200">
-                              Ideal: {formatSeconds(idealTimeDisplay)} {stage.calculation_type === 'por_peca' ? '/pc' : ''}
+                              Ideal: {formatSeconds(idealTimeDisplay)} {stage.calculation_type === 'por_pedido' ? '/ficha' : (stage.calculation_type === 'por_kit_dtf' || String(stage.name || '').toUpperCase().includes('DTF')) ? '/kit' : '/pc'}
                             </span> : null}
                             {stage.real_average_time && stage.real_average_time > 0 ? (
                                <span className="text-[10px] text-blue-600 font-mono bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
@@ -349,7 +352,7 @@ export const SettingsTab = ({
                             ) : null}
                             {stage.meta_diaria && stage.meta_diaria > 0 ? (
                               <span className="text-[10px] text-violet-600 font-mono bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100">
-                                Meta: {stage.meta_diaria}/{stage.calculation_type === 'por_pedido' ? 'ped' : 'pc'}
+                                Meta: {stage.meta_diaria} {stage.calculation_type === 'por_pedido' ? 'fichas/dia' : (stage.calculation_type === 'por_kit_dtf' || String(stage.name || '').toUpperCase().includes('DTF')) ? 'kits/dia' : 'peças/dia'}
                               </span>
                             ) : null}
                           </div>

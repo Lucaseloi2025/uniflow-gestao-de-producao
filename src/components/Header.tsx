@@ -8,6 +8,22 @@ import type { Stage, User, Order } from '../types';
 export const Header = ({
   safeFetch, activeTab, currentUser, dateRange, draftOrders, fetchExecutions, handleSyncOlist, isSyncingOlist, orders, printTypeFilter, productTypeFilter, reportEndDate, reportPeriod, reportPrintType, reportStage, reportStartDate, reportUser, searchTerm, selectedStageFilter, selectedStageStatus, setActiveTab, setDateRange, setIsDraftsListModalOpen, setIsMobileMenuOpen, setIsPrintModalOpen, setNewOrderRequiredStages, setPrintTypeFilter, setProductTypeFilter, setReportEndDate, setReportPeriod, setReportPrintType, setReportStage, setReportStartDate, setReportUser, setSearchTerm, setSelectedOrder, setSelectedStageFilter, setSelectedStageStatus, setSelectedUserForEdit, setShowNewOrderModal, setShowUserModal, setUserSearchTerm, stages, users, userSearchTerm, scanInputRef
 }: any) => {
+  if (activeTab === 'minha-fila') {
+    return (
+      <header className="flex lg:hidden items-center justify-between mb-3">
+        <span className="text-xs font-bold text-zinc-500">
+          {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
+        </span>
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-2 bg-white border border-zinc-200 rounded-lg text-zinc-600"
+        >
+          <Menu size={20} />
+        </button>
+      </header>
+    );
+  }
+
   return (
     <header className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
           <div className="flex items-center justify-between">
@@ -304,7 +320,7 @@ export const Header = ({
                   Definir Metas
                 </button>
               ) : null
-            ) : (
+            ) : activeTab !== 'minha-fila' ? (
               <div className="flex items-center gap-3 w-full lg:w-auto">
                 <form 
                   onSubmit={(e) => {
@@ -398,7 +414,7 @@ export const Header = ({
                   Novo Pedido
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         </header>
   );
