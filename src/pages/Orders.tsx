@@ -50,7 +50,7 @@ export const Orders = ({
   const statusTabs: { id: OrderTab; label: string; count?: number; countClass: string }[] = [
     { id: 'ativos', label: 'Ativos', count: orderCounts?.ativos, countClass: 'bg-amber-100 text-amber-800' },
     { id: 'prontos', label: 'Prontos', count: orderCounts?.prontos, countClass: 'bg-emerald-100 text-emerald-800' },
-    { id: 'entregues', label: 'Entregues', count: orderCounts?.entregues, countClass: 'bg-zinc-200 text-zinc-700' },
+    { id: 'entregues', label: 'Entregues / Encerrados', count: orderCounts?.entregues, countClass: 'bg-zinc-200 text-zinc-700' },
     { id: 'cancelados', label: 'Cancelados', count: orderCounts?.cancelados, countClass: 'bg-rose-100 text-rose-800' },
     { id: 'todos', label: 'Todos / Histórico', count: orderCounts?.todos, countClass: 'bg-zinc-100 text-zinc-600' }
   ];

@@ -64,10 +64,46 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
 }) => {
   const isManager = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
 
+  const getStageSlugClient = useCallback((stage: { id?: number; name?: string; sector_name?: string; slug?: string } | null | undefined): string => {
+    if (!stage) return '';
+    if ((stage as any).slug) return String((stage as any).slug).toUpperCase();
+    const raw = String(stage.name || stage.sector_name || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+    if (raw.includes('FICHA') || raw.includes('APROVACAO') || raw.includes('ARTE')) return 'FICHA_APROVACAO';
+    if (raw.includes('CORTE')) return 'CORTE';
+    if (raw.includes('SUBLIMACAO')) return 'SUBLIMACAO';
+    if (raw.includes('ESTAMPAGEM') || raw.includes('ESTAMPARIA')) return 'ESTAMPAGEM';
+    if (raw.includes('SILK') || raw.includes('SERIGRAFIA')) return 'SILK';
+    if (raw.includes('DTF')) return 'DTF';
+    if (raw.includes('BORDADO')) return 'BORDADO';
+    if (raw.includes('COSTURA')) return 'COSTURA';
+    if (raw.includes('REVISAO') || raw.includes('ACABAMENTO')) return 'REVISAO';
+    if (raw.includes('EMBALAGEM') || raw.includes('EXPEDICAO')) return 'EMBALAGEM';
+    if (raw.includes('CONFERENCIA')) return 'CONFERENCIA';
+    return raw.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '') || `STAGE_${stage.id || 0}`;
+  }, []);
+
+  // Active stages list (excluding legacy Conferência)
+  const activeStages = useMemo(() => {
+    return stages
+      .filter(s => (s.active === 1 || (s.active as any) === true) && getStageSlugClient(s) !== 'CONFERENCIA' && Number(s.id) !== 12)
+      .map(s => ({
+        ...s,
+        slug: getStageSlugClient(s),
+      }));
+  }, [stages, getStageSlugClient]);
+
   // Filters
-  const [selectedStageId, setSelectedStageId] = useState<number | null>(
-    currentUser?.default_stage_id ? Number(currentUser.default_stage_id) : null
-  );
+  const [selectedStageSlug, setSelectedStageSlug] = useState<string>(() => {
+    if (currentUser?.default_stage_id) {
+      const st = stages.find(s => Number(s.id) === Number(currentUser.default_stage_id));
+      if (st) return getStageSlugClient(st);
+    }
+    return 'ALL';
+  });
   const [selectedUserId, setSelectedUserId] = useState<number | null>(
     currentUser?.id || null
   );
@@ -91,10 +127,16 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     try {
       const params = new URLSearchParams();
       if (selectedUserId) params.set('user_id', String(selectedUserId));
-      if (selectedStageId) params.set('stage_id', String(selectedStageId));
+      params.set('stage_slug', selectedStageSlug || 'ALL');
+      if (selectedStageSlug && selectedStageSlug !== 'ALL') {
+        const matchedSt = activeStages.find(s => s.slug === selectedStageSlug);
+        if (matchedSt) params.set('stage_id', String(matchedSt.id));
+      } else {
+        params.set('all', '1');
+      }
 
       const res = await safeFetch(`/api/pcp-phase1/minha-fila?${params.toString()}`);
-      if (res && res.fila) {
+      if (res && Array.isArray(res.fila)) {
         setApiData(res);
       }
     } catch (err) {
@@ -102,7 +144,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedUserId, selectedStageId, safeFetch]);
+  }, [selectedUserId, selectedStageSlug, activeStages, safeFetch]);
 
   useEffect(() => {
     loadMinhaFila();
@@ -125,30 +167,33 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     return () => clearInterval(timer);
   }, [loadMinhaFila]);
 
-  // Active stages list
-  const activeStages = useMemo(() => {
-    return stages.filter(s => s.active === 1 || (s.active as any) === true);
-  }, [stages]);
-
   // Active execution: from apiData or from activeExecutions
   const heroExecution = useMemo(() => {
     if (apiData?.execucao_atual) return apiData.execucao_atual;
     if (activeExecutions && activeExecutions.length > 0) {
       const ex = activeExecutions[0];
-      const matchOrder = orders.find(o => o.id === ex.order_id);
+      const matchOrder = orders.find(o => o.id === ex.order_id) || (apiData?.fila || []).find((f: any) => f.id === ex.order_id);
+      const matchStage = matchOrder?.stages_status?.find((s: any) => Number(s.id) === Number(ex.stage_id));
+      const qPrevista = Number(matchOrder?.quantity || ex.order_quantity) || 0;
+      const qConcluida = Number(matchStage?.quantidade_boa) || 0;
+      const sRestante = Math.max(0, qPrevista - qConcluida);
       return {
         ...ex,
         order_number: matchOrder?.order_number || ex.order_number,
         client_name: matchOrder?.client_name || ex.client_name,
         product_type: matchOrder?.product_type || ex.product_type,
         print_type: matchOrder?.print_type,
-        order_quantity: matchOrder?.quantity || ex.order_quantity,
+        order_quantity: qPrevista,
+        quantidade_prevista: qPrevista,
+        quantidade_concluida: qConcluida,
+        saldo_restante: sRestante,
         order_deadline: matchOrder?.deadline,
         order_art_url: matchOrder?.art_url || (matchOrder?.art_urls && matchOrder.art_urls[0]),
+        stages_status: matchOrder?.stages_status || [],
       };
     }
     return null;
-  }, [apiData?.execucao_atual, activeExecutions, orders]);
+  }, [apiData?.execucao_atual, apiData?.fila, activeExecutions, orders]);
 
   // Live timer for hero execution
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -171,15 +216,85 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     return () => clearInterval(interval);
   }, [heroExecution]);
 
-  // Associated order for Hero Execution
-  const heroOrder = useMemo(() => {
+  // Associated order for Hero Execution (always builds a valid Order object so modals NEVER fail to open)
+  const heroOrder = useMemo<Order | null>(() => {
     if (!heroExecution) return null;
-    return orders.find(o => o.id === heroExecution.order_id) || null;
-  }, [heroExecution, orders]);
+    const existing = orders.find(o => Number(o.id) === Number(heroExecution.order_id)) ||
+                     (apiData?.fila || []).find((f: any) => Number(f.id) === Number(heroExecution.order_id));
 
-  // Filtered queue (only orders with active, executable current stage)
+    const qPrevista = Number(heroExecution.quantidade_prevista ?? heroExecution.order_quantity ?? existing?.quantity) || 0;
+    const qConcluida = Number(heroExecution.quantidade_concluida) || 0;
+    const sRestante = Number(heroExecution.saldo_restante ?? Math.max(0, qPrevista - qConcluida));
+
+    const baseStages = Array.isArray(heroExecution.stages_status) && heroExecution.stages_status.length > 0
+      ? heroExecution.stages_status
+      : (Array.isArray(existing?.stages_status) ? existing.stages_status : []);
+
+    const hasTargetStage = baseStages.some((s: any) => Number(s.id) === Number(heroExecution.stage_id));
+    const syncedStages = hasTargetStage
+      ? baseStages.map((s: any) => Number(s.id) === Number(heroExecution.stage_id)
+          ? {
+              ...s,
+              quantidade_boa: qConcluida,
+              saldo_pendente: sRestante,
+              finished: false,
+              status_operacao: heroExecution.is_paused ? 'PAUSADA' : 'EM_ANDAMENTO',
+            }
+          : s)
+      : [
+          ...baseStages,
+          {
+            id: Number(heroExecution.stage_id),
+            name: heroExecution.stage_name || 'Etapa',
+            finished: false,
+            status: 'Em andamento',
+            status_operacao: heroExecution.is_paused ? 'PAUSADA' : 'EM_ANDAMENTO',
+            quantidade_boa: qConcluida,
+            saldo_pendente: sRestante,
+          },
+        ];
+
+    if (existing) {
+      return {
+        ...existing,
+        quantity: qPrevista || existing.quantity,
+        stages_status: syncedStages,
+      } as Order;
+    }
+
+    return {
+      id: Number(heroExecution.order_id),
+      order_number: heroExecution.order_number || String(heroExecution.order_id),
+      client_name: heroExecution.client_name || 'Cliente',
+      product_type: heroExecution.product_type || 'Produto',
+      print_type: heroExecution.print_type || '',
+      quantity: qPrevista,
+      deadline: heroExecution.order_deadline || '',
+      status: 'Em produção',
+      art_url: heroExecution.order_art_url || '',
+      observations: '',
+      total_time_seconds: Number(heroExecution.total_time_seconds) || 0,
+      estimated_time_seconds: 0,
+      items: heroExecution.order_items || [],
+      stages_status: syncedStages,
+    } as unknown as Order;
+  }, [heroExecution, orders, apiData?.fila]);
+
+  // Filtered queue (only orders with active, executable current stage matching selectedStageSlug)
   const displayFila = useMemo(() => {
-    let list = (apiData?.fila || []).filter((item: any) => Boolean(item.current_stage_id) && item.status !== 'Pronto' && item.status !== 'Entregue');
+    let list = (apiData?.fila || []).filter((item: any) => {
+      if (!item.current_stage_id || item.status === 'Pronto' || item.status === 'Entregue' || item.status === 'Cancelado') {
+        return false;
+      }
+      if (Number(item.quantidade_prevista || item.quantity) > 0 && Number(item.saldo_restante ?? item.quantity) <= 0) {
+        return false;
+      }
+      if (selectedStageSlug && selectedStageSlug !== 'ALL') {
+        const itemSlug = item.current_stage_slug || getStageSlugClient({ id: item.current_stage_id, name: item.current_stage_name });
+        if (itemSlug !== selectedStageSlug) return false;
+      }
+      return true;
+    });
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       list = list.filter((item: any) => 
@@ -189,7 +304,7 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
       );
     }
     return list;
-  }, [apiData?.fila, searchTerm]);
+  }, [apiData?.fila, selectedStageSlug, searchTerm, getStageSlugClient]);
 
   // Filtered blocked
   const displayBloqueados = useMemo(() => {
@@ -214,6 +329,10 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     const stageId = item.current_stage_id;
     if (!stageId) return;
 
+    if (item.can_start === false || item.current_stage_status === 'EM_ANDAMENTO' || item.current_stage_status === 'PAUSADA') {
+      return;
+    }
+
     if (heroExecution && (heroExecution.status === 'Em andamento' || !heroExecution.is_paused)) {
       const confirmSwitch = window.confirm(
         `Você já possui uma tarefa em andamento (#${heroExecution.order_number} - ${heroExecution.stage_name}).\n\nDeseja iniciar #${item.order_number} mesmo assim?`
@@ -224,6 +343,40 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
     const fullOrder = orders.find(o => o.id === item.id) || item;
     await handleStartStage(stageId, fullOrder);
     await loadMinhaFila();
+  };
+
+  // Formal Supervisor / PCP Transfer or Intervention
+  const handleTransferCard = async (item: any) => {
+    const stageId = item.current_stage_id;
+    if (!stageId || !isManager) return;
+
+    const motivo = window.prompt(
+      `A etapa ${item.current_stage_name} do pedido #${item.order_number} está vinculada a ${item.active_operator_name || 'outro operador'}.\n\nInforme a justificativa obrigatória para transferir/intervir na execução:`
+    );
+    if (!motivo || !motivo.trim()) return;
+
+    try {
+      const res = await safeFetch('/api/executions/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: item.id,
+          stage_id: stageId,
+          user_id: currentUser?.id,
+          supervisor_override: true,
+          motivo: motivo.trim(),
+        }),
+      });
+      if (res && !res.error) {
+        await fetchActiveExecution();
+        await fetchData();
+        await loadMinhaFila();
+      } else {
+        alert(res?.error || 'Não foi possível transferir a etapa.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao transferir execução.');
+    }
   };
 
   return (
@@ -448,7 +601,13 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
                     </span>
                   )}
                   <span className="font-bold text-slate-900">
-                    {heroExecution.order_quantity || 0} peças
+                    {heroExecution.quantidade_prevista || heroExecution.order_quantity || 0} peças
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-black">
+                    Concluídas: {heroExecution.quantidade_concluida ?? 0}/{heroExecution.quantidade_prevista ?? heroExecution.order_quantity ?? 0}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black">
+                    Restantes: {heroExecution.saldo_restante ?? Math.max(0, (heroExecution.quantidade_prevista || heroExecution.order_quantity || 0) - (heroExecution.quantidade_concluida || 0))}
                   </span>
                   {heroOrder && (
                     <button
@@ -556,10 +715,10 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
           <button
             type="button"
-            onClick={() => setSelectedStageId(null)}
+            onClick={() => setSelectedStageSlug('ALL')}
             className={cn(
               "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all",
-              selectedStageId === null
+              selectedStageSlug === 'ALL'
                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             )}
@@ -570,10 +729,10 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
             <button
               key={st.id}
               type="button"
-              onClick={() => setSelectedStageId(st.id)}
+              onClick={() => setSelectedStageSlug(st.slug)}
               className={cn(
                 "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5",
-                selectedStageId === st.id
+                selectedStageSlug === st.slug
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-100"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               )}
@@ -707,21 +866,40 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
                       </div>
                     </div>
 
-                    {/* Stage status indicator */}
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <span className="text-slate-400">Etapa:</span>
-                        <span className="text-slate-800">{item.current_stage_name || 'Etapa'}</span>
+                    {/* Stage status indicator + Progresso e Saldo */}
+                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <span className="text-slate-400">Etapa:</span>
+                          <span className="text-slate-800">{item.current_stage_name || 'Etapa'}</span>
+                        </div>
+                        <span className={cn(
+                          "font-black text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-md border",
+                          item.current_stage_status === 'EM_ANDAMENTO' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                          item.current_stage_status === 'PAUSADA' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                          item.current_stage_status === 'PARCIAL' ? "bg-blue-50 text-blue-700 border-blue-200" :
+                          item.current_stage_status === 'LIBERADA' ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                          "bg-slate-100 text-slate-600 border-slate-200"
+                        )}>
+                          {item.current_stage_status || 'Aguardando'}
+                        </span>
                       </div>
-                      <span className={cn(
-                        "font-black text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-md border",
-                        item.current_stage_status === 'EM_ANDAMENTO' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                        item.current_stage_status === 'PAUSADA' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                        item.current_stage_status === 'LIBERADA' ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
-                        "bg-slate-100 text-slate-600 border-slate-200"
-                      )}>
-                        {item.current_stage_status || 'Aguardando'}
-                      </span>
+
+                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/60">
+                        <span className="font-bold text-slate-600">
+                          Concluídas: <strong className="text-emerald-700">{item.quantidade_concluida ?? 0}/{item.quantidade_prevista ?? item.quantity}</strong>
+                        </span>
+                        <span className="font-bold text-slate-600">
+                          Restantes: <strong className="text-indigo-700">{item.saldo_restante ?? item.quantity}</strong>
+                        </span>
+                      </div>
+
+                      {(item.current_stage_status === 'EM_ANDAMENTO' || item.current_stage_status === 'PAUSADA') && item.active_operator_name && (
+                        <div className="text-[11px] font-bold text-slate-600 flex items-center gap-1 pt-0.5">
+                          <UserCheck size={12} className="text-indigo-600 shrink-0" />
+                          <span>Em execução por: <strong className="text-slate-900">{item.active_operator_name}</strong></span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Observations if any */}
@@ -732,8 +910,8 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
                     )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                  {/* Actions (Mutually Exclusive by Execution State & Ownership) */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
                       onClick={() => {
@@ -745,19 +923,95 @@ export const MinhaFila: React.FC<MinhaFilaProps> = ({
                       Detalhes
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleStartCard(item)}
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-xs text-white shadow-sm transition-all cursor-pointer",
-                        isFirstInQueue
-                          ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100"
-                          : "bg-slate-900 hover:bg-slate-800"
-                      )}
-                    >
-                      <Play size={14} fill="currentColor" />
-                      <span>INICIAR ETAPA</span>
-                    </button>
+                    {(item.current_stage_status === 'EM_ANDAMENTO' || item.current_stage_status === 'PAUSADA') ? (
+                      (item.is_owned_by_current_user || Number(item.active_operator_id) === Number(currentUser?.id)) ? (
+                        <>
+                          {item.current_stage_status === 'PAUSADA' ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (item.active_execution_id) {
+                                  await handleResumeStage(item.active_execution_id, fullOrder);
+                                  await loadMinhaFila();
+                                }
+                              }}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl font-black text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all cursor-pointer"
+                            >
+                              <Play size={13} fill="currentColor" />
+                              <span>RETOMAR</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.active_execution_id) {
+                                  handleOpenActionModal('pause', item.active_execution_id, item.current_stage_id, fullOrder);
+                                }
+                              }}
+                              className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl font-black text-xs text-white bg-amber-500 hover:bg-amber-600 shadow-sm transition-all cursor-pointer"
+                            >
+                              <Pause size={13} />
+                              <span>PAUSAR</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProgressModal(item.current_stage_id, fullOrder)}
+                            className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all cursor-pointer"
+                          >
+                            <Layers size={13} />
+                            <span>APONTAR</span>
+                          </button>
+
+                          {item.current_stage_status !== 'PAUSADA' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (item.active_execution_id) {
+                                  handleOpenActionModal('finish', item.active_execution_id, item.current_stage_id, fullOrder);
+                                }
+                              }}
+                              className="flex-1 flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl font-black text-xs text-white bg-slate-900 hover:bg-slate-800 shadow-sm transition-all cursor-pointer"
+                            >
+                              <CheckCircle2 size={13} />
+                              <span>FINALIZAR</span>
+                            </button>
+                          )}
+                        </>
+                      ) : isManager ? (
+                        <button
+                          type="button"
+                          onClick={() => handleTransferCard(item)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl font-black text-xs text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all cursor-pointer"
+                        >
+                          <UserCheck size={14} />
+                          <span>Transferir / Intervir</span>
+                        </button>
+                      ) : (
+                        <span className="flex-1 text-center px-3 py-2 rounded-xl bg-slate-100 text-slate-500 font-bold text-[11px]">
+                          Em execução por {item.active_operator_name || 'outro operador'}
+                        </span>
+                      )
+                    ) : item.can_start !== false ? (
+                      <button
+                        type="button"
+                        onClick={() => handleStartCard(item)}
+                        className={cn(
+                          "flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-xs text-white shadow-sm transition-all cursor-pointer",
+                          isFirstInQueue
+                            ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100"
+                            : "bg-slate-900 hover:bg-slate-800"
+                        )}
+                      >
+                        <Play size={14} fill="currentColor" />
+                        <span>{item.current_stage_status === 'PARCIAL' ? 'CONTINUAR ETAPA' : 'INICIAR ETAPA'}</span>
+                      </button>
+                    ) : (
+                      <span className="flex-1 text-center px-3 py-2 rounded-xl bg-slate-100 text-slate-400 font-bold text-[11px]">
+                        Aguardando liberação
+                      </span>
+                    )}
                   </div>
                 </div>
               );

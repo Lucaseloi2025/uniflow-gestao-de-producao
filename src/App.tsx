@@ -195,7 +195,7 @@ export default function App() {
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-900 font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all shadow-sm"
-                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                placeholder="••••••••"
                 required
               />
             </div>
@@ -285,7 +285,7 @@ export default function App() {
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
               <span className="text-sm font-bold text-emerald-900">Operador Ativo: {currentUser?.name || '---'}</span>
-              <span className="hidden sm:inline text-emerald-300">â€¢</span>
+              <span className="hidden sm:inline text-emerald-300">•</span>
               <span className="text-xs font-medium text-emerald-700">Setor: {currentUser?.role || '---'}</span>
             </div>
           </div>
@@ -688,7 +688,7 @@ export default function App() {
           imageList={selectedOrder ? Array.from(new Set([...(selectedOrder.art_urls || []), ...(selectedOrder.art_url ? [selectedOrder.art_url] : [])].filter(Boolean))) : []}
         />
 
-        {/* Ã°Å¸â€œÂ¦ Edit Order Modal Ã°Å¸â€œÂ¦ */}
+        {/* 📦 Edit Order Modal 📦 */}
         <EditOrderModal
           showEditOrderModal={showEditOrderModal}
           setShowEditOrderModal={setShowEditOrderModal}
@@ -706,7 +706,7 @@ export default function App() {
           fetchData={fetchData}
         />
 
-        {/* Ã°Å¸â€¢â€™ Order History Modal Ã°Å¸â€¢â€™ */}
+        {/* Ã°Å¸•â€™ Order History Modal Ã°Å¸•â€™ */}
         <OrderHistoryModal
           showHistoryModal={showHistoryModal}
           setShowHistoryModal={setShowHistoryModal}
@@ -716,7 +716,7 @@ export default function App() {
           users={users}
         />
 
-        {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de ProduÃ§Ã£o e Perdas */}
+        {/* MODAL UNIFICADO: Pausar / Finalizar Etapa com Registro de Produção e Perdas */}
         <ExecutionActionModal
           executionActionModal={executionActionModal}
           setExecutionActionModal={setExecutionActionModal}

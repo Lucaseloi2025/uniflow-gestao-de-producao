@@ -341,8 +341,7 @@ export const OrderDetailsDrawer = ({
                               {(() => {
                                 const stagesStatusList = (selectedOrder.stages_status || []).filter((s: any) => Number(s.id) !== 12);
                                 const finishedCount = stagesStatusList.filter((s: any) => {
-                                  const execs = (executions || []).filter((e: any) => Number(e.stage_id) === Number(s.id));
-                                  return Boolean(s.finished || execs.some((e: any) => e.status === 'Finalizado'));
+                                  return Boolean(s.finished === true || s.status_operacao === 'CONCLUIDA');
                                 }).length;
                                 return (
                                   <Badge variant="info" className="text-[8px] py-0 px-1.5">
@@ -365,8 +364,7 @@ export const OrderDetailsDrawer = ({
                                   );
                                 };
                                 const isStageDone = (orderStage: any) => {
-                                  const exec = getStageExecution(orderStage.id);
-                                  return Boolean(orderStage.finished || exec?.status === 'Finalizado');
+                                  return Boolean(orderStage.finished === true || orderStage.status_operacao === 'CONCLUIDA');
                                 };
                                 const firstUnfinishedId = stagesStatusList.find((s: any) => !isStageDone(s))?.id;
 
@@ -404,6 +402,9 @@ export const OrderDetailsDrawer = ({
                                               isFinished ? "text-zinc-500 line-through" : "text-zinc-900"
                                             )}>
                                               {stage.name}
+                                            </p>
+                                            <p className="text-[9px] text-zinc-500 font-bold">
+                                              Concluídas: <span className="text-emerald-700">{Math.max(0, Number(orderStage.quantidade_boa) || 0)}/{Math.max(0, Number(orderStage.quantidade_pedido || selectedOrder.quantity) || 0)}</span> • Restantes: <span className="text-indigo-700">{isFinished ? 0 : Math.max(0, Number(orderStage.saldo_pendente ?? ((Number(selectedOrder.quantity) || 0) - (Number(orderStage.quantidade_boa) || 0))))}</span>
                                             </p>
                                             {execution && stageTimes && (
                                               <p className="text-[9px] text-zinc-400 truncate font-medium">

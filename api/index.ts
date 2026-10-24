@@ -3,7 +3,7 @@ import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import crypto from "crypto";
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Inlined cutting utilities (avoid cross-dir import that crashes Vercel serverless) ├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Inlined cutting utilities (avoid cross-dir import that crashes Vercel serverless) ──
 function parseOrderItems(itemsRaw: any): any[] {
   if (!itemsRaw) return [];
   if (Array.isArray(itemsRaw)) return itemsRaw;
@@ -25,7 +25,7 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
   { name: 'Verde Militar', pattern: /\b(verde\s*militar)\b/i },
   { name: 'Verde Bandeira', pattern: /\b(verde\s*bandeira)\b/i },
   { name: 'Rosa Chiclete', pattern: /\b(rosa\s*chiclete)\b/i },
-  { name: 'Rosa Beb├â┬¬', pattern: /\b(rosa\s*beb[e├â┬¬])\b/i },
+  { name: 'Rosa Bebê', pattern: /\b(rosa\s*beb[eê])\b/i },
   { name: 'Cinza Mescla', pattern: /\b(cinza\s*mescla|mescla)\b/i },
   { name: 'Cinza Chumbo', pattern: /\b(cinza\s*chumbo|chumbo)\b/i },
   { name: 'Off White', pattern: /\b(off\s*white|off-white)\b/i },
@@ -43,7 +43,7 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
   { name: 'Laranja', pattern: /\b(laranja|orange)\b/i },
   { name: 'Vinho', pattern: /\b(vinho|bordo|burgundy)\b/i },
   { name: 'Bege', pattern: /\b(bege|beige)\b/i },
-  { name: 'Lil├â┬ís', pattern: /\b(lilas|lil├â┬ís)\b/i },
+  { name: 'Lilás', pattern: /\b(lilas|lilás)\b/i },
   { name: 'Nude', pattern: /\b(nude)\b/i },
   { name: 'Grafite', pattern: /\b(grafite)\b/i },
   { name: 'Coral', pattern: /\b(coral)\b/i },
@@ -52,13 +52,13 @@ const COLOR_PATTERNS: { name: string; pattern: RegExp }[] = [
 ];
 
 function getItemDisplaySize(item: any): string {
-  if (!item) return 'Tamanho n├â┬úo informado';
+  if (!item) return 'Tamanho não informado';
 
   const desc = (item.description || item.descricao || '').toString().trim();
   const sku = (item.sku || item.codigo || '').toString().trim();
   const text = `${desc} ${sku}`;
 
-  const adultMatch = text.match(/(?:^|[\s\-\├óÔé¼ÔÇ£\/\|_,])(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G)(?:[\s\-\├óÔé¼ÔÇ£\/\|_,]|$)/i);
+  const adultMatch = text.match(/(?:^|[\s\-\–\/\|_,])(G5|G4|G3|G2|G1|XGG|EXG|XXL|GG|PP|P|M|G)(?:[\s\-\–\/\|_,]|$)/i);
   if (adultMatch) {
     return adultMatch[1].toUpperCase();
   }
@@ -68,17 +68,17 @@ function getItemDisplaySize(item: any): string {
     return skuMatch[1].toUpperCase();
   }
 
-  const childExplicitMatch = text.match(/\b(?:tam|tamanho|inf|infantil|tam\.)\s*[:\-├óÔé¼ÔÇ£]?\s*(16|14|12|10|8|6|4|2|1)\b/i);
+  const childExplicitMatch = text.match(/\b(?:tam|tamanho|inf|infantil|tam\.)\s*[:\-–]?\s*(16|14|12|10|8|6|4|2|1)\b/i);
   if (childExplicitMatch) {
     return childExplicitMatch[1];
   }
 
-  const childEndMatch = text.match(/(?:├óÔé¼ÔÇ£|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
+  const childEndMatch = text.match(/(?:–|-|\/)\s*(16|14|12|10|8|6|4|2|1)\s*$/i);
   if (childEndMatch) {
     return childEndMatch[1];
   }
 
-  if (/\b(?:infantil|inf|crian├â┬ºa|kids)\b/i.test(text)) {
+  if (/\b(?:infantil|inf|criança|kids)\b/i.test(text)) {
     const childNumberMatch = text.match(/\b(16|14|12|10|8|6|4|2|1)\b/);
     if (childNumberMatch) {
       return childNumberMatch[1];
@@ -86,29 +86,29 @@ function getItemDisplaySize(item: any): string {
   }
 
   const rawSize = (item.size || item.tamanho || item.variacao?.tamanho || item.grade?.tamanho || '').toString().trim();
-  const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[a├â┬ú]o|camiseta|vestu[a├â┬í]rio/i.test(rawSize);
+  const isMaterialOrTrash = /dry\s*fit|dry\s*comfort|poliamida|algod[aã]o|camiseta|vestu[aá]rio/i.test(rawSize);
 
   if (rawSize && !isMaterialOrTrash) {
     const normRaw = rawSize.toUpperCase();
     if (ADULT_SIZES.includes(normRaw) || CHILD_SIZES.includes(normRaw)) {
       return normRaw;
     }
-    if (normRaw === '├â┼íNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ├â┼íNICO') {
-      return '├â┼ínico';
+    if (normRaw === 'ÚNICO' || normRaw === 'UNICO' || normRaw === 'TU' || normRaw === 'TAMANHO ÚNICO') {
+      return 'Único';
     }
-    if (normRaw !== 'TAMANHO N├âãÆO INFORMADO') {
+    if (normRaw !== 'TAMANHO NÃO INFORMADO') {
       return normRaw;
     }
   }
 
-  if (/\b(tamanho\s*├â┬║nic[oa]|tamanho\s*unico|tam\.\s*├â┬║nico|├â┬║nico|unica|tu)\b/i.test(text)) {
-    return '├â┼ínico';
+  if (/\b(tamanho\s*únic[oa]|tamanho\s*unico|tam\.\s*único|único|unica|tu)\b/i.test(text)) {
+    return 'Único';
   }
 
-  return 'Tamanho n├â┬úo informado';
+  return 'Tamanho não informado';
 }
 
-function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â┬írio'): {
+function extractItemDetails(item: any, defaultProductType: string = 'Vestuário'): {
   product_type: string;
   fabric: string;
   color: string;
@@ -125,13 +125,13 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â�
 } {
   if (!item || typeof item !== 'object') {
     return {
-      product_type: 'Modelo n├â┬úo informado',
-      fabric: 'Tecido n├â┬úo informado',
-      color: 'Cor n├â┬úo informada',
-      size: 'Tamanho n├â┬úo informado',
-      description: 'Item sem descri├â┬º├â┬úo',
+      product_type: 'Modelo não informado',
+      fabric: 'Tecido não informado',
+      color: 'Cor não informada',
+      size: 'Tamanho não informado',
+      description: 'Item sem descrição',
       sku: '',
-      item_key: 'Modelo n├â┬úo informado | Tecido n├â┬úo informado | Cor n├â┬úo informada | Tamanho n├â┬úo informado',
+      item_key: 'Modelo não informado | Tecido não informado | Cor não informada | Tamanho não informado',
       is_complete: false,
       tipo_tecido: 'RAMADO',
       largura_util: '1,60 m',
@@ -141,29 +141,29 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â�
   const rawDesc = (item.description || item.descricao || '').toString().trim();
   const rawSku = (item.sku || item.codigo || '').toString().trim();
 
-  // 1. Extra├â┬º├â┬úo ESTRITA do TECIDO t├â┬®cnico (sem adivinhar pelo texto se ausente)
+  // 1. Extração ESTRITA do TECIDO técnico (sem adivinhar pelo texto se ausente)
   const rawFabric = (item.fabric || item.tecido || item.variacao?.tecido || item.grade?.tecido || item.atributos?.tecido || '').toString().trim();
-  let fabric = 'Tecido n├â┬úo informado';
-  if (rawFabric && !/^(tecido\s+)?n[a├â┬ú]o\s+informad[ao]$/i.test(rawFabric)) {
+  let fabric = 'Tecido não informado';
+  if (rawFabric && !/^(tecido\s+)?n[aã]o\s+informad[ao]$/i.test(rawFabric)) {
     if (/dry\s*comfort/i.test(rawFabric)) fabric = 'Dry Comfort';
     else if (/dry\s*fit/i.test(rawFabric)) fabric = 'Dry Fit';
     else if (/poliamida/i.test(rawFabric)) fabric = 'Poliamida';
-    else if (/algod[a├â┬ú]o/i.test(rawFabric)) fabric = 'Algod├â┬úo';
+    else if (/algod[aã]o/i.test(rawFabric)) fabric = 'Algodão';
     else if (/piquet|pique/i.test(rawFabric)) fabric = 'Piquet';
     else if (/pv\b/i.test(rawFabric)) fabric = 'PV';
     else fabric = rawFabric;
   }
 
-  // 2. Extra├â┬º├â┬úo ESTRITA da COR t├â┬®cnica (sem adivinhar pelo texto se ausente)
+  // 2. Extração ESTRITA da COR técnica (sem adivinhar pelo texto se ausente)
   const rawColor = (item.color || item.cor || item.variacao?.cor || item.grade?.cor || item.atributos?.cor || '').toString().trim();
-  let color = 'Cor n├â┬úo informada';
-  if (rawColor && !/^(cor\s+)?n[a├â┬ú]o\s+informad[ao]$/i.test(rawColor)) {
+  let color = 'Cor não informada';
+  if (rawColor && !/^(cor\s+)?n[aã]o\s+informad[ao]$/i.test(rawColor)) {
     const matchCat = COLOR_PATTERNS.find(c => c.pattern.test(rawColor));
     color = matchCat ? matchCat.name : rawColor;
   }
 
   let size = getItemDisplaySize(item);
-  if (!size) size = 'Tamanho n├â┬úo informado';
+  if (!size) size = 'Tamanho não informado';
 
   let productType = item.product_type || item.modelo;
   if (!productType) {
@@ -180,20 +180,20 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â�
     else if (/top\s+nadador/i.test(rawDesc)) productType = 'Top Nadador';
     else if (/top/i.test(rawDesc)) productType = 'Top';
     else if (/legging/i.test(rawDesc)) productType = 'Legging';
-    else if (/b[a├â┬í]sica/i.test(rawDesc)) productType = 'Camiseta B├â┬ísica';
+    else if (/b[aá]sica/i.test(rawDesc)) productType = 'Camiseta Básica';
     else if (rawDesc) {
       let clean = rawDesc
-        .replace(/(?:├óÔé¼ÔÇ£|-|\/|\|)\s*(AZUL\s*MARINHO|VERDE\s*MENTA|CINZA\s*MESCLA|OFF\s*WHITE|PRETO|BRANCO|MARROM|AZUL|VERMELHO|VERDE|CINZA|ROSA|AMARELO|ROXO|LARANJA|VINHO|BEGE|GRAFITE)\b/gi, '')
-        .replace(/(?:├óÔé¼ÔÇ£|-|\/|\|)\s*(G5|G4|G3|G2|G1|EXG|XXL|XGG|GG|G|M|P|PP|16|14|12|10|8|6|4|2|1)\b/gi, '')
-        .replace(/\b(?:tam|tamanho|infantil)\s*[:\-├óÔé¼ÔÇ£]?\s*(16|14|12|10|8|6|4|2|1)\b/gi, '')
-        .replace(/(?:├óÔé¼ÔÇ£|-|\/|\|)?\s*(DRY\s*FIT|DRY\s*COMFORT|POLIAMIDA|ALGOD[A├âãÆ]O|PIQUET|PV)\b/gi, '')
+        .replace(/(?:–|-|\/|\|)\s*(AZUL\s*MARINHO|VERDE\s*MENTA|CINZA\s*MESCLA|OFF\s*WHITE|PRETO|BRANCO|MARROM|AZUL|VERMELHO|VERDE|CINZA|ROSA|AMARELO|ROXO|LARANJA|VINHO|BEGE|GRAFITE)\b/gi, '')
+        .replace(/(?:–|-|\/|\|)\s*(G5|G4|G3|G2|G1|EXG|XXL|XGG|GG|G|M|P|PP|16|14|12|10|8|6|4|2|1)\b/gi, '')
+        .replace(/\b(?:tam|tamanho|infantil)\s*[:\-–]?\s*(16|14|12|10|8|6|4|2|1)\b/gi, '')
+        .replace(/(?:–|-|\/|\|)?\s*(DRY\s*FIT|DRY\s*COMFORT|POLIAMIDA|ALGOD[AÃ]O|PIQUET|PV)\b/gi, '')
         .replace(/\b(PRETO|BRANCO|MARROM|AZUL\s*MARINHO|AZUL|VERMELHO|VERDE|CINZA|ROSA|AMARELO|ROXO|LARANJA|VINHO)\b/gi, '')
-        .replace(/[\-\├óÔé¼ÔÇ£\/,\|\s]+$/, '').trim();
-      productType = clean || defaultProductType || 'Modelo n├â┬úo informado';
-    } else { productType = 'Modelo n├â┬úo informado'; }
+        .replace(/[\-\–\/,\|\s]+$/, '').trim();
+      productType = clean || defaultProductType || 'Modelo não informado';
+    } else { productType = 'Modelo não informado'; }
   }
 
-  // 5. Caracter├â┬¡sticas f├â┬¡sicas de corte (Tipo f├â┬¡sico e Largura ├â┬║til)
+  // 5. Características físicas de corte (Tipo físico e Largura útil)
   let tipo_tecido: 'TUBULAR' | 'RAMADO' = 'RAMADO';
   const rawTipo = (item.tipo_tecido || item.tipoTecido || item.tipo_corte || '').toString().trim().toUpperCase();
   if (rawTipo.includes('TUBULAR') || rawTipo.includes('TUBOLAR')) {
@@ -211,30 +211,87 @@ function extractItemDetails(item: any, defaultProductType: string = 'Vestu├â�
   const orientacao = (item.orientacao || item.sentido || '').toString().trim() || undefined;
 
   const missing_fields: string[] = [];
-  if (fabric === 'Tecido n├â┬úo informado') missing_fields.push('Tecido');
-  if (color === 'Cor n├â┬úo informada') missing_fields.push('Cor');
+  if (fabric === 'Tecido não informado') missing_fields.push('Tecido');
+  if (color === 'Cor não informada') missing_fields.push('Cor');
 
   const description = rawDesc || `${productType} ${fabric} ${color}`;
   const item_key = `${productType} | ${fabric} | ${color} | ${size}`;
-  const is_complete = productType !== 'Modelo n├â┬úo informado' && fabric !== 'Tecido n├â┬úo informado' && color !== 'Cor n├â┬úo informada' && size !== 'Tamanho n├â┬úo informado';
+  const is_complete = productType !== 'Modelo não informado' && fabric !== 'Tecido não informado' && color !== 'Cor não informada' && size !== 'Tamanho não informado';
   return { product_type: productType, fabric, color, size, description, sku: rawSku, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields };
 }
 
 // ============================================================================
-// RESOLUÇÃO CANÔNICA DE ETAPAS (SEM DEPENDÊNCIA DE IDS FIXOS 1, 17, 8)
+// NORMALIZAÇÃO UTF-8 E RESOLUÇÃO CANÔNICA DE ETAPAS (SLUG ESTÁVEL)
 // ============================================================================
+export function normalizeUtf8Text(input: any): string {
+    if (input === null || input === undefined) return '';
+    let str = String(input);
+    if (!/[\u00C3\u00C2\u00E2\u251C]/.test(str)) return str;
+    const replacements: [string, string][] = [
+        ['\u00C3\u00A7\u00C3\u00A3o', 'ção'],
+        ['\u00C3\u00A7\u00C3\u00B5es', 'ções'],
+        ['\u00C3\u00A3o', 'ão'],
+        ['\u00C3\u00B5es', 'ões'],
+        ['\u00C3\u00A1', 'á'],
+        ['\u00C3\u00A9', 'é'],
+        ['\u00C3\u00AD', 'í'],
+        ['\u00C3\u00B3', 'ó'],
+        ['\u00C3\u00BA', 'ú'],
+        ['\u00C3\u00AA', 'ê'],
+        ['\u00C3\u00B4', 'ô'],
+        ['\u00C3\u00A3', 'ã'],
+        ['\u00C3\u00A7', 'ç'],
+        ['\u00C3\u0161', 'Ú'],
+        ['\u00C3\u0192', 'Ã'],
+        ['\u00C3\u2021', 'Ç'],
+        ['\u00C3\u2030', 'É'],
+        ['\u00C3\u201C', 'Ó'],
+        ['\u00E2\u20AC\u00A2', '•'],
+        ['\u00E2\u20AC\u201C', '–'],
+        ['\u00E2\u20AC\u201D', '—'],
+    ];
+    for (const [bad, good] of replacements) {
+        str = str.split(bad).join(good);
+    }
+    return str;
+}
+
 export function getStageSlug(stage: any): string {
     if (!stage) return '';
-    if (stage.code && typeof stage.code === 'string') return stage.code.toUpperCase().trim();
-    if (stage.slug && typeof stage.slug === 'string') return stage.slug.toUpperCase().trim();
-    const str = `${stage.name || ''} ${stage.sector_name || ''}`
+    if (stage.code && typeof stage.code === 'string' && stage.code.trim()) {
+        return stage.code.toUpperCase().trim();
+    }
+    if (stage.slug && typeof stage.slug === 'string' && stage.slug.trim()) {
+        return stage.slug.toUpperCase().trim();
+    }
+    const nameStr = normalizeUtf8Text(stage.name || '')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
-        .toUpperCase();
-    if (str.includes('CORTE')) return 'CORTE';
-    if (str.includes('COSTURA')) return 'COSTURA';
-    if (str.includes('CONFER') || str.includes('SEPARA')) return 'CONFERENCIA';
-    return str.trim();
+        .toUpperCase()
+        .trim();
+    const fullStr = `${nameStr} ${normalizeUtf8Text(stage.sector_name || '')}`
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+
+    if (nameStr.includes('FICHA') || nameStr.includes('APROVA')) return 'FICHA_APROVACAO';
+    if (nameStr.includes('CORTE') || nameStr.includes('SEPARA')) return 'CORTE';
+    if (nameStr.includes('SUBLIMA')) return 'SUBLIMACAO';
+    if (nameStr.includes('ESTAMPA') || nameStr.includes('PRENSA')) return 'ESTAMPAGEM';
+    if (nameStr.includes('SILK') || nameStr.includes('SERIGRAF')) return 'SILK';
+    if (nameStr.includes('DTF')) return 'DTF';
+    if (nameStr.includes('BORDADO')) return 'BORDADO';
+    if (nameStr.includes('COSTURA')) return 'COSTURA';
+    if (nameStr.includes('REVIS') || nameStr.includes('ACABAMENTO')) return 'REVISAO';
+    if (nameStr.includes('EMBALA') || nameStr.includes('EXPEDI')) return 'EMBALAGEM';
+    if (nameStr.includes('CONFER')) return 'CONFERENCIA';
+
+    if (fullStr.includes('CORTE')) return 'CORTE';
+    if (fullStr.includes('COSTURA')) return 'COSTURA';
+    if (fullStr.includes('CONFER')) return 'CONFERENCIA';
+
+    return (nameStr || fullStr).replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 export function isCorteStage(stage: any): boolean {
@@ -298,7 +355,7 @@ function getOrderCuttingNeeded(order: any): number {
       if (sumCorte > 0) return sumCorte;
     }
     if (order.observations) {
-      const match = order.observations.match(/├ó┼í┬á├»┬©┬Å\s*(\d+)\s*p├â┬ºs?\s*sem\s*estoque/i);
+      const match = order.observations.match(/⚠️\s*(\d+)\s*pçs?\s*sem\s*estoque/i);
       if (match) return parseInt(match[1], 10) || 0;
     }
   } catch (err) { console.warn('[API] Error in getOrderCuttingNeeded:', err); }
@@ -342,7 +399,7 @@ function aggregateCuttingDemand(orders: any[]): any[] {
           const qtyPending = Math.max(0, qtyCorteNeeded - qtyAllocated);
           if (qtyPending <= 0) continue;
           const { product_type, fabric, color, size, description, item_key, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields } = extractItemDetails(item, order.product_type);
-          if (item_key.toLowerCase().includes('dry fit ├â┬║nica | ├â┬║nico') || item_key.toLowerCase().includes('item | ├â┬║nico')) continue;
+          if (item_key.toLowerCase().includes('dry fit única | único') || item_key.toLowerCase().includes('item | único')) continue;
           const orderDemand = { order_id: order.id, order_number: order.order_number || `PED-${order.id}`, client_name: order.client_name || 'Cliente', deadline: order.deadline || new Date().toISOString(), item_quantity: Number(item.quantity ?? item.quantidade ?? 1), qty_corte_needed: qtyCorteNeeded, qty_corte_allocated: qtyAllocated, qty_corte_pending: qtyPending };
           if (!demandMap.has(item_key)) { demandMap.set(item_key, { item_key, product_type, fabric, color, size, description, sku: item.sku || item.codigo, is_complete, tipo_tecido, largura_util, lote, orientacao, missing_fields, total_necessario: 0, pedidos_count: 0, prazo_mais_proximo: order.deadline || new Date().toISOString(), pedidos_waiting: [] }); }
           const existing = demandMap.get(item_key)!;
@@ -411,7 +468,7 @@ function reallocateOnCancellation(cancelledOrderId: number, orders: any[], alloc
   const reallocatedLogs: any[] = [];
   for (const log of activeAllocations) {
     log.status = 'released';
-    const result = allocateCuttingPieces(orders, log.item_key, log.quantidade_alocada, `Sistema (Realoca├â┬º├â┬úo de PED-${cancelledOrderId})`, 1, allocationLogsStore);
+    const result = allocateCuttingPieces(orders, log.item_key, log.quantidade_alocada, `Sistema (Realocação de PED-${cancelledOrderId})`, 1, allocationLogsStore);
     if (result.success && result.allocations.length > 0) {
       for (const newLog of result.allocations) { newLog.status = 'reallocated'; reallocatedLogs.push(newLog); }
     }
@@ -422,7 +479,7 @@ function reallocateOnCancellation(cancelledOrderId: number, orders: any[], alloc
 
 dotenv.config();
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: lossStore ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Inline: lossStore ──────────────────────────────────────────────────────────
 // (Inlined to avoid cross-file .ts import issues on Vercel @vercel/node runtime)
 
 type OperationStatus =
@@ -753,11 +810,21 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
     const st = stagesStatus.find((s: any) => Number(s.id) === stageId);
     const existing = dbProgMap.get(stageId);
     const defaultQty = Number(order.quantity) || 0;
-    const isFinished = Boolean(existing?.finished || st?.finished);
-    const goodQty = existing ? Number(existing.quantidade_boa) || (isFinished ? defaultQty : 0) : isFinished ? defaultQty : 0;
-    const lostQty = existing ? Number(existing.quantidade_perdida) || 0 : 0;
+    const isFinished = existing
+      ? Boolean(
+          existing.finished ||
+            existing.status_operacao === 'CONCLUIDA' ||
+            (defaultQty > 0 && Number(existing.quantidade_boa) >= defaultQty && !(Number(existing.pendencia_reposicao) > 0))
+        )
+      : Boolean(st?.finished || st?.status === 'Concluído' || st?.status === 'Finalizado');
+    const goodQty = existing
+      ? Number(existing.quantidade_boa) || (isFinished ? defaultQty : 0)
+      : isFinished
+      ? defaultQty
+      : Number(st?.quantidade_boa) || 0;
+    const lostQty = existing ? Number(existing.quantidade_perdida) || 0 : Number(st?.quantidade_perdida) || 0;
     const reworkQty = existing ? Number(existing.quantidade_retrabalho) || 0 : 0;
-    const replQty = existing ? Number(existing.pendencia_reposicao) || 0 : 0;
+    const replQty = existing ? Number(existing.pendencia_reposicao) || 0 : Number(st?.pendencia_reposicao) || 0;
 
     const prevStageProg = idx > 0 ? result[idx - 1] : null;
     const isFirstStage = idx === 0;
@@ -814,20 +881,51 @@ async function getStageProgressForOrder(sb: any, orderId: number, orderData?: an
   return result;
 }
 
-function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = []) {
-  if (!orders?.length) return;
+function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [], stagesCatalog: any[] = []): any[] {
+  if (!orders?.length) return orders || [];
   const dbProgByKey = new Map<string, any>();
   for (const p of dbProgressRows || []) {
     if (p && p.order_id !== undefined && p.stage_id !== undefined) {
       dbProgByKey.set(`${p.order_id}_${p.stage_id}`, p);
     }
   }
+  const stageById = new Map<number, any>();
+  for (const s of stagesCatalog || []) {
+    if (s && s.id !== undefined) {
+      stageById.set(Number(s.id), s);
+    }
+  }
 
   for (const order of orders) {
+    if (order.status) {
+      order.status = normalizeUtf8Text(order.status);
+      if (order.status === 'Concluído' || order.status === 'Concluido') {
+        order.status = 'Pronto';
+      }
+    }
+    if (order.client_name) order.client_name = normalizeUtf8Text(order.client_name);
+    if (order.product_type) order.product_type = normalizeUtf8Text(order.product_type);
+    if (order.print_type) order.print_type = normalizeUtf8Text(order.print_type);
+
     if (!Array.isArray(order.stages_status)) order.stages_status = [];
     if (Array.isArray(order.required_stages)) {
       order.required_stages = order.required_stages.map((id: any) => Number(id));
     }
+
+    // Se stages_status estiver vazio mas required_stages tiver etapas, constrói stages_status canônico
+    if (order.stages_status.length === 0 && Array.isArray(order.required_stages) && order.required_stages.length > 0) {
+      order.stages_status = order.required_stages.map((sId: number) => {
+        const sMeta = stageById.get(Number(sId));
+        return {
+          id: Number(sId),
+          name: normalizeUtf8Text(sMeta?.name || `Etapa #${sId}`),
+          slug: sMeta ? getStageSlug(sMeta) : undefined,
+          calculation_type: sMeta?.calculation_type || 'por_peca',
+          finished: false,
+        };
+      });
+    }
+
     const qty = Number(order.quantity) || 0;
     const isCancelled = order.status === 'Cancelado' || Boolean(order.deleted_at);
     const isBlocked = Boolean(order.pcp_is_blocked);
@@ -838,26 +936,34 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [])
 
     order.stages_status = filteredStages.map((st: any, idx: number) => {
       const stageId = Number(st.id);
+      const sMeta = stageById.get(stageId);
       const key = `${order.id}_${stageId}`;
       const existingProg = dbProgByKey.get(key);
-      const isFinished = Boolean(st.finished || existingProg?.finished);
+      const targetQty = Number(existingProg?.quantidade_pedido) || qty;
+      const isFinished = existingProg
+        ? Boolean(
+            existingProg.finished ||
+              existingProg.status_operacao === 'CONCLUIDA' ||
+              (targetQty > 0 && Number(existingProg.quantidade_boa) >= targetQty && !(Number(existingProg.pendencia_reposicao) > 0))
+          )
+        : Boolean(st.finished || st.status === 'Concluído' || st.status === 'Finalizado');
       const prog: any = existingProg
         ? {
             ...existingProg,
-            quantidade_pedido: qty || existingProg.quantidade_pedido || 0,
+            quantidade_pedido: targetQty,
             finished: isFinished,
             quantidade_boa:
               isFinished && !existingProg.quantidade_boa
-                ? existingProg.quantidade_pedido || qty
+                ? targetQty
                 : Number(existingProg.quantidade_boa) || 0,
           }
         : {
             order_id: order.id,
             stage_id: stageId,
             quantidade_pedido: qty,
-            quantidade_boa: isFinished ? qty : 0,
-            quantidade_perdida: 0,
-            pendencia_reposicao: 0,
+            quantidade_boa: isFinished ? qty : Number(st.quantidade_boa) || 0,
+            quantidade_perdida: Number(st.quantidade_perdida) || 0,
+            pendencia_reposicao: Number(st.pendencia_reposicao) || 0,
             finished: isFinished,
           };
 
@@ -888,7 +994,7 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [])
         isFirstStageInRoute: idx === 0,
         previousStageFinished: prevFinished,
         previousStageTransferredQty: prevTransferredQty,
-        calculationType: st.calculation_type || 'por_peca',
+        calculationType: st.calculation_type || sMeta?.calculation_type || 'por_peca',
       });
 
       prevFinished = isFinished;
@@ -896,18 +1002,24 @@ function enrichOrdersWithProgressSync(orders: any[], dbProgressRows: any[] = [])
 
       return {
         ...st,
+        name: normalizeUtf8Text(st.name || sMeta?.name || `Etapa #${stageId}`),
+        slug: st.slug || (sMeta ? getStageSlug(sMeta) : getStageSlug(st)),
         finished: isFinished,
         status_operacao: statusOperacao,
         quantidade_boa: goodQty,
+        quantidade_concluida: goodQty,
         quantidade_perdida: lostQty,
         quantidade_recebida: receivedQty,
         quantidade_transferida: transferredQty,
         pendencia_reposicao: replQty,
         saldo_pendente: saldoPendente,
+        saldo_restante: saldoPendente,
         quantidade_pedido: prog.quantidade_pedido || qty,
+        quantidade_prevista: prog.quantidade_pedido || qty,
       };
     });
   }
+  return orders;
 }
 
 async function validateStageFinish(sb: any, orderId: number, stageId: number) {
@@ -947,7 +1059,7 @@ async function getProgressLogs(sb: any) {
   return data || [];
 }
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: timerUtils ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Inline: timerUtils ─────────────────────────────────────────────────────
 interface PauseRecord { id?: number; execution_id?: number; start_pause: string; end_pause?: string | null; duration_seconds?: number | null; }
 interface ExecutionRecord { id?: number; start_time: string; end_time?: string | null; status: 'Em andamento' | 'Pausado' | 'Finalizado'; total_time_seconds?: number; pauses?: PauseRecord[]; }
 interface CalculatedTimes { totalAccumulatedSeconds: number; currentSessionSeconds: number; isPaused: boolean; }
@@ -972,7 +1084,7 @@ function calculateExecutionTimes(execution: ExecutionRecord, pauses: PauseRecord
     return { totalAccumulatedSeconds, currentSessionSeconds: Math.max(0, Math.floor((nowMs - currentSessionStartMs) / 1000)), isPaused: false };
 }
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Inline: goalsUtils ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Inline: goalsUtils ─────────────────────────────────────────────────────
 interface ExecutionActivity { user_id: number; stage_id: number; end_time: string; quantity: number; }
 interface GoalConfig { stage_id: number; user_id?: number | null; meta_diaria: number | null; }
 const GOAL_THRESHOLDS = { GREEN: 1.0, YELLOW: 0.7 };
@@ -998,7 +1110,7 @@ function resolveGoal(stageGoalDefault: number | null | undefined, collaboratorOv
     if (override && override.meta_diaria !== null && override.meta_diaria !== undefined) return override.meta_diaria;
     return stageGoalDefault !== undefined ? stageGoalDefault : null;
 }
-// ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ──────────────────────────────────────────────────────────────────────────
 
 const app = express();
 app.use(express.json());
@@ -1411,17 +1523,25 @@ app.get("/api/supabase/status", async (_req, res) => {
     return res.json({ status: "success", message: "Supabase SDK funcionando!" });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Utils (Centralized Finished Pieces Calculation) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Production Utils (Centralized Finished Pieces Calculation) ────────────
 interface StageInfo { id: number; name: string; sort_order: number; calculation_type: string; }
+
+function _isValidProgressLog(log: any): boolean {
+    if (!log) return false;
+    if (log.invalidated_at) return false;
+    const obs = String(log.observation || log.observacao || '').toUpperCase();
+    if (obs.includes('[INVALIDADO') || obs.includes('[ESTORNADO')) return false;
+    return Number(log.quantidade_boa_incremento) > 0;
+}
 
 function _getLastPorPecaStageId(orderRequiredStages: number[], allStages: StageInfo[]): number | null {
     if (!orderRequiredStages || orderRequiredStages.length === 0) return null;
     const stageMap = new Map<number, StageInfo>();
-    allStages.forEach(s => stageMap.set(s.id, s));
+    allStages.forEach(s => stageMap.set(Number(s.id), s));
 
     const reqStages = orderRequiredStages
-        .map(id => stageMap.get(id))
-        .filter((s): s is StageInfo => !!s);
+        .map(id => stageMap.get(Number(id)))
+        .filter((s): s is StageInfo => !!s && Number(s.id) !== 12 && !isConferenciaStage(s));
 
     const porPecaStages = reqStages.filter(s => s.calculation_type === 'por_peca');
     if (porPecaStages.length > 0) {
@@ -1449,6 +1569,7 @@ function _calculateFinishedPieces(
     });
 
     const orderFinishedPieces = new Map<number, number>();
+    const ordersWithValidLogs = new Set<number>();
 
     const isBetween = (iso: string) => {
         if (startDateIso && iso < startDateIso) return false;
@@ -1456,31 +1577,34 @@ function _calculateFinishedPieces(
         return true;
     };
 
-    // 1. Check completed stage_executions on the LAST stage
-    for (const ex of executions) {
-        if (ex.status !== 'Finalizado' || !ex.end_time) continue;
-        if (!isBetween(ex.end_time)) continue;
-
-        const ord = activeOrdersMap.get(ex.order_id);
-        if (!ord) continue;
-
-        const lastStageId = _getLastPorPecaStageId(ord.required_stages || [], allStages);
-        if (ex.stage_id === lastStageId) {
-            orderFinishedPieces.set(ord.id, Math.max(orderFinishedPieces.get(ord.id) || 0, ord.quantity || 0));
-        }
-    }
-
-    // 2. Check piece increment logs on the LAST stage
+    // 1. Check piece increment logs on the LAST productive stage (fonte primária de peças boas)
     for (const log of progressLogs) {
+        if (!_isValidProgressLog(log)) continue;
         if (!log.created_at || !isBetween(log.created_at)) continue;
         const ord = activeOrdersMap.get(log.order_id);
         if (!ord) continue;
 
         const lastStageId = _getLastPorPecaStageId(ord.required_stages || [], allStages);
-        if (log.stage_id === lastStageId) {
+        if (Number(log.stage_id) === Number(lastStageId)) {
+            ordersWithValidLogs.add(ord.id);
             const current = orderFinishedPieces.get(ord.id) || 0;
-            const inc = log.quantidade_boa_incremento || 0;
+            const inc = Number(log.quantidade_boa_incremento) || 0;
             orderFinishedPieces.set(ord.id, Math.min(ord.quantity || 0, current + inc));
+        }
+    }
+
+    // 2. Fallback para execuções concluídas sem log de incremento por peça
+    for (const ex of executions) {
+        if (ex.status !== 'Finalizado' || !ex.end_time) continue;
+        if (ex.invalidated_at) continue;
+        if (!isBetween(ex.end_time)) continue;
+
+        const ord = activeOrdersMap.get(ex.order_id);
+        if (!ord || ordersWithValidLogs.has(ord.id)) continue;
+
+        const lastStageId = _getLastPorPecaStageId(ord.required_stages || [], allStages);
+        if (Number(ex.stage_id) === Number(lastStageId)) {
+            orderFinishedPieces.set(ord.id, Math.max(orderFinishedPieces.get(ord.id) || 0, ord.quantity || 0));
         }
     }
 
@@ -1607,7 +1731,7 @@ function _calculateFinishedPiecesByPeriod(
     return result;
 }
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Dashboard Stats ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Dashboard Stats ───────────────────────────────────────────────────────
 app.get("/api/dashboard/stats", async (req, res) => {
     const { startDate, endDate, product_type, print_type } = req.query;
     const { data, error } = await supabaseAdmin.rpc("get_dashboard_stats_v2", {
@@ -1639,14 +1763,14 @@ app.get("/api/dashboard/stats", async (req, res) => {
             const todayCalc = _calculateFinishedPieces(orders, stages, execs, logs, todayStartIso, todayEndIso);
             data.metrics.todayFinalizedPieces = todayCalc.totalPieces;
         } catch (calcErr) {
-            console.error("Erro ao recalcular Produ├â┬º├â┬úo Hoje centralizada:", calcErr);
+            console.error("Erro ao recalcular Produção Hoje centralizada:", calcErr);
         }
     }
 
     return res.json(data);
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config & Goals ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Production Config & Goals ─────────────────────────────────────────────
 app.get("/api/config", async (req, res) => {
     const { data, error } = await supabaseAdmin.from("config_producao").select("*").single();
     if (checkError(error, res)) return;
@@ -1687,7 +1811,7 @@ app.patch("/api/config", isAdmin, async (req, res) => {
     return res.json(data || {});
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Reports ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Reports ───────────────────────────────────────────────────────────────
 app.get("/api/reports", async (req, res) => {
     const userRole = (req as any).user?.role;
     const isAdminUser = userRole === "Administrador";
@@ -1701,11 +1825,11 @@ app.get("/api/reports", async (req, res) => {
         p_print_type: print_type || null
     });
 
-    if (checkError(error, res, "Erro nos relat├â┬│rios")) return;
+    if (checkError(error, res, "Erro nos relatórios")) return;
 
     if (data) {
-        // Calcular produ├â┬º├â┬úo detalhada por etapa dentro do per├â┬¡odo selecionado (ajustado para timezone)
-        const tzOffset = req.query.tzOffset ? Number(req.query.tzOffset) : 180; // padr├â┬úo 180 (BRT -03:00)
+        // Calcular produção detalhada por etapa dentro do período selecionado (ajustado para timezone)
+        const tzOffset = req.query.tzOffset ? Number(req.query.tzOffset) : 180; // padrão 180 (BRT -03:00)
 
         const getUtcRange = (dateStr: string, isEnd = false) => {
             const parts = dateStr.split('-');
@@ -1769,7 +1893,7 @@ app.get("/api/reports", async (req, res) => {
             }
             data.production_by_stage = Array.from(stageProductionMap.values());
 
-            // Enriquecer orders_list com as etapas conclu├â┬¡das para cada pedido no per├â┬¡odo
+            // Enriquecer orders_list com as etapas concluídas para cada pedido no período
             if (Array.isArray(data.orders_list) && data.orders_list.length > 0) {
                 data.orders_list.forEach((ord: any) => {
                     const orderExecutions = periodExecutions ? periodExecutions.filter((ex: any) => ex.order_id === ord.order_id) : [];
@@ -1785,7 +1909,7 @@ app.get("/api/reports", async (req, res) => {
                 });
             }
 
-            // Recalcular volume centralizado e resumo sem duplica├â┬º├â┬úo de etapas intermedi├â┬írias
+            // Recalcular volume centralizado e resumo sem duplicação de etapas intermediárias
             const [allOrdersRes, allStagesRes, allExecsRes, allLogsRes] = await Promise.all([
                 supabaseAdmin.from("orders").select("id, quantity, required_stages, status, created_at, delivered_at, deleted_at"),
                 supabaseAdmin.from("stages").select("id, name, sort_order, calculation_type"),
@@ -1810,7 +1934,7 @@ app.get("/api/reports", async (req, res) => {
                 data.summary.total_orders = totalCalc.totalOrders;
             }
         } catch (err) {
-            console.error("Erro ao calcular produ├â┬º├â┬úo por etapa no relat├â┬│rio:", err);
+            console.error("Erro ao calcular produção por etapa no relatório:", err);
             data.production_by_stage = [];
         }
 
@@ -1825,7 +1949,7 @@ app.get("/api/reports", async (req, res) => {
     return res.json(data);
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Olist ERP Integration Helpers ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Olist ERP Integration Helpers ──────────────────────────────────────────
 function _parseTinyXml(xmlString: string): { status: string; status_processamento: string; errors: string[]; pedidos: any[] } {
     const statusMatch = xmlString.match(/<status>(.*?)<\/status>/);
     const status = statusMatch ? statusMatch[1].trim() : '';
@@ -1920,9 +2044,9 @@ function _isApprovedOlistStatus(situacao: string): boolean {
     const approvedStatuses = [
         'aprovado', 'faturado', 'preparando envio', 'pronto para envio',
         'enviado', 'entregue', 'atendido', 'parcialmente atendido',
-        'em aberto', 'aberto', 'em andamento', 'em separa├â┬º├â┬úo',
-        'em producao', 'em produ├â┬º├â┬úo', 'aguardando envio', 'completo',
-        'pago', 'venda agenciada', 'em digita├â┬º├â┬úo'
+        'em aberto', 'aberto', 'em andamento', 'em separação',
+        'em producao', 'em produção', 'aguardando envio', 'completo',
+        'pago', 'venda agenciada', 'em digitação'
     ];
     return approvedStatuses.some(approved => s.includes(approved));
 }
@@ -2176,7 +2300,7 @@ async function _fetchOlistOrderDetail(token: string, olistOrderId: string): Prom
 
     const items = (raw.itens || []).map((itWrapper: any) => {
         const it = itWrapper.item || itWrapper;
-        const desc = it.descricao || it.description || 'Item sem descri├â┬º├â┬úo';
+        const desc = it.descricao || it.description || 'Item sem descrição';
         const cod = it.codigo || it.sku || '-';
         const qty = parseFloat(it.quantidade || it.quantity) || 1;
         const explicitSize = it.tamanho || it.size || it.variacao?.tamanho || it.grade?.tamanho || it.variacoes?.tamanho;
@@ -2261,10 +2385,10 @@ function _parseOrderDate(dateStr: string): Date | null {
     return isNaN(d.getTime()) ? null : d;
 }
 
-function _resolveProductType(itemDesc: string = '', itemProductType: string = ''): 'Dry Fit' | 'Algod├â┬úo' | 'Poliamida' {
+function _resolveProductType(itemDesc: string = '', itemProductType: string = ''): 'Dry Fit' | 'Algodão' | 'Poliamida' {
     const text = `${itemDesc} ${itemProductType}`.toLowerCase();
-    if (text.includes('algodao') || text.includes('algod├â┬úo')) {
-        return 'Algod├â┬úo';
+    if (text.includes('algodao') || text.includes('algodão')) {
+        return 'Algodão';
     }
     if (text.includes('poliamida')) {
         return 'Poliamida';
@@ -2361,7 +2485,7 @@ async function _syncOlistOrders(
 
             const detail = await _fetchOlistOrderDetail(token, olistId);
             if (!detail) {
-                console.warn(`[OlistSync] Detalhes n├â┬úo retornados para o pedido #${olistId}`);
+                console.warn(`[OlistSync] Detalhes não retornados para o pedido #${olistId}`);
                 continue;
             }
 
@@ -2369,7 +2493,7 @@ async function _syncOlistOrders(
             const clientName = detail.nome || 'Cliente Olist';
             const quantity = detail.total_quantidade || 1;
 
-            let productType: 'Dry Fit' | 'Algod├â┬úo' | 'Poliamida' = 'Dry Fit';
+            let productType: 'Dry Fit' | 'Algodão' | 'Poliamida' = 'Dry Fit';
             if (detail.itens && detail.itens.length > 0) {
                 productType = _resolveProductType(detail.itens[0].descricao, detail.itens[0].productType);
             }
@@ -2392,8 +2516,8 @@ async function _syncOlistOrders(
             const insertPayload: any = {
                 order_number: orderNumber,
                 client_name: clientName,
-                product_type: productType, // Must satisfy orders_product_type_check ('Dry Fit' | 'Algod├â┬úo' | 'Poliamida')
-                print_type: 'DTF', // Must satisfy orders_print_type_check ('DTF' | 'Silk' | 'Sublima├â┬º├â┬úo' | 'Bordado')
+                product_type: productType, // Must satisfy orders_product_type_check ('Dry Fit' | 'Algodão' | 'Poliamida')
+                print_type: 'DTF', // Must satisfy orders_print_type_check ('DTF' | 'Silk' | 'Sublimação' | 'Bordado')
                 quantity: quantity,
                 deadline: deadlineIso,
                 status: 'Rascunho',
@@ -2473,7 +2597,7 @@ async function _syncOlistOrders(
     };
 }
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Olist ERP Integration Endpoints (OAuth 2.0 & Token Sync) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Olist ERP Integration Endpoints (OAuth 2.0 & Token Sync) ────────────────
 
 const OLIST_CLIENT_ID = process.env.OLIST_CLIENT_ID || "tiny-api-b69bd9b2e5c8fb27d88f3d7507bb6d82e9313f1f-1789606342";
 const OLIST_CLIENT_SECRET = process.env.OLIST_CLIENT_SECRET || "HI899WOykeSXkU7Z6ek4s9MnWR8EcUib";
@@ -2507,10 +2631,10 @@ app.use(async (req, res, next) => {
             const error = req.query.error;
 
             if (error) {
-                return res.status(400).send(`<h3>Erro na autoriza├â┬º├â┬úo do Olist ERP:</h3><pre>${error}</pre>`);
+                return res.status(400).send(`<h3>Erro na autorização do Olist ERP:</h3><pre>${error}</pre>`);
             }
             if (!code) {
-                return res.status(400).send(`<h3>C├â┬│digo de autoriza├â┬º├â┬úo n├â┬úo fornecido pelo Olist ERP.</h3>`);
+                return res.status(400).send(`<h3>Código de autorização não fornecido pelo Olist ERP.</h3>`);
             }
 
             const tokenUrl = "https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token";
@@ -2560,9 +2684,9 @@ app.use(async (req, res, next) => {
                 </head>
                 <body>
                     <div class="card">
-                        <div class="badge">├ó┼ôÔÇ£ AUTORIZADO COM SUCESSO</div>
-                        <h1>Conex├â┬úo com Olist / Tiny ERP Ativa!</h1>
-                        <p>O aplicativo ComfortPro foi autorizado no Olist ERP com sucesso. Agora a sincroniza├â┬º├â┬úo autom├â┬ítica de pedidos est├â┬í conectada e pronta.</p>
+                        <div class="badge">✓ AUTORIZADO COM SUCESSO</div>
+                        <h1>Conexão com Olist / Tiny ERP Ativa!</h1>
+                        <p>O aplicativo ComfortPro foi autorizado no Olist ERP com sucesso. Agora a sincronização automática de pedidos está conectada e pronta.</p>
                         <button onclick="if(window.opener){window.opener.location.reload();} window.close();">Fechar e Voltar ao Sistema</button>
                     </div>
                 </body>
@@ -2580,7 +2704,7 @@ app.get("/api/integrations/olist/debug", isAdmin, async (_req, res) => {
     try {
         const token = await _getEffectiveOlistToken();
         if (!token) {
-            return res.json({ error: "Token do Olist ERP n├â┬úo configurado ou expirado", oauth_configured: !!OLIST_CLIENT_ID });
+            return res.json({ error: "Token do Olist ERP não configurado ou expirado", oauth_configured: !!OLIST_CLIENT_ID });
         }
 
         const rawOrders = await _fetchOlistOrders(token);
@@ -2798,7 +2922,7 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
         const { print_type, product_type, deadline, observations, required_stages, num_colors } = req.body;
 
         if (!print_type) {
-            return res.status(400).json({ error: "├âÔÇ░ necess├â┬írio selecionar o tipo de estampa (DTF, Silk, Sublima├â┬º├â┬úo, Bordado)" });
+            return res.status(400).json({ error: "É necessário selecionar o tipo de estampa (DTF, Silk, Sublimação, Bordado)" });
         }
 
         const { data: currentOrder, error: fetchErr } = await supabaseAdmin
@@ -2808,7 +2932,7 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
             .single();
 
         if (fetchErr || !currentOrder) {
-            return res.status(404).json({ error: "Pedido rascunho n├â┬úo encontrado" });
+            return res.status(404).json({ error: "Pedido rascunho não encontrado" });
         }
 
         const fallbackStages = await resolveDefaultProductionStageIds(supabaseAdmin);
@@ -2835,7 +2959,7 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
             .select()
             .single();
 
-        if (checkError(updateErr, res, "Erro ao liberar pedido para produ├â┬º├â┬úo")) return;
+        if (checkError(updateErr, res, "Erro ao liberar pedido para produção")) return;
 
         await logOrderHistory(supabaseAdmin, {
             order_id: orderId,
@@ -2853,7 +2977,7 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Order Templates ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Order Templates ───────────────────────────────────────────────────────
 app.get("/api/order-templates", async (_req, res) => {
     const { data, error } = await supabaseAdmin
         .from("order_templates")
@@ -2906,7 +3030,7 @@ app.delete("/api/order-templates/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Delivery Forecast ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Delivery Forecast ─────────────────────────────────────────────────────
 app.get("/api/orders/delivery-forecast", async (_req, res) => {
     try {
         // 1. Active orders (not delivered, not cancelled, not deleted)
@@ -2939,18 +3063,18 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
         // Minutes available per day per sector (shared pool)
         const dailyCapacityMinutes = config.jornada_horas * 60 * config.operadores_ativos * config.eficiencia_percentual;
 
-        // 4. Build lookup: stageId ├óÔÇáÔÇÖ baseTimeSeconds (Ideal vs Real)
+        // 4. Build lookup: stageId → baseTimeSeconds (Ideal vs Real)
         const timeByStage: Record<number, number> = {};
 
         const stageDefaults: Record<string, number> = {
-            "Ficha de aprova├â┬º├â┬úo": 1.5 * 60,
-            "Separa├â┬º├â┬úo / Corte": 2 * 60,
-            "Revela├â┬º├â┬úo de Tela": 2 * 60,
+            "Ficha de aprovação": 1.5 * 60,
+            "Separação / Corte": 2 * 60,
+            "Revelação de Tela": 2 * 60,
             "Silk": 5 * 60,
             "DTF": 4 * 60,
-            "Sublima├â┬º├â┬úo": 3 * 60,
+            "Sublimação": 3 * 60,
             "Costura": 2.5 * 60,
-            "Confer├â┬¬ncia": 1 * 60,
+            "Conferência": 1 * 60,
             "Embalagem": 0.5 * 60,
         };
 
@@ -2966,12 +3090,12 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
             } else {
                 baseSecs = stageDefaults[stage.name] ?? 2 * 60;
             }
-            // Multiplicador default? N├â┬úo, agora tempo_base equivale ao tempo total da etapa
+            // Multiplicador default? Não, agora tempo_base equivale ao tempo total da etapa
             timeByStage[stage.id] = baseSecs;
             (timeByStage as any)[`${stage.id}_type`] = stage.calculation_type || 'por_peca';
         }
 
-        // 5. Simulate queue ├óÔé¼ÔÇØ orders already sorted by deadline (most urgent first)
+        // 5. Simulate queue — orders already sorted by deadline (most urgent first)
         // sectorAvailableAt: when can a sector next accept work (in ms)
         const now = new Date();
         now.setHours(0, 0, 0, 0);
@@ -3081,12 +3205,12 @@ app.get("/api/orders/delivery-forecast", async (_req, res) => {
 
     } catch (err: any) {
         console.error("[Forecast] Error:", err);
-        return res.status(500).json({ error: "Erro no c├â┬ílculo de previs├â┬úo" });
+        return res.status(500).json({ error: "Erro no cálculo de previsão" });
     }
 });
 
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Orders ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Orders ────────────────────────────────────────────────────────────────
 app.get("/api/orders", async (req, res) => {
     const { search, stage_id, stage_status, product_type, print_type, include_delivered, status_tab } = req.query;
     let data: any[] | null = null;
@@ -3221,6 +3345,13 @@ app.get("/api/orders", async (req, res) => {
             .select("*")
             .in("order_id", targetOrderIds);
 
+        const dbProgSet = new Set<string>();
+        for (const p of dbProgress || []) {
+            if (p && p.order_id !== undefined && p.stage_id !== undefined) {
+                dbProgSet.add(`${p.order_id}_${Number(p.stage_id)}`);
+            }
+        }
+
         enrichOrdersWithProgressSync(data, dbProgress || []);
 
         // Fetch stage_observations for these orders to find the most recent observation of the active stage
@@ -3251,12 +3382,18 @@ app.get("/api/orders", async (req, res) => {
             if (Array.isArray(order.stages_status)) {
                 order.stages_status = order.stages_status
                     .map((st: any) => {
-                        const execState = execStateByOrderStage.get(`${order.id}_${Number(st.id)}`);
-                        if (execState === "Finalizado") {
-                            return { ...st, finished: true, in_progress: false };
-                        }
+                        const osKey = `${order.id}_${Number(st.id)}`;
+                        const execState = execStateByOrderStage.get(osKey);
+                        const hasAuthoritativeProgress = dbProgSet.has(osKey);
                         if (execState === "Em andamento" || execState === "Pausado") {
-                            return { ...st, in_progress: true };
+                            return {
+                                ...st,
+                                in_progress: true,
+                                status_operacao: execState === "Pausado" ? "PAUSADA" : "EM_ANDAMENTO",
+                            };
+                        }
+                        if (execState === "Finalizado" && !hasAuthoritativeProgress) {
+                            return { ...st, finished: true, in_progress: false };
                         }
                         return st;
                     });
@@ -3330,6 +3467,7 @@ app.get("/api/orders", async (req, res) => {
             ativos: 0,
             prontos: 0,
             entregues: 0,
+            encerrados: 0,
             cancelados: 0,
             todos: data.length
         };
@@ -3337,9 +3475,10 @@ app.get("/api/orders", async (req, res) => {
             const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
                 .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
             const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
-            const isPronto = o.status === 'Pronto' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
+            const isPronto = o.status === 'Pronto' || o.status === 'Concluído' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
             if (o.status === 'Entregue') {
                 orderCounts.entregues++;
+                orderCounts.encerrados++;
             } else if (o.status === 'Cancelado') {
                 orderCounts.cancelados++;
             } else if (isPronto) {
@@ -3364,13 +3503,13 @@ app.get("/api/orders", async (req, res) => {
                 const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
                     .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
                 const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
-                return o.status === 'Pronto' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
+                return o.status === 'Pronto' || o.status === 'Concluído' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
             });
-        } else if (selectedTab === 'entregues') {
+        } else if (selectedTab === 'entregues' || selectedTab === 'encerrados') {
             data = data.filter((o: any) => o.status === 'Entregue');
         } else if (selectedTab === 'cancelados') {
             data = data.filter((o: any) => o.status === 'Cancelado');
-        } else if (selectedTab === 'todos') {
+        } else if (selectedTab === 'todos' || selectedTab === 'historico') {
             // Retorna todos os pedidos
         }
     }
@@ -3389,17 +3528,19 @@ app.get("/api/orders/counts", async (_req, res) => {
             .is("deleted_at", null);
         if (error || !orders) {
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            return res.json({ ativos: 0, prontos: 0, entregues: 0, cancelados: 0, todos: 0 });
+            return res.json({ ativos: 0, prontos: 0, entregues: 0, encerrados: 0, cancelados: 0, todos: 0 });
         }
-        const counts = { ativos: 0, prontos: 0, entregues: 0, cancelados: 0, todos: orders.length };
+        const counts = { ativos: 0, prontos: 0, entregues: 0, encerrados: 0, cancelados: 0, todos: orders.length };
         for (const o of orders) {
+            const normStatus = normalizeUtf8Text(o.status);
             const prodStages = (Array.isArray(o.stages_status) ? o.stages_status : [])
                 .filter((s: any) => Number(s.id) !== 12 && !String(s.name || '').toLowerCase().includes('confer'));
             const isAllFinished = prodStages.length > 0 && prodStages.every((s: any) => s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado');
-            const isPronto = o.status === 'Pronto' || (o.status !== 'Entregue' && o.status !== 'Cancelado' && isAllFinished);
-            if (o.status === 'Entregue') {
+            const isPronto = normStatus === 'Pronto' || normStatus === 'Concluído' || (normStatus !== 'Entregue' && normStatus !== 'Cancelado' && isAllFinished);
+            if (normStatus === 'Entregue') {
                 counts.entregues++;
-            } else if (o.status === 'Cancelado') {
+                counts.encerrados++;
+            } else if (normStatus === 'Cancelado') {
                 counts.cancelados++;
             } else if (isPronto) {
                 counts.prontos++;
@@ -3411,7 +3552,7 @@ app.get("/api/orders/counts", async (_req, res) => {
         return res.json(counts);
     } catch (_e) {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        return res.json({ ativos: 0, prontos: 0, entregues: 0, cancelados: 0, todos: 0 });
+        return res.json({ ativos: 0, prontos: 0, entregues: 0, encerrados: 0, cancelados: 0, todos: 0 });
     }
 });
 
@@ -3436,7 +3577,127 @@ app.get("/api/orders/:id/stage-observations", async (req, res) => {
     return res.json(enriched);
 });
 
-app.post("/api/orders", isAdminOrComercial, upload.array("art_files", 10), async (req, res) => {
+const ALLOWED_UPLOAD_MIME_MAP: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/pjpeg': 'jpg',
+    'image/png': 'png',
+    'image/x-png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'application/pdf': 'pdf',
+};
+const ALLOWED_UPLOAD_EXT_TO_MIME: Record<string, string> = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+    'pdf': 'application/pdf',
+};
+
+function resolveUploadMimeAndExt(file: any): { valid: boolean; ext: string; contentType: string } {
+    const rawName = String(file?.originalname || '').trim();
+    const hasDot = rawName.includes('.');
+    const rawExt = hasDot ? (rawName.split('.').pop()?.toLowerCase() || '') : '';
+    const rawMime = String(file?.mimetype || '').toLowerCase().trim();
+
+    const extFromMime = ALLOWED_UPLOAD_MIME_MAP[rawMime] || '';
+    const mimeFromExt = ALLOWED_UPLOAD_EXT_TO_MIME[rawExt] || '';
+
+    if (extFromMime && (!rawExt || ALLOWED_UPLOAD_EXT_TO_MIME[rawExt])) {
+        const finalExt = ALLOWED_UPLOAD_EXT_TO_MIME[rawExt] ? rawExt : extFromMime;
+        const finalMime = ALLOWED_UPLOAD_EXT_TO_MIME[finalExt] || rawMime;
+        return { valid: true, ext: finalExt, contentType: finalMime };
+    }
+    if (mimeFromExt && (!rawMime || rawMime === 'application/octet-stream')) {
+        return { valid: true, ext: rawExt, contentType: mimeFromExt };
+    }
+    return { valid: false, ext: rawExt, contentType: rawMime };
+}
+
+async function uploadFileToArtesStorage(
+    req: express.Request,
+    filePath: string,
+    buffer: Buffer,
+    contentType: string
+): Promise<{ publicUrl?: string; error?: any }> {
+    let { error: uploadError } = await supabaseAdmin.storage
+        .from('artes')
+        .upload(filePath, buffer, {
+            contentType,
+            upsert: true,
+        });
+
+    if (uploadError && /bucket.*not found/i.test(String(uploadError.message || ''))) {
+        try {
+            await (supabaseAdmin.storage as any).createBucket?.('artes', { public: true, fileSizeLimit: 10485760 });
+            const retryRes = await supabaseAdmin.storage
+                .from('artes')
+                .upload(filePath, buffer, {
+                    contentType,
+                    upsert: true,
+                });
+            uploadError = retryRes.error;
+        } catch (bucketErr) {
+            console.warn('[Upload] Aviso ao criar bucket artes:', bucketErr);
+        }
+    }
+
+    if (uploadError && req.headers['authorization']) {
+        try {
+            const userScopedClient = createClient(
+                supabaseUrl || DEFAULT_SUPABASE_URL,
+                supabaseServiceRoleKey || supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY,
+                {
+                    auth: { autoRefreshToken: false, persistSession: false },
+                    global: { headers: { Authorization: String(req.headers['authorization']) } },
+                }
+            );
+            const retryAuth = await userScopedClient.storage
+                .from('artes')
+                .upload(filePath, buffer, {
+                    contentType,
+                    upsert: true,
+                });
+            if (!retryAuth.error) {
+                uploadError = null;
+            }
+        } catch (scopedErr) {
+            console.warn('[Upload] Fallback com token do usuário falhou:', scopedErr);
+        }
+    }
+
+    if (uploadError) {
+        return { error: uploadError };
+    }
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
+    return { publicUrl: publicUrlData.publicUrl };
+}
+
+const handleArtFilesUpload = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = String(req.headers['authorization'] || '').trim();
+    if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+        return res.status(401).json({
+            error: "Não autenticado. Header Authorization com Bearer token é obrigatório.",
+            code: "UNAUTHENTICATED",
+        });
+    }
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (!contentType.includes('multipart/form-data')) {
+        return next();
+    }
+    upload.array("art_files", 10)(req, res, (err: any) => {
+        if (err) {
+            console.error("[Upload] Erro no multer ao processar art_files:", err);
+            return res.status(400).json({ error: `Erro no upload do arquivo: ${err.message || 'Arquivo inválido ou excede o limite permitido'}` });
+        }
+        next();
+    });
+};
+
+app.post("/api/orders", handleArtFilesUpload, isAdminOrComercial, async (req, res) => {
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors } = req.body;
     let order_number = (req.body.order_number || '').trim();
     if (!order_number) {
@@ -3453,25 +3714,25 @@ app.post("/api/orders", isAdminOrComercial, upload.array("art_files", 10), async
     console.log(`[API] Criando pedido. Arquivos recebidos: ${files?.length || 0}`);
     if (files && Array.isArray(files)) {
         for (const file of files) {
-            const fileExt = file.originalname.split('.').pop();
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const { valid, ext, contentType } = resolveUploadMimeAndExt(file);
+            const cleanExt = valid ? ext : (file.originalname?.split('.').pop()?.toLowerCase() || 'png');
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${cleanExt}`;
             const filePath = `pedidos/${fileName}`;
 
-            const { error: uploadError } = await supabaseAdmin.storage
-                .from('artes')
-                .upload(filePath, file.buffer, {
-                    contentType: file.mimetype,
-                    upsert: true
-                });
+            const { publicUrl, error: uploadError } = await uploadFileToArtesStorage(
+                req,
+                filePath,
+                file.buffer,
+                contentType || file.mimetype || 'image/png'
+            );
 
-            if (uploadError) {
+            if (uploadError || !publicUrl) {
                 console.error(`[API] Erro no upload da arte (${file.originalname}):`, uploadError);
-                uploadErrors.push(`${file.originalname}: ${uploadError.message}`);
+                uploadErrors.push(`${file.originalname}: ${uploadError?.message || 'Erro no armazenamento'}`);
                 continue;
             }
 
-            const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
-            art_urls.push(publicUrlData.publicUrl);
+            art_urls.push(publicUrl);
         }
     }
 
@@ -3523,7 +3784,7 @@ app.post("/api/orders", isAdminOrComercial, upload.array("art_files", 10), async
     return res.json({ id: data.id, order_number, art_url: art_urls[0] || null, art_urls });
 });
 
-// Soft delete ├óÔé¼ÔÇØ mant├â┬®m hist├â┬│rico de execu├â┬º├â┬Áes intacto
+// Soft delete — mantém histórico de execuções intacto
 app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     const { id } = req.params;
     const usuario = getActorName(req, "Administrador");
@@ -3538,7 +3799,7 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     if (fetchErr || !order) return res.status(404).json({ error: "Pedido não encontrado" });
     if (order.deleted_at) return res.status(400).json({ error: "Pedido já foi excluído" });
 
-    // 2. Soft delete ├óÔé¼ÔÇØ only update deleted_at and deleted_by
+    // 2. Soft delete — only update deleted_at and deleted_by
     const now = new Date().toISOString();
     const { error: updateErr } = await supabaseAdmin
         .from("orders")
@@ -3561,17 +3822,7 @@ app.delete("/api/orders/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-const handleArtFilesUpload = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    upload.array("art_files", 10)(req, res, (err: any) => {
-        if (err) {
-            console.error("[Upload] Erro no multer ao processar art_files:", err);
-            return res.status(400).json({ error: `Erro no upload do arquivo: ${err.message || 'Arquivo inválido ou excede o limite permitido'}` });
-        }
-        next();
-    });
-};
-
-app.post("/api/orders/:id/images", canUploadOrderImages, handleArtFilesUpload, async (req, res) => {
+app.post("/api/orders/:id/images", handleArtFilesUpload, canUploadOrderImages, async (req, res) => {
     const { id } = req.params;
     const files = (req as any).files;
 
@@ -3579,14 +3830,12 @@ app.post("/api/orders/:id/images", canUploadOrderImages, handleArtFilesUpload, a
         return res.status(400).json({ error: "Nenhum arquivo enviado" });
     }
 
-    const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
-    const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf'];
     const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
 
     // Validação estrita de cada arquivo
     for (const file of files) {
-        const rawExt = (file.originalname || '').split('.').pop()?.toLowerCase() || '';
-        if (!ALLOWED_EXTENSIONS.includes(rawExt) || !ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+        const { valid } = resolveUploadMimeAndExt(file);
+        if (!valid) {
             return res.status(400).json({ error: `Tipo de arquivo não permitido (${file.originalname}). São permitidos apenas PNG, JPG/JPEG, WEBP, GIF e PDF.` });
         }
         if (file.size > MAX_FILE_SIZE) {
@@ -3611,32 +3860,30 @@ app.post("/api/orders/:id/images", canUploadOrderImages, handleArtFilesUpload, a
     // 2. Upload new files com caminho isolado por pedido e UUID anti-colisão
     const uploadErrors: string[] = [];
     for (const file of files) {
-        const rawExt = (file.originalname || '').split('.').pop()?.toLowerCase() || 'png';
-        const cleanExt = ALLOWED_EXTENSIONS.includes(rawExt) ? rawExt : 'png';
+        const { ext: cleanExt, contentType } = resolveUploadMimeAndExt(file);
         const safeBaseName = (file.originalname || 'imagem')
             .replace(/\.[^/.]+$/, "")
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, "")
             .replace(/[^a-zA-Z0-9_-]/g, "_")
-            .substring(0, 30);
+            .substring(0, 30) || 'imagem';
         const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const filePath = `pedidos/${Number(id)}/${uniqueSuffix}-${safeBaseName}.${cleanExt}`;
 
-        const { error: uploadError } = await supabaseAdmin.storage
-            .from('artes')
-            .upload(filePath, file.buffer, {
-                contentType: file.mimetype,
-                upsert: true
-            });
+        const { publicUrl, error: uploadError } = await uploadFileToArtesStorage(
+            req,
+            filePath,
+            file.buffer,
+            contentType
+        );
 
-        if (uploadError) {
+        if (uploadError || !publicUrl) {
             console.error(`[API] Erro no upload da arte (${file.originalname}):`, uploadError);
-            uploadErrors.push(`${file.originalname}: ${uploadError.message}`);
+            uploadErrors.push(`${file.originalname}: ${uploadError?.message || 'Erro no armazenamento'}`);
             continue;
         }
 
-        const { data: publicUrlData } = supabaseAdmin.storage.from('artes').getPublicUrl(filePath);
-        new_urls.push(publicUrlData.publicUrl);
+        new_urls.push(publicUrl);
     }
 
     if (uploadErrors.length > 0) {
@@ -3669,6 +3916,16 @@ app.post("/api/orders/:id/images", canUploadOrderImages, handleArtFilesUpload, a
         antes: { art_urls: current_urls },
         depois: { art_urls: updated_urls, art_url: primaryUrl },
         detalhes: `Upload de ${new_urls.length} arquivo(s): ${files.map((f: any) => f.originalname).join(', ')}`
+    });
+    await writeAuditLogStore(supabaseAdmin, {
+        entidade: "orders",
+        order_id: Number(id),
+        user_id: getActorId(req),
+        usuario,
+        acao: "UPLOAD_IMAGEM_PEDIDO",
+        observacao: `Upload de ${new_urls.length} arquivo(s): ${files.map((f: any) => f.originalname).join(', ')}`,
+        valor_anterior: { art_urls: current_urls },
+        valor_novo: { art_urls: updated_urls, art_url: primaryUrl },
     });
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -3763,7 +4020,7 @@ app.patch("/api/orders/:id/dtf", canOperateProduction, async (req, res) => {
         .eq("id", orderId)
         .single();
 
-    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido não encontrado" });
 
     // 2. Perform update
     const updates: any = {};
@@ -3799,12 +4056,12 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
 
     const { client_name, product_type, print_type, quantity, deadline, observations, required_stages, num_colors, art_urls, art_url, dtf_complete, dtf_location } = req.body;
 
-    // ├óÔÇØÔé¼├óÔÇØÔé¼ Validations ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+    // ── Validations ──────────────────────────────────────────────────────────
     if (quantity !== undefined && Number(quantity) <= 0) {
         return res.status(400).json({ error: "Quantidade deve ser maior que zero" });
     }
     if (num_colors !== undefined && Number(num_colors) < 1) {
-        return res.status(400).json({ error: "N├â┬║mero de cores deve ser pelo menos 1" });
+        return res.status(400).json({ error: "Número de cores deve ser pelo menos 1" });
     }
 
     // 1. Fetch current order for audit log + finalized check
@@ -3814,10 +4071,10 @@ app.patch("/api/orders/:id", isAdminOrComercial, async (req, res) => {
         .eq("id", orderId)
         .single();
 
-    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
-    if (currentOrder.deleted_at) return res.status(400).json({ error: "N├â┬úo ├â┬® poss├â┬¡vel editar um pedido exclu├â┬¡do" });
+    if (fetchErr || !currentOrder) return res.status(404).json({ error: "Pedido não encontrado" });
+    if (currentOrder.deleted_at) return res.status(400).json({ error: "Não é possível editar um pedido excluído" });
     if (currentOrder.status === "Entregue" && !confirmFinalized) {
-        return res.status(409).json({ error: "CONFIRM_FINALIZED", message: "Este pedido j├â┬í foi entregue. Deseja mesmo edit├â┬í-lo?" });
+        return res.status(409).json({ error: "CONFIRM_FINALIZED", message: "Este pedido já foi entregue. Deseja mesmo editá-lo?" });
     }
 
     // 2. Build update payload with only provided fields
@@ -3896,11 +4153,11 @@ app.get("/api/orders/:id/history", isAdminOrComercial, async (req, res) => {
         .select("*")
         .eq("order_id", Number(req.params.id))
         .order("created_at", { ascending: false });
-    if (checkError(error, res, "Erro ao buscar hist├â┬│rico")) return;
+    if (checkError(error, res, "Erro ao buscar histórico")) return;
     return res.json(data || []);
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Consolidated Cutting Panel APIs ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Consolidated Cutting Panel APIs ──────────────────────────────────────────
 
 // GET /api/cutting/consolidated-demand
 app.get("/api/cutting/consolidated-demand", async (_req, res) => {
@@ -4169,7 +4426,7 @@ app.get("/api/cutting/producao-excedentes", async (_req, res) => {
 });
 
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Stages ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Stages ────────────────────────────────────────────────────────────────
 app.get("/api/stages", async (req, res) => {
     const { data, error } = await supabaseAdmin
         .from("stages")
@@ -4177,7 +4434,14 @@ app.get("/api/stages", async (req, res) => {
         .eq("active", 1)
         .order("sort_order");
     if (checkError(error, res)) return;
-    return res.json(data);
+    const enriched = (data || []).map((s: any) => ({
+        ...s,
+        name: normalizeUtf8Text(s.name),
+        sector_name: s.sector_name ? normalizeUtf8Text(s.sector_name) : s.sector_name,
+        slug: getStageSlug(s),
+        code: getStageSlug(s),
+    }));
+    return res.json(enriched);
 });
 
 app.post("/api/stages", isPcpOrSupervisorOrAdmin, async (req, res) => {
@@ -4236,7 +4500,7 @@ app.delete("/api/stages/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Loss Reasons & Re-entry Configuration ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Loss Reasons & Re-entry Configuration ──────────────────────────────────
 app.get("/api/loss-reasons", async (_req, res) => {
     try {
         const reasons = await getLossReasons(supabaseAdmin);
@@ -4251,7 +4515,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
     try {
         const { reasons } = req.body;
         if (!Array.isArray(reasons)) {
-            return res.status(400).json({ error: "Par├â┬ómetro 'reasons' deve ser um array." });
+            return res.status(400).json({ error: "Parâmetro 'reasons' deve ser um array." });
         }
         const updated = await updateLossReasons(supabaseAdmin, reasons);
         return res.json({ success: true, reasons: updated });
@@ -4261,7 +4525,7 @@ app.patch("/api/loss-reasons", isAdmin, async (req, res) => {
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Partial Progress & Loss Logging ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Partial Progress & Loss Logging ────────────────────────────────────────
 app.get("/api/orders/:id/stage-progress", async (req, res) => {
     try {
         const orderId = Number(req.params.id);
@@ -4303,8 +4567,8 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
 
         const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
         const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
-        const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-        const effectiveReason = override_reason || observacao || (isPrivileged ? `Apontamento por ${actorRole || 'Administrador'}` : null);
+        const effectiveOverride = Boolean(supervisor_override) && isPrivileged;
+        const effectiveReason = override_reason || observacao || (effectiveOverride ? `Apontamento autorizado por ${actorRole || 'Administrador'}` : null);
         const effectiveKey = idempotency_key || (req.headers["x-idempotency-key"] as string) || `prog_${orderId}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
         const transferInc = quantidade_transferida !== undefined ? Number(quantidade_transferida) : (transfer_to_next ? Number(incremento) || 0 : 0);
@@ -4442,8 +4706,8 @@ app.post("/api/orders/:id/stages/:stageId/loss", canOperateProduction, async (re
 
         const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
         const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
-        const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-        const effectiveReason = override_reason || (isPrivileged ? `Registro de perda por ${actorRole || 'Administrador'}` : null);
+        const effectiveOverride = Boolean(supervisor_override) && isPrivileged;
+        const effectiveReason = override_reason || (effectiveOverride ? `Registro de perda por ${actorRole || 'Administrador'}` : null);
 
         const { data: rpcLossData, error: rpcLossErr } = await supabaseAdmin.rpc("rpc_record_loss", {
             p_order_id: orderId,
@@ -4476,19 +4740,19 @@ app.post("/api/orders/:id/stages/:stageId/loss", canOperateProduction, async (re
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Loss & Rework Bottleneck Report ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Loss & Rework Bottleneck Report ────────────────────────────────────────
 app.get("/api/reports/losses", async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const data = await getLossReportDataStore(supabaseAdmin, startDate as string, endDate as string);
         return res.json(data);
     } catch (err: any) {
-        console.error("[API] Erro ao gerar relat├â┬│rio de perdas:", err);
-        return res.status(500).json({ error: "Erro ao gerar relat├â┬│rio de perdas" });
+        console.error("[API] Erro ao gerar relatório de perdas:", err);
+        return res.status(500).json({ error: "Erro ao gerar relatório de perdas" });
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Collaborator Stage Goals Overrides ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Collaborator Stage Goals Overrides ─────────────────────────────────────
 app.get("/api/collaborator-goals", async (_req, res) => {
     const { data, error } = await supabaseAdmin
         .from("collaborator_stage_goals")
@@ -4582,7 +4846,7 @@ app.get("/api/executions/active/:userId", async (req, res) => {
     return res.json(formatted);
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Executions ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Executions ────────────────────────────────────────────────────────────
 app.get("/api/orders/:id/executions", async (req, res) => {
     const { data, error } = await supabaseAdmin
         .from("stage_executions")
@@ -4625,10 +4889,11 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
     const orderIdNum = Number(order_id);
     const stageIdNum = Number(stage_id);
     const userIdNum = getActorId(req);
+    const actorName = getActorName(req, "Operador");
     const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
     const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
-    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-    const effectiveMotivo = motivo || (isPrivileged ? `Assunção direta pelo ${actorRole || 'Administrador'}` : null);
+    const effectiveOverride = Boolean(supervisor_override) && isPrivileged;
+    const effectiveMotivo = motivo ? String(motivo).trim() : null;
 
     if (!userIdNum || userIdNum <= 0) {
         return res.status(401).json({ error: "Usuário não identificado. Por favor, saia e entre novamente.", code: "USER_ID_REQUIRED" });
@@ -4638,42 +4903,170 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
         // --- AUTO-HEALING & COMPATIBILIDADE PARA PEDIDOS JÁ EM PRODUÇÃO ---
         const { data: ordRow } = await supabaseAdmin
             .from('orders')
-            .select('id, quantity, required_stages, stages_status, status')
+            .select('id, order_number, quantity, required_stages, stages_status, status')
             .eq('id', orderIdNum)
             .maybeSingle();
 
-        if (ordRow) {
-            let reqStages: number[] = Array.isArray(ordRow.required_stages) && ordRow.required_stages.length > 0
-                ? ordRow.required_stages
-                : [];
+        if (!ordRow) {
+            return res.status(404).json({ error: "Pedido não encontrado.", code: "ORDER_NOT_FOUND" });
+        }
 
-            const stageIdsFromStatus = Array.isArray(ordRow.stages_status)
-                ? ordRow.stages_status.map((s: any) => Number(s.id)).filter((id: number) => id && id !== 12)
-                : [];
+        if (ordRow.status === 'Pronto' || ordRow.status === 'Entregue' || ordRow.status === 'Cancelado') {
+            return res.status(409).json({
+                error: `Não é possível iniciar etapa: o pedido já está com status "${ordRow.status}".`,
+                code: "ORDER_ALREADY_FINISHED"
+            });
+        }
 
-            // 1. Se required_stages estiver vazio ou não contiver a etapa atual, atualizar com a rota de stages_status
-            if (reqStages.length === 0 || (!reqStages.includes(stageIdNum) && stageIdsFromStatus.includes(stageIdNum))) {
-                reqStages = stageIdsFromStatus.length > 0 ? stageIdsFromStatus : (reqStages.includes(stageIdNum) ? reqStages : [...reqStages, stageIdNum]);
-                await supabaseAdmin
-                    .from('orders')
-                    .update({ required_stages: reqStages })
-                    .eq('id', orderIdNum);
+        // 0. Verificar em order_stage_progress se a etapa já está concluída ou com saldo zero
+        const { data: existingProg } = await supabaseAdmin
+            .from('order_stage_progress')
+            .select('*')
+            .eq('order_id', orderIdNum)
+            .eq('stage_id', stageIdNum)
+            .maybeSingle();
+
+        const targetQty = Math.max(0, Number(existingProg?.quantidade_pedido || ordRow.quantity) || 0);
+        const currentGood = Math.max(0, Number(existingProg?.quantidade_boa) || 0);
+        const currentReposicao = Math.max(0, Number(existingProg?.pendencia_reposicao) || 0);
+        const remainingBalance = Math.max(0, targetQty - currentGood + currentReposicao);
+
+        if (existingProg && (existingProg.finished === true || existingProg.status_operacao === 'CONCLUIDA')) {
+            return res.status(409).json({
+                error: "Esta etapa já foi concluída e não pode ser iniciada novamente. Utilize a opção Reabrir Etapa caso necessário.",
+                code: "STAGE_ALREADY_COMPLETED"
+            });
+        }
+
+        if (existingProg && targetQty > 0 && remainingBalance <= 0) {
+            return res.status(409).json({
+                error: "Esta etapa já possui 100% das peças concluídas (saldo restante zero) e não pode ser iniciada.",
+                code: "ZERO_BALANCE_REMAINING"
+            });
+        }
+
+        // 0.1. Verificar se já existe execução ativa/pausada para este pedido + etapa
+        const { data: activeStageExecs } = await supabaseAdmin
+            .from('stage_executions')
+            .select('*, users(name)')
+            .eq('order_id', orderIdNum)
+            .eq('stage_id', stageIdNum)
+            .in('status', ['Em andamento', 'Pausado'])
+            .order('start_time', { ascending: false });
+
+        const currentStageExec = activeStageExecs && activeStageExecs.length > 0 ? activeStageExecs[0] : null;
+
+        if (currentStageExec) {
+            if (Number(currentStageExec.user_id) === Number(userIdNum)) {
+                // Idempotência para o próprio operador (duplo clique ou múltiplas abas): retorna a execução existente sem duplicar
+                if (currentStageExec.status === 'Pausado') {
+                    await supabaseAdmin.rpc("rpc_resume_operation", {
+                        p_execution_id: currentStageExec.id,
+                        p_user_id: userIdNum,
+                        p_supervisor_override: false,
+                        p_motivo: "Retomada idempotente ao clicar em Iniciar",
+                    });
+                }
+                return res.status(200).json({
+                    id: currentStageExec.id,
+                    execution_id: currentStageExec.id,
+                    order_id: orderIdNum,
+                    stage_id: stageIdNum,
+                    user_id: userIdNum,
+                    status: "Em andamento",
+                    status_operacao: "EM_ANDAMENTO",
+                    idempotent_replay: true,
+                    http_status: 200
+                });
             }
 
-            // 2. Sincronizar order_stage_progress para todas as etapas concluídas antes desta
-            if (Array.isArray(ordRow.stages_status) && ordRow.stages_status.length > 0) {
-                const targetQty = ordRow.quantity || 1;
-                const finishedStages = ordRow.stages_status.filter((s: any) => 
-                    (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado') && Number(s.id) !== 12
-                );
+            const activeOperatorName = (currentStageExec as any).users?.name || `Operador #${currentStageExec.user_id}`;
+            if (!effectiveOverride) {
+                return res.status(409).json({
+                    error: `Esta etapa já está em execução por ${activeOperatorName}. Não é permitido iniciar em paralelo.`,
+                    code: "CONCURRENT_STAGE_EXECUTION",
+                    active_execution_id: currentStageExec.id,
+                    active_operator_id: currentStageExec.user_id,
+                    active_operator_name: activeOperatorName,
+                });
+            }
 
-                for (const fs of finishedStages) {
-                    const fsId = Number(fs.id);
+            if (!effectiveMotivo) {
+                return res.status(400).json({
+                    error: `A etapa está com ${activeOperatorName}. Informe a justificativa obrigatória para transferir/intervir na execução.`,
+                    code: "OVERRIDE_REASON_REQUIRED",
+                    active_execution_id: currentStageExec.id,
+                    active_operator_id: currentStageExec.user_id,
+                    active_operator_name: activeOperatorName,
+                });
+            }
+
+            // Intervenção formal por Supervisor/PCP/Admin com justificativa auditável
+            const nowIso = new Date().toISOString();
+            await supabaseAdmin
+                .from('stage_executions')
+                .update({
+                    status: 'Finalizado',
+                    end_time: nowIso,
+                    observation: `[TRANSFERENCIA_SUPERVISOR] Encerrada por ${actorName} (${actorRole}): ${effectiveMotivo}`,
+                    updated_at: nowIso
+                })
+                .eq('id', currentStageExec.id);
+
+            await writeAuditLogStore(supabaseAdmin, {
+                entidade: "stage_executions",
+                order_id: orderIdNum,
+                stage_id: stageIdNum,
+                user_id: userIdNum,
+                usuario: actorName,
+                acao: "TRANSFERENCIA_OPERADOR",
+                motivo: effectiveMotivo,
+                observacao: `Execução #${currentStageExec.id} de ${activeOperatorName} transferida para ${actorName}. Motivo: ${effectiveMotivo}`,
+                valor_anterior: { execution_id: currentStageExec.id, previous_user_id: currentStageExec.user_id, previous_operator: activeOperatorName },
+                valor_novo: { new_user_id: userIdNum, motivo: effectiveMotivo },
+            });
+        }
+
+        let reqStages: number[] = Array.isArray(ordRow.required_stages) && ordRow.required_stages.length > 0
+            ? ordRow.required_stages.map(Number).filter((id: number) => id && id !== 12)
+            : [];
+
+        const stageIdsFromStatus = Array.isArray(ordRow.stages_status)
+            ? ordRow.stages_status.map((s: any) => Number(s.id)).filter((id: number) => id && id !== 12)
+            : [];
+
+        // 1. Se required_stages estiver vazio ou não contiver a etapa atual, atualizar com a rota de stages_status
+        if (reqStages.length === 0 || (!reqStages.includes(stageIdNum) && stageIdsFromStatus.includes(stageIdNum))) {
+            reqStages = stageIdsFromStatus.length > 0 ? stageIdsFromStatus : (reqStages.includes(stageIdNum) ? reqStages : [...reqStages, stageIdNum]);
+            await supabaseAdmin
+                .from('orders')
+                .update({ required_stages: reqStages })
+                .eq('id', orderIdNum);
+        }
+
+        // 2. Sincronizar order_stage_progress apenas para etapas anteriores que não possuem linha ainda em order_stage_progress
+        if (Array.isArray(ordRow.stages_status) && ordRow.stages_status.length > 0) {
+            const { data: existingAllProg } = await supabaseAdmin
+                .from('order_stage_progress')
+                .select('stage_id, finished, status_operacao')
+                .eq('order_id', orderIdNum);
+            const existingMap = new Map<number, any>((existingAllProg || []).map((p: any) => [Number(p.stage_id), p]));
+
+            const orderQty = ordRow.quantity || 1;
+            const finishedStages = ordRow.stages_status.filter((s: any) =>
+                (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado') &&
+                Number(s.id) !== 12 &&
+                Number(s.id) !== stageIdNum
+            );
+
+            for (const fs of finishedStages) {
+                const fsId = Number(fs.id);
+                if (!existingMap.has(fsId)) {
                     await supabaseAdmin.from('order_stage_progress').upsert({
                         order_id: orderIdNum,
                         stage_id: fsId,
-                        quantidade_pedido: targetQty,
-                        quantidade_boa: targetQty,
+                        quantidade_pedido: orderQty,
+                        quantidade_boa: orderQty,
                         saldo_pendente: 0,
                         pendencia_reposicao: 0,
                         finished: true,
@@ -4681,28 +5074,6 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
                         status_operacao: 'CONCLUIDA',
                         updated_at: new Date().toISOString()
                     }, { onConflict: 'order_id,stage_id' });
-                }
-            }
-
-            // 3. Se for Administrador/Supervisor ou supervisor_override e existir execução antiga pendente de outro usuário nesta etapa, finalizá-la automaticamente
-            if (effectiveOverride) {
-                const { data: staleExec } = await supabaseAdmin
-                    .from('stage_executions')
-                    .select('id, user_id, status')
-                    .eq('order_id', orderIdNum)
-                    .eq('stage_id', stageIdNum)
-                    .in('status', ['Em andamento', 'Pausado'])
-                    .maybeSingle();
-
-                if (staleExec && staleExec.user_id !== userIdNum) {
-                    await supabaseAdmin
-                        .from('stage_executions')
-                        .update({
-                            status: 'Finalizado',
-                            end_time: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        })
-                        .eq('id', staleExec.id);
                 }
             }
         }
@@ -4820,13 +5191,13 @@ app.post("/api/executions/auto-pause", isPcpOrSupervisorOrAdmin, async (req, res
         const spSpnow = new Date(spSpnowStr + "Z");
         
         const dayOfWeek = spSpnow.getUTCDay();
-        if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ success: true, message: "Fim de semana, pulando pausa autom├â┬ítica." });
+        if (dayOfWeek === 0 || dayOfWeek === 6) return res.json({ success: true, message: "Fim de semana, pulando pausa automática." });
 
         const checkTime = (target: string) => {
             if (!target) return false;
             const [hh, mm] = target.split(':').map(Number);
             
-            // Janela de ├é┬▒3 minutos para garantir que o trigger funcione mesmo com pequenas varia├â┬º├â┬Áes de tempo/intervalo
+            // Janela de ±3 minutos para garantir que o trigger funcione mesmo com pequenas variações de tempo/intervalo
             const targetMin = hh * 60 + mm;
             const currentMin = spSpnow.getUTCHours() * 60 + spSpnow.getUTCMinutes();
             return Math.abs(currentMin - targetMin) <= 3;
@@ -4836,7 +5207,7 @@ app.post("/api/executions/auto-pause", isPcpOrSupervisorOrAdmin, async (req, res
         const isEndOfDay = checkTime(dayOfWeek === 5 ? config.auto_pause_time_friday : config.auto_pause_time_weekday);
 
         if (!isLunch && !isEndOfDay) {
-            return res.json({ success: true, message: "Fora do hor├â┬írio de pausa autom├â┬ítica.", current_time: now.toLocaleTimeString('pt-BR') });
+            return res.json({ success: true, message: "Fora do horário de pausa automática.", current_time: now.toLocaleTimeString('pt-BR') });
         }
 
         const { data: activeExecs, error: fetchErr } = await supabaseAdmin
@@ -4875,8 +5246,8 @@ app.post("/api/executions/:id/pause", canOperateProduction, async (req, res) => 
     const actorId = getActorId(req);
     const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
     const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
-    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-    const pauseReason = (motivo || reason || observation || (isPrivileged ? `Pausa pelo ${actorRole || 'Administrador'}` : "Pausa operacional")).toString().trim();
+    const effectiveOverride = Boolean(supervisor_override) && isPrivileged;
+    const pauseReason = (motivo || reason || observation || (effectiveOverride ? `Pausa autorizada pelo ${actorRole || 'Administrador'}` : "Pausa operacional")).toString().trim();
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
@@ -4911,8 +5282,8 @@ app.post("/api/executions/:id/resume", canOperateProduction, async (req, res) =>
     const actorId = getActorId(req);
     const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
     const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
-    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-    const effectiveMotivo = motivo || (isPrivileged ? `Retomada pelo ${actorRole || 'Administrador'}` : null);
+    const effectiveOverride = Boolean(supervisor_override) && isPrivileged;
+    const effectiveMotivo = motivo || (effectiveOverride ? `Retomada autorizada pelo ${actorRole || 'Administrador'}` : null);
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
@@ -4947,8 +5318,8 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
     const actorId = getActorId(req);
     const actorRole = String((req as any).authUser?.role ?? (req as any).user?.role ?? '');
     const isPrivileged = actorRole === 'Administrador' || actorRole === 'Supervisor' || actorRole === 'PCP';
-    const effectiveOverride = Boolean(supervisor_override) || isPrivileged;
-    const effectiveObs = (observation && String(observation).trim()) || (isPrivileged ? `Finalizado diretamente pelo ${actorRole || 'Administrador'}` : 'Finalizado no apontamento');
+    const effectiveOverride = Boolean(supervisor_override) && isPrivileged;
+    const effectiveObs = (observation && String(observation).trim()) || (effectiveOverride ? `Finalizado por ${actorRole || 'Administrador'}` : 'Finalizado no apontamento');
 
     if (!actorId) {
         return res.status(401).json({ error: "Identificação de usuário obrigatória.", code: "USER_ID_REQUIRED" });
@@ -4977,9 +5348,8 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
 
     const httpStatus = Number(rpcFinishData?.http_status) || 200;
 
-    // Resguardo resiliente para pedidos com etapa legada Conferência:
-    // Garante que o pedido transiciona para 'Pronto' caso todas as etapas ativas de produção estejam concluídas
-    if (httpStatus >= 200 && httpStatus < 300) {
+    // Resguardo resiliente: sincroniza order_stage_progress e orders.stages_status respeitando se foi parcial ou concluída
+    if (httpStatus >= 200 && httpStatus < 300 && !rpcFinishData?.error) {
         try {
             const { data: execRow } = await supabaseAdmin
                 .from("stage_executions")
@@ -4990,13 +5360,31 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
             if (execRow && execRow.order_id) {
                 const nowIso = new Date().toISOString();
 
-                // 1. Marca explicitamente a etapa atual como concluída em order_stage_progress e order_item_stage_progress
-                if (!partial) {
+                const { data: curProg } = await supabaseAdmin
+                    .from("order_stage_progress")
+                    .select("*")
+                    .eq("order_id", execRow.order_id)
+                    .eq("stage_id", execRow.stage_id)
+                    .maybeSingle();
+
+                const isStageTrulyFinished = Boolean(
+                    !partial && (
+                        rpcFinishData?.finished === true ||
+                        rpcFinishData?.status_operacao === "CONCLUIDA" ||
+                        curProg?.finished === true ||
+                        curProg?.status_operacao === "CONCLUIDA" ||
+                        (curProg && Number(curProg.quantidade_pedido) > 0 && Number(curProg.quantidade_boa) >= Number(curProg.quantidade_pedido) && !(Number(curProg.pendencia_reposicao) > 0))
+                    )
+                );
+
+                // 1. Marca explicitamente a etapa atual como concluída somente se realmente concluída
+                if (isStageTrulyFinished) {
                     await supabaseAdmin
                         .from("order_stage_progress")
                         .update({
                             finished: true,
                             status_operacao: "CONCLUIDA",
+                            saldo_pendente: 0,
                             completed_at: nowIso,
                             updated_at: nowIso,
                         })
@@ -5014,6 +5402,7 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                             .update({
                                 finished: true,
                                 status_operacao: "CONCLUIDA",
+                                saldo_pendente: 0,
                                 completed_at: nowIso,
                                 updated_at: nowIso,
                             })
@@ -5025,7 +5414,7 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                 // 2. Consulta o pedido com suas rotas e etapas
                 const { data: ord } = await supabaseAdmin
                     .from("orders")
-                    .select("id, status, required_stages, stages_status")
+                    .select("id, quantity, status, required_stages, stages_status")
                     .eq("id", execRow.order_id)
                     .maybeSingle();
 
@@ -5042,25 +5431,47 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
 
                     const nonConfReq = rawReq.filter((id: number) => !confStageIds.has(id));
 
-                    // Atualiza stages_status na tabela orders
+                    const { data: progressRows } = await supabaseAdmin
+                        .from("order_stage_progress")
+                        .select("*")
+                        .eq("order_id", ord.id);
+
+                    const progByStage = new Map<number, any>((progressRows || []).map((p: any) => [Number(p.stage_id), p]));
+                    const curStageProg = progByStage.get(Number(execRow.stage_id));
+
+                    // Atualiza stages_status na tabela orders com os valores reais de order_stage_progress
                     const updatedStagesStatus = Array.isArray(ord.stages_status)
-                        ? ord.stages_status.map((s: any) => Number(s.id) === Number(execRow.stage_id) ? { ...s, finished: true, status: 'Concluído' } : s)
+                        ? ord.stages_status.map((s: any) => {
+                            if (Number(s.id) === Number(execRow.stage_id)) {
+                                const qBoa = curStageProg ? Number(curStageProg.quantidade_boa) || 0 : (Number(rpcFinishData?.quantidade_boa) || Number(s.quantidade_boa) || 0);
+                                const qPrev = curStageProg ? Number(curStageProg.quantidade_pedido) || Number(ord.quantity) || 0 : (Number(ord.quantity) || 0);
+                                const sPend = isStageTrulyFinished ? 0 : Math.max(0, qPrev - qBoa);
+                                return {
+                                    ...s,
+                                    quantidade_boa: qBoa,
+                                    saldo_pendente: sPend,
+                                    status_operacao: isStageTrulyFinished ? 'CONCLUIDA' : (qBoa > 0 ? 'PARCIAL' : 'LIBERADA'),
+                                    finished: isStageTrulyFinished,
+                                    status: isStageTrulyFinished ? 'Concluído' : (qBoa > 0 ? 'Parcial' : 'Pendente'),
+                                };
+                            }
+                            return s;
+                        })
                         : ord.stages_status;
 
                     if (nonConfReq.length > 0) {
-                        const { data: progressRows } = await supabaseAdmin
-                            .from("order_stage_progress")
-                            .select("stage_id, finished, status_operacao")
-                            .eq("order_id", ord.id);
-
-                        const finishedMap = new Map((progressRows || []).map((p: any) => [Number(p.stage_id), Boolean(p.finished || p.status_operacao === 'CONCLUIDA')]));
-                        if (!partial) {
+                        const finishedMap = new Map<number, boolean>();
+                        for (const p of progressRows || []) {
+                            finishedMap.set(Number(p.stage_id), Boolean(p.finished === true || p.status_operacao === 'CONCLUIDA'));
+                        }
+                        if (isStageTrulyFinished) {
                             finishedMap.set(Number(execRow.stage_id), true);
                         }
                         if (Array.isArray(updatedStagesStatus)) {
                             for (const s of updatedStagesStatus) {
-                                if (s && (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado')) {
-                                    finishedMap.set(Number(s.id), true);
+                                const sid = Number(s?.id);
+                                if (s && !progByStage.has(sid) && (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado')) {
+                                    finishedMap.set(sid, true);
                                 }
                             }
                         }
@@ -5140,7 +5551,7 @@ app.post("/api/orders/:id/stages/:stageId/reopen", isPcpOrSupervisorOrAdmin, asy
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Config ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Production Config ─────────────────────────────────────────────────────
 app.get("/api/config/producao", async (_req, res) => {
     const { data, error } = await supabaseAdmin
         .from("config_producao")
@@ -5161,7 +5572,7 @@ app.patch("/api/config/producao", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Users ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Users ─────────────────────────────────────────────────────────────────
 app.get("/api/users", async (req, res) => {
     const isAdminUser = (req as any).user?.role === "Administrador";
     const { search } = req.query;
@@ -5188,23 +5599,23 @@ app.post("/api/users", isAdmin, async (req, res) => {
     const { name, email, password, role, hourly_cost } = req.body;
 
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        return res.status(500).json({ error: "Vari├â┬ível SUPABASE_SERVICE_ROLE_KEY n├â┬úo configurada no backend." });
+        return res.status(500).json({ error: "Variável SUPABASE_SERVICE_ROLE_KEY não configurada no backend." });
     }
 
-    // 1. Criar o usu├â┬írio no Supabase Auth primeiro
+    // 1. Criar o usuário no Supabase Auth primeiro
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password: password || "123456",
-        email_confirm: true, // Ignorar verifica├â┬º├â┬úo de email for├â┬ºadamente
+        email_confirm: true, // Ignorar verificação de email forçadamente
         user_metadata: { name }
     });
 
     if (authError) {
-        console.error("Erro ao criar usu├â┬írio no Supabase Auth:", authError);
+        console.error("Erro ao criar usuário no Supabase Auth:", authError);
         return res.status(400).json({ error: authError.message });
     }
 
-    // 2. Inserir os dados na tabela p├â┬║blica 'users'
+    // 2. Inserir os dados na tabela pública 'users'
     const { data, error } = await supabaseAdmin
         .from("users")
         .insert({
@@ -5220,11 +5631,11 @@ app.post("/api/users", isAdmin, async (req, res) => {
         .single();
 
     if (error) {
-        // Se falhou a inser├â┬º├â┬úo na tabela p├â┬║blica, desfazemos a cria├â┬º├â┬úo no Auth
+        // Se falhou a inserção na tabela pública, desfazemos a criação no Auth
         if (authData?.user?.id) {
             await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
         }
-        return checkError(error, res, "Erro ao criar perfil de usu├â┬írio na tabela.") ? undefined : undefined;
+        return checkError(error, res, "Erro ao criar perfil de usuário na tabela.") ? undefined : undefined;
     }
 
     return res.json({ id: data.id });
@@ -5240,7 +5651,7 @@ app.patch("/api/users/:id", isAdmin, async (req, res) => {
     return res.json({ success: true });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Clients ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Clients ───────────────────────────────────────────────────────────────
 app.get("/api/clients", async (req, res) => {
     const { search } = req.query;
     let query = supabaseAdmin.from("clients").select("*").order("name");
@@ -5263,7 +5674,7 @@ app.post("/api/clients", isAdminOrComercial, async (req, res) => {
     return res.json({ id: data.id });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Delivery & Delays Reports ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Delivery & Delays Reports ─────────────────────────────────────────────
 app.get("/api/reports/delays", async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
     const today = new Date().toISOString().split("T")[0];
@@ -5416,12 +5827,12 @@ app.get("/api/reports/delivery", async (req, res) => {
     });
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Operational Report (Drill-Down) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Operational Report (Drill-Down) ───────────────────────────────────────
 app.get("/api/reports/operational", async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
 
     if (!startDate || !endDate) {
-        return res.status(400).json({ error: "Par├â┬ómetros startDate e endDate s├â┬úo obrigat├â┬│rios" });
+        return res.status(400).json({ error: "Parâmetros startDate e endDate são obrigatórios" });
     }
 
     const rpcParams: any = {
@@ -5432,11 +5843,11 @@ app.get("/api/reports/operational", async (req, res) => {
 
     const { data, error } = await supabaseAdmin.rpc("get_operational_report", rpcParams);
 
-    if (checkError(error, res, "Erro ao buscar relat├â┬│rio operacional")) return;
+    if (checkError(error, res, "Erro ao buscar relatório operacional")) return;
     return res.json(data);
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Production Profile Report ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Production Profile Report ─────────────────────────────────────────────
 app.get("/api/reports/profiles", async (req, res) => {
     const { startDate, endDate, print_type } = req.query;
 
@@ -5501,7 +5912,7 @@ app.get("/api/reports/profiles", async (req, res) => {
     return res.json(profiles);
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ Goals & Productivity Report (Day, Week, Month) ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── Goals & Productivity Report (Day, Week, Month) ────────────────────────
 app.get("/api/reports/goals-productivity", async (req, res) => {
     // Current time in Brazil (UTC-3)
     const now = new Date();
@@ -5768,15 +6179,15 @@ app.post("/api/orders/:id/tracking-token", isAdminOrComercial, async (req, res) 
             .single();
 
         if (fetchErr || !order) {
-            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+            return res.status(404).json({ error: "Pedido não encontrado" });
         }
 
-        // 2. Se j├â┬í tiver token, retorna
+        // 2. Se já tiver token, retorna
         if (order.tracking_token) {
             return res.json({ tracking_token: order.tracking_token });
         }
 
-        // 3. Gerar novo token ├â┬║nico (UUID)
+        // 3. Gerar novo token único (UUID)
         const newToken = crypto.randomUUID();
 
         // 4. Salvar token no banco
@@ -5798,7 +6209,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
     try {
         const { token } = req.params;
         if (!token || typeof token !== "string" || token.length < 12) {
-            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+            return res.status(404).json({ error: "Pedido não encontrado" });
         }
 
         // 1. Buscar pedido por token
@@ -5810,7 +6221,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
             .maybeSingle();
 
         if (fetchErr || !order) {
-            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+            return res.status(404).json({ error: "Pedido não encontrado" });
         }
 
         // 2. Chamar a RPC get_orders_with_stages com o order_number do pedido
@@ -5823,12 +6234,12 @@ app.get("/api/public/orders/:token", async (req, res) => {
         });
 
         if (rpcError || !rpcOrders || rpcOrders.length === 0) {
-            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+            return res.status(404).json({ error: "Pedido não encontrado" });
         }
 
         const rpcOrder = rpcOrders.find((o: any) => o.id === order.id);
         if (!rpcOrder) {
-            return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+            return res.status(404).json({ error: "Pedido não encontrado" });
         }
 
         // Buscar execuções reais e progresso gravados no banco para este pedido
@@ -5888,7 +6299,7 @@ app.get("/api/public/orders/:token", async (req, res) => {
             };
         });
 
-        // 3. Buscar a ├â┬║ltima execu├â┬º├â┬úo para obter a data de atualiza├â┬º├â┬úo
+        // 3. Buscar a última execução para obter a data de atualização
         const { data: lastExec } = await supabaseAdmin
             .from("stage_executions")
             .select("start_time, end_time, status, stages(name)")
@@ -5898,25 +6309,25 @@ app.get("/api/public/orders/:token", async (req, res) => {
             .maybeSingle();
 
         let lastUpdatedAt = order.created_at || null;
-        let lastUpdateMessage = "Pedido recebido e na fila de produ├â┬º├â┬úo.";
+        let lastUpdateMessage = "Pedido recebido e na fila de produção.";
 
         if (isEntregue) {
-            lastUpdateMessage = "Pedido conclu├â┬¡do e entregue ao cliente.";
+            lastUpdateMessage = "Pedido concluído e entregue ao cliente.";
         } else if (lastExec) {
             const time = lastExec.end_time || lastExec.start_time;
             if (time) lastUpdatedAt = time;
 
             const stagesRel: any = lastExec.stages;
             const stageName = Array.isArray(stagesRel)
-                ? (stagesRel[0]?.name || 'produ├â┬º├â┬úo')
-                : (stagesRel?.name || 'produ├â┬º├â┬úo');
+                ? (stagesRel[0]?.name || 'produção')
+                : (stagesRel?.name || 'produção');
 
             if (lastExec.status === 'Em andamento') {
-                lastUpdateMessage = `Produ├â┬º├â┬úo ativa na etapa de: ${stageName}.`;
+                lastUpdateMessage = `Produção ativa na etapa de: ${stageName}.`;
             } else if (lastExec.status === 'Pausado') {
                 lastUpdateMessage = `Trabalho pausado temporariamente na etapa de: ${stageName}.`;
             } else if (lastExec.status === 'Finalizado') {
-                lastUpdateMessage = `Etapa conclu├â┬¡da: ${stageName}.`;
+                lastUpdateMessage = `Etapa concluída: ${stageName}.`;
             }
         }
 
@@ -5945,14 +6356,14 @@ app.get("/api/public/orders/:token", async (req, res) => {
 
         return res.json(publicData);
     } catch (err: any) {
-        console.error("[API Public] Erro ao buscar pedido p├â┬║blico por token:", err);
-        return res.status(404).json({ error: "Pedido n├â┬úo encontrado" });
+        console.error("[API Public] Erro ao buscar pedido público por token:", err);
+        return res.status(404).json({ error: "Pedido não encontrado" });
     }
 });
 
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ PCP ├óÔé¼ÔÇØ Planejamento e Controle da Produ├â┬º├â┬úo ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
-// FASE 1: Necessidades de Produ├â┬º├â┬úo + Planos de Corte + Ordens de Produ├â┬º├â┬úo
+// ── PCP — Planejamento e Controle da Produção ─────────────────────────────────
+// FASE 1: Necessidades de Produção + Planos de Corte + Ordens de Produção
 
 /**
  * Calculates production necessity for a single order item.
@@ -6038,7 +6449,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
             for (const item of itemsList) {
                 if (!item || typeof item !== 'object') continue;
 
-                const details = extractItemDetails(item, order.product_type || 'Vestu├â┬írio');
+                const details = extractItemDetails(item, order.product_type || 'Vestuário');
                 const qtyPedida = Number(item.quantity ?? item.quantidade ?? 1);
                 const qtyCorteNeeded = (() => {
                     let cQty = item.qty_corte ?? item.total_via_corte;
@@ -6060,7 +6471,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
                 const opData = opMap.get(opKey) || { qty_total: 0, qty_comprometida: 0 };
                 const qtyOpLivre = Math.max(0, opData.qty_total - opData.qty_comprometida);
 
-                // Estoque dispon├â┬¡vel: usamos stock_available do item se presente, sen├â┬úo 0
+                // Estoque disponível: usamos stock_available do item se presente, senão 0
                 const qtyEstoqueDisp = Math.max(0, Number(item.stock_available ?? 0));
 
                 const { qty_necessaria, status } = _calcNecessidade(qtyPending, qtyEstoqueDisp, qtyOpLivre);
@@ -6080,8 +6491,8 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
                     deadline: order.deadline,
                     sku: details.sku || item.sku || item.codigo || null,
                     product_type: details.product_type,
-                    fabric: details.fabric !== 'Tecido n├â┬úo informado' ? details.fabric : null,
-                    color: details.color !== 'Cor n├â┬úo informada' ? details.color : null,
+                    fabric: details.fabric !== 'Tecido não informado' ? details.fabric : null,
+                    color: details.color !== 'Cor não informada' ? details.color : null,
                     size: details.size,
                     qty_pedida: qtyPending,
                     qty_reservada: qtyAllocated,
@@ -6129,7 +6540,7 @@ app.get('/api/pcp/necessidades', async (req: any, res: any) => {
         return res.json({ necessidades, summary });
     } catch (err: any) {
         console.error('[PCP] Erro ao buscar necessidades:', err);
-        return res.status(500).json({ error: 'Erro ao calcular necessidades de produ├â┬º├â┬úo', details: err.message });
+        return res.status(500).json({ error: 'Erro ao calcular necessidades de produção', details: err.message });
     }
 });
 
@@ -6187,7 +6598,7 @@ app.post('/api/pcp/necessidades/recalcular', isPcpOrSupervisorOrAdmin, async (re
             for (const item of itemsList) {
                 if (!item || typeof item !== 'object') continue;
 
-                const details = extractItemDetails(item, order.product_type || 'Vestu├â┬írio');
+                const details = extractItemDetails(item, order.product_type || 'Vestuário');
                 const qtyPedida = Number(item.quantity ?? item.quantidade ?? 1);
                 let qtyCorteNeeded = Number(item.qty_corte ?? item.total_via_corte ?? 0);
                 if (qtyCorteNeeded <= 0 && item.stock_available !== undefined) {
@@ -6232,8 +6643,8 @@ app.post('/api/pcp/necessidades/recalcular', isPcpOrSupervisorOrAdmin, async (re
                     order_number: order.order_number,
                     sku,
                     product_type: details.product_type,
-                    fabric: details.fabric !== 'Tecido n├â┬úo informado' ? details.fabric : null,
-                    color: details.color !== 'Cor n├â┬úo informada' ? details.color : null,
+                    fabric: details.fabric !== 'Tecido não informado' ? details.fabric : null,
+                    color: details.color !== 'Cor não informada' ? details.color : null,
                     size: details.size,
                     qty_pedida: qtyPending,
                     qty_reservada: qtyAllocated,
@@ -6585,7 +6996,7 @@ app.get('/api/pcp/summary', async (req: any, res: any) => {
     }
 });
 
-// ├óÔÇØÔé¼├óÔÇØÔé¼ 404 for API routes ├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼├óÔÇØÔé¼
+// ── 404 for API routes ────────────────────────────────────────────────────
 
 /**
  * POST /api/stock/sync
@@ -6664,10 +7075,10 @@ app.post('/api/stock/sync', isPcpOrSupervisorOrAdmin, async (req: any, res: any)
 
 
 // ============================================================================
-// CUT PLANS ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø Controle Real do Chao de Fabrica
+// CUT PLANS — Controle Real do Chao de Fabrica
 // ============================================================================
 
-// GET /api/cut-plans ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø lista todos os planos com itens e movimentacoes
+// GET /api/cut-plans — lista todos os planos com itens e movimentacoes
 app.get('/api/cut-plans', async (req: any, res: any) => {
   try {
     const { data: plans, error } = await supabaseAdmin
@@ -6681,7 +7092,7 @@ app.get('/api/cut-plans', async (req: any, res: any) => {
   }
 });
 
-// GET /api/cut-plans/committed-quantities ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø quantidades comprometidas para a Central de Corte
+// GET /api/cut-plans/committed-quantities — quantidades comprometidas para a Central de Corte
 app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -6701,7 +7112,7 @@ app.get('/api/cut-plans/committed-quantities', async (_req: any, res: any) => {
   }
 });
 
-// GET /api/cut-plans/:id ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø plano especifico com itens e movimentacoes
+// GET /api/cut-plans/:id — plano especifico com itens e movimentacoes
 app.get('/api/cut-plans/:id', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -6896,7 +7307,7 @@ app.post('/api/cut-plans/:id/cancel', isPcpOrSupervisorOrAdmin, async (req: any,
   }
 });
 
-// GET /api/cut-plans/:id/movements ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø historico de movimentacoes
+// GET /api/cut-plans/:id/movements — historico de movimentacoes
 app.get('/api/cut-plans/:id/movements', async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -7010,7 +7421,7 @@ app.patch('/api/cut-plans/:id/pay-sewing', isPcpOrSupervisorOrAdmin, async (req:
   }
 });
 
-// GET /api/orders/:id/production-status ├â┬ó├óÔÇÜ┬¼├óÔé¼┬Ø andamento produtivo por item do pedido
+// GET /api/orders/:id/production-status — andamento produtivo por item do pedido
 app.get('/api/orders/:id/production-status', async (req: any, res: any) => {
   try {
     const orderId = Number(req.params.id);
@@ -7202,6 +7613,9 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
         const authUser = (req as any).authUser;
         let userId = req.query.user_id ? Number(req.query.user_id) : null;
         let stageId = req.query.stage_id ? Number(req.query.stage_id) : null;
+        const rawStageSlug = req.query.stage_slug ? String(req.query.stage_slug).trim().toUpperCase() : null;
+        const explicitAllStages = rawStageSlug === 'ALL' || req.query.all === '1' || req.query.all === 'true';
+        const searchTerm = req.query.search ? String(req.query.search).trim().toLowerCase() : '';
 
         // Strict RBAC: Operador can ONLY see their own queue! Cannot change user_id via query
         if (authUser?.role === 'Operador') {
@@ -7212,7 +7626,7 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
         const todayStartIso = `${todayStr}T00:00:00.000Z`;
 
         // 1. Fetch active stages
-        const { data: stagesData, error: stagesErr } = await supabaseAdmin
+        const { data: rawStagesData, error: stagesErr } = await supabaseAdmin
             .from('stages')
             .select('id, name, sector_name, sort_order, active')
             .eq('active', 1)
@@ -7220,36 +7634,59 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
 
         if (stagesErr) throw stagesErr;
 
-        // If no explicit stageId, see if user has a sector_name matching a stage
-        if (!stageId && userId) {
+        const stagesData = (rawStagesData || [])
+            .filter((s: any) => !isConferenciaStage(s))
+            .map((s: any) => ({
+                ...s,
+                name: normalizeUtf8Text(s.name),
+                sector_name: s.sector_name ? normalizeUtf8Text(s.sector_name) : s.sector_name,
+                slug: getStageSlug(s),
+            }));
+
+        const stageById = new Map<number, any>(stagesData.map((s: any) => [Number(s.id), s]));
+
+        let stageSlugFilter: string | null = rawStageSlug && rawStageSlug !== 'ALL' ? rawStageSlug : null;
+
+        if (stageSlugFilter && !stageId) {
+            const matchedBySlug = stagesData.find((s: any) => s.slug === stageSlugFilter);
+            if (matchedBySlug) {
+                stageId = Number(matchedBySlug.id);
+            }
+        } else if (stageId && !stageSlugFilter) {
+            const matchedById = stageById.get(Number(stageId));
+            if (matchedById) {
+                stageSlugFilter = matchedById.slug;
+            }
+        }
+
+        // If no explicit stageId / stageSlugFilter and NOT explicitly requesting 'ALL', see if user has a sector_name matching a stage
+        if (!stageId && !stageSlugFilter && !explicitAllStages && userId) {
             const { data: uData } = await supabaseAdmin
                 .from('users')
                 .select('id, sector_name')
                 .eq('id', userId)
                 .maybeSingle();
             if (uData?.sector_name) {
-                const sNorm = String(uData.sector_name).trim().toLowerCase();
-                const matchedStage = (stagesData || []).find((s: any) => 
-                    s.name?.trim().toLowerCase() === sNorm || 
-                    s.sector_name?.trim().toLowerCase() === sNorm
-                );
+                const sSlug = getStageSlug({ name: uData.sector_name, sector_name: uData.sector_name });
+                const matchedStage = stagesData.find((s: any) => s.slug === sSlug);
                 if (matchedStage) {
                     stageId = Number(matchedStage.id);
+                    stageSlugFilter = matchedStage.slug;
                 }
             }
         }
 
-        // 2. Fetch orders in pipeline (not Cancelado, not Entregue, not Pronto, not Rascunho)
-        const { data: rawOrders, error: ordersErr } = await supabaseAdmin
+        // 2. Fetch orders in pipeline (not Cancelado, not Entregue, not Pronto, not Concluído, not Rascunho)
+        const { data: rawOrdersDb, error: ordersErr } = await supabaseAdmin
             .from('orders')
             .select('*')
             .is('deleted_at', null)
-            .not('status', 'in', '("Cancelado","Entregue","Pronto","Rascunho")');
+            .not('status', 'in', '("Cancelado","Entregue","Pronto","Concluído","Concluido","Finalizado","Rascunho")');
 
         if (ordersErr) throw ordersErr;
 
         // 3. Fetch progress, blocks, and active executions
-        const orderIds = (rawOrders || []).map((o: any) => o.id);
+        const orderIds = (rawOrdersDb || []).map((o: any) => o.id);
         let progressRows: any[] = [];
         let blocksRows: any[] = [];
         let activeExecsRows: any[] = [];
@@ -7276,65 +7713,9 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             activeExecsRows = eRes.data || [];
         }
 
-        // 4. User's active execution (if userId given)
-        let execucaoAtual: any = null;
-        if (userId) {
-            const { data: userExecs } = await supabaseAdmin
-                .from('stage_executions')
-                .select('*, stages(name), orders(order_number, client_name, product_type, print_type, quantity, deadline, items, art_url, art_urls)')
-                .eq('user_id', userId)
-                .in('status', ['Em andamento', 'Pausado'])
-                .order('start_time', { ascending: false })
-                .limit(1);
-
-            if (userExecs && userExecs.length > 0) {
-                const ex = userExecs[0];
-                const { data: pauses } = await supabaseAdmin
-                    .from('pauses')
-                    .select('*')
-                    .eq('execution_id', ex.id);
-                const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(ex, pauses || [], Date.now());
-                execucaoAtual = {
-                    ...ex,
-                    stage_name: ex.stages?.name,
-                    order_number: ex.orders?.order_number,
-                    client_name: ex.orders?.client_name,
-                    product_type: ex.orders?.product_type,
-                    print_type: ex.orders?.print_type,
-                    order_quantity: ex.orders?.quantity,
-                    order_deadline: ex.orders?.deadline,
-                    order_items: ex.orders?.items,
-                    order_art_url: ex.orders?.art_url || (ex.orders?.art_urls && ex.orders?.art_urls[0]),
-                    accumulated_pause_seconds: (pauses || []).reduce((sum: number, p: any) => sum + (p.duration_seconds || 0), 0),
-                    total_time_seconds: totalAccumulatedSeconds,
-                    current_session_seconds: currentSessionSeconds,
-                    is_paused: isPaused,
-                };
-            }
-        }
-
-        // 5. Daily metrics
-        let progressTodayQuery = supabaseAdmin
-            .from('order_progress_logs')
-            .select('quantidade_boa_incremento, user_id')
-            .gte('created_at', todayStartIso);
-
-        if (userId) {
-            progressTodayQuery = progressTodayQuery.eq('user_id', userId);
-        }
-        const { data: logsToday } = await progressTodayQuery;
-        const pecasProduzidasHoje = (logsToday || []).reduce((acc: number, l: any) => acc + (Number(l.quantidade_boa_incremento) || 0), 0);
-
-        let execsTodayQuery = supabaseAdmin
-            .from('stage_executions')
-            .select('total_time_seconds, user_id')
-            .gte('start_time', todayStartIso);
-
-        if (userId) {
-            execsTodayQuery = execsTodayQuery.eq('user_id', userId);
-        }
-        const { data: execsToday } = await execsTodayQuery;
-        const tempoProdutivoHojeSegundos = (execsToday || []).reduce((acc: number, e: any) => acc + (Number(e.total_time_seconds) || 0), 0);
+        // Enrich orders with unified Single Source of Truth progress
+        const enrichedOrders = enrichOrdersWithProgressSync(rawOrdersDb || [], progressRows, stagesData);
+        const enrichedOrderById = new Map<number, any>(enrichedOrders.map((o: any) => [Number(o.id), o]));
 
         // Group by order
         const progressByOrder = new Map<number, any[]>();
@@ -7354,35 +7735,121 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             activeExecByOrder.get(e.order_id)!.push(e);
         }
 
+        // 4. User's active execution (if userId given)
+        let execucaoAtual: any = null;
+        if (userId) {
+            const { data: userExecs } = await supabaseAdmin
+                .from('stage_executions')
+                .select('*, stages(name, sector_name), orders(id, order_number, client_name, product_type, print_type, quantity, deadline, items, art_url, art_urls, stages_status, required_stages, status)')
+                .eq('user_id', userId)
+                .in('status', ['Em andamento', 'Pausado'])
+                .order('start_time', { ascending: false })
+                .limit(1);
+
+            if (userExecs && userExecs.length > 0) {
+                const ex = userExecs[0];
+                const { data: pauses } = await supabaseAdmin
+                    .from('pauses')
+                    .select('*')
+                    .eq('execution_id', ex.id);
+                const { totalAccumulatedSeconds, currentSessionSeconds, isPaused } = calculateExecutionTimes(ex, pauses || [], Date.now());
+
+                const enrichedOrd = enrichedOrderById.get(Number(ex.order_id));
+                let exProg = (progressByOrder.get(Number(ex.order_id)) || []).find((p: any) => Number(p.stage_id) === Number(ex.stage_id));
+                if (!exProg && ex.order_id && ex.stage_id) {
+                    const { data: singleProg } = await supabaseAdmin
+                        .from('order_stage_progress')
+                        .select('*')
+                        .eq('order_id', ex.order_id)
+                        .eq('stage_id', ex.stage_id)
+                        .maybeSingle();
+                    exProg = singleProg || null;
+                }
+
+                const qPrevista = Math.max(0, Number(exProg?.quantidade_pedido || ex.orders?.quantity || enrichedOrd?.quantity) || 0);
+                const qConcluida = Math.max(0, Number(exProg?.quantidade_boa) || 0);
+                const qReposicao = Math.max(0, Number(exProg?.pendencia_reposicao) || 0);
+                const sRestante = Math.max(0, qPrevista - qConcluida + qReposicao);
+                const exStageObj = stageById.get(Number(ex.stage_id)) || ex.stages;
+
+                execucaoAtual = {
+                    ...ex,
+                    stage_name: normalizeUtf8Text(exStageObj?.name || ex.stages?.name || 'Etapa'),
+                    stage_slug: getStageSlug(exStageObj || { id: ex.stage_id, name: ex.stages?.name }),
+                    order_number: normalizeUtf8Text(ex.orders?.order_number || enrichedOrd?.order_number),
+                    client_name: normalizeUtf8Text(ex.orders?.client_name || enrichedOrd?.client_name),
+                    product_type: normalizeUtf8Text(ex.orders?.product_type || enrichedOrd?.product_type),
+                    print_type: normalizeUtf8Text(ex.orders?.print_type || enrichedOrd?.print_type),
+                    order_quantity: qPrevista,
+                    quantidade_prevista: qPrevista,
+                    quantidade_concluida: qConcluida,
+                    saldo_restante: sRestante,
+                    order_deadline: ex.orders?.deadline || enrichedOrd?.deadline,
+                    order_items: ex.orders?.items || enrichedOrd?.items,
+                    order_art_url: ex.orders?.art_url || (ex.orders?.art_urls && ex.orders?.art_urls[0]) || enrichedOrd?.art_url,
+                    stages_status: enrichedOrd?.stages_status || ex.orders?.stages_status || [],
+                    accumulated_pause_seconds: (pauses || []).reduce((sum: number, p: any) => sum + (p.duration_seconds || 0), 0),
+                    total_time_seconds: totalAccumulatedSeconds,
+                    current_session_seconds: currentSessionSeconds,
+                    is_paused: isPaused,
+                };
+            }
+        }
+
+        // 5. Daily metrics (ignoring invalidated/reversed logs)
+        let progressTodayQuery = supabaseAdmin
+            .from('order_progress_logs')
+            .select('quantidade_boa_incremento, user_id, observacao')
+            .gte('created_at', todayStartIso);
+
+        if (userId) {
+            progressTodayQuery = progressTodayQuery.eq('user_id', userId);
+        }
+        const { data: logsToday } = await progressTodayQuery;
+        const pecasProduzidasHoje = (logsToday || [])
+            .filter((l: any) => _isValidProgressLog(l))
+            .reduce((acc: number, l: any) => acc + (Number(l.quantidade_boa_incremento) || 0), 0);
+
+        let execsTodayQuery = supabaseAdmin
+            .from('stage_executions')
+            .select('total_time_seconds, user_id, observation')
+            .gte('start_time', todayStartIso);
+
+        if (userId) {
+            execsTodayQuery = execsTodayQuery.eq('user_id', userId);
+        }
+        const { data: execsToday } = await execsTodayQuery;
+        const tempoProdutivoHojeSegundos = (execsToday || [])
+            .filter((e: any) => !String(e.observation || '').toUpperCase().includes('[INVALIDADO'))
+            .reduce((acc: number, e: any) => acc + (Number(e.total_time_seconds) || 0), 0);
+
         const fila: any[] = [];
         const bloqueados: any[] = [];
 
-        for (const ord of rawOrders || []) {
+        for (const ord of enrichedOrders) {
+            if (searchTerm) {
+                const matchOrder = String(ord.order_number || '').toLowerCase().includes(searchTerm);
+                const matchClient = String(ord.client_name || '').toLowerCase().includes(searchTerm);
+                const matchErp = String(ord.erp_id || '').toLowerCase().includes(searchTerm);
+                if (!matchOrder && !matchClient && !matchErp) {
+                    continue;
+                }
+            }
+
             const isBlocked = ord.pcp_is_blocked === true;
             const blockInfo = blockByOrder.get(ord.id) || null;
             const ordProgress = progressByOrder.get(ord.id) || [];
             const ordExecs = activeExecByOrder.get(ord.id) || [];
 
-            if (isBlocked) {
-                bloqueados.push({
-                    ...ord,
-                    block_info: blockInfo,
-                    motivo_bloqueio: blockInfo?.motivo || ord.observations || 'Bloqueado pelo PCP',
-                    data_bloqueio: blockInfo?.data_bloqueio || ord.updated_at,
-                    bloqueado_por: blockInfo?.bloqueado_por || 'PCP',
-                });
-                continue;
-            }
-
-            let reqStageIds: number[] = Array.isArray(ord.required_stages) && ord.required_stages.length > 0 
-                ? ord.required_stages 
+            let reqStageIds: number[] = Array.isArray(ord.required_stages) && ord.required_stages.length > 0
+                ? ord.required_stages.map(Number).filter((id: number) => id && id !== 12 && stageById.has(id))
                 : [];
 
             // Auto-derivação a partir de stages_status para pedidos legados já em produção
             if (reqStageIds.length === 0 && Array.isArray(ord.stages_status) && ord.stages_status.length > 0) {
                 reqStageIds = ord.stages_status
                     .map((s: any) => Number(s.id))
-                    .filter((id: number) => id && id !== 12);
+                    .filter((id: number) => id && id !== 12 && stageById.has(id));
             }
 
             const progMap = new Map<number, any>(ordProgress.map((p: any) => [Number(p.stage_id), p]));
@@ -7390,6 +7857,7 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             let currentStageId: number | null = null;
             let currentStageStatus: string = 'AGUARDANDO';
             let isCurrentStageReady = false;
+            let activeExForCurrentStage: any = null;
 
             for (let i = 0; i < reqStageIds.length; i++) {
                 const sId = reqStageIds[i];
@@ -7397,20 +7865,20 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 const sStatusJson = Array.isArray(ord.stages_status)
                     ? ord.stages_status.find((s: any) => Number(s.id) === Number(sId))
                     : null;
-                const isFinished = p?.finished === true || 
-                                   p?.status_operacao === 'CONCLUIDA' ||
-                                   sStatusJson?.finished === true || 
-                                   sStatusJson?.status === 'Concluído' || 
-                                   sStatusJson?.status === 'Finalizado' ||
-                                   (Number(ord.quantity) > 0 && Number(p?.quantidade_boa) >= Number(ord.quantity) && !p?.pendencia_reposicao) ||
-                                   (Number(ord.quantity) > 0 && Number(sStatusJson?.quantidade_boa) >= Number(ord.quantity) && !sStatusJson?.quantidade_perdida);
+
+                // FONTE ÚNICA DE VERDADE: Se order_stage_progress existe, ele determina se a etapa está concluída
+                const isFinished = p
+                    ? (p.finished === true || p.status_operacao === 'CONCLUIDA' || (Number(p.quantidade_pedido || ord.quantity) > 0 && Number(p.quantidade_boa) >= Number(p.quantidade_pedido || ord.quantity) && !(Number(p.pendencia_reposicao) > 0)))
+                    : Boolean(sStatusJson?.finished === true || sStatusJson?.status_operacao === 'CONCLUIDA' || sStatusJson?.status === 'Concluído' || sStatusJson?.status === 'Finalizado');
 
                 if (!isFinished) {
                     currentStageId = sId;
-                    const activeEx = ordExecs.find((e: any) => Number(e.stage_id) === Number(sId));
-                    if (activeEx) {
-                        currentStageStatus = activeEx.status === 'Pausado' ? 'PAUSADA' : 'EM_ANDAMENTO';
-                    } else if (p?.status_operacao) {
+                    activeExForCurrentStage = ordExecs.find((e: any) => Number(e.stage_id) === Number(sId)) || null;
+                    if (activeExForCurrentStage) {
+                        currentStageStatus = activeExForCurrentStage.status === 'Pausado' ? 'PAUSADA' : 'EM_ANDAMENTO';
+                    } else if (p && Number(p.quantidade_boa) > 0) {
+                        currentStageStatus = 'PARCIAL';
+                    } else if (p?.status_operacao && p.status_operacao !== 'CONCLUIDA' && p.status_operacao !== 'EM_ANDAMENTO' && p.status_operacao !== 'PAUSADA') {
                         currentStageStatus = p.status_operacao;
                     } else {
                         let prevStageFinished = i === 0;
@@ -7420,11 +7888,13 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                             const prevSJson = Array.isArray(ord.stages_status)
                                 ? ord.stages_status.find((s: any) => Number(s.id) === Number(prevSId))
                                 : null;
-                            prevStageFinished = prevP?.finished === true || prevP?.status_operacao === 'CONCLUIDA' || prevSJson?.finished === true || prevSJson?.status === 'Concluído' || prevSJson?.status === 'Finalizado' || (Number(ord.quantity) > 0 && Number(prevP?.quantidade_boa) >= Number(ord.quantity));
+                            prevStageFinished = prevP
+                                ? (prevP.finished === true || prevP.status_operacao === 'CONCLUIDA' || (Number(prevP.quantidade_pedido || ord.quantity) > 0 && Number(prevP.quantidade_boa) >= Number(prevP.quantidade_pedido || ord.quantity) && !(Number(prevP.pendencia_reposicao) > 0)))
+                                : Boolean(prevSJson?.finished === true || prevSJson?.status_operacao === 'CONCLUIDA' || prevSJson?.status === 'Concluído' || prevSJson?.status === 'Finalizado');
                         }
                         currentStageStatus = prevStageFinished ? 'LIBERADA' : 'AGUARDANDO';
                     }
-                    isCurrentStageReady = currentStageStatus === 'LIBERADA' || currentStageStatus === 'EM_ANDAMENTO' || currentStageStatus === 'PAUSADA';
+                    isCurrentStageReady = currentStageStatus === 'LIBERADA' || currentStageStatus === 'PARCIAL' || currentStageStatus === 'EM_ANDAMENTO' || currentStageStatus === 'PAUSADA';
                     break;
                 }
             }
@@ -7443,19 +7913,61 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                         })
                         .eq('id', ord.id);
                 }
-                // Concluído não entra na fila de produção pendente
+                // Concluído nunca entra na Minha Fila
                 continue;
             }
 
-            // If filtered by stageId, verify match
-            if (stageId) {
-                if (currentStageId !== stageId) {
-                    const targetProg = progMap.get(stageId);
-                    if (!reqStageIds.includes(stageId) || targetProg?.finished) {
-                        continue;
-                    }
+            const stageObj = stageById.get(Number(currentStageId));
+            const currentStageSlug = stageObj?.slug || getStageSlug(stageObj || { id: currentStageId });
+
+            // Filtro estrito por etapa ativa (corrige Problema 10: Sublimação não mistura outras etapas)
+            if (stageSlugFilter) {
+                if (currentStageSlug !== stageSlugFilter) {
+                    continue;
+                }
+            } else if (stageId) {
+                if (Number(currentStageId) !== Number(stageId)) {
+                    continue;
                 }
             }
+
+            if (isBlocked) {
+                bloqueados.push({
+                    ...ord,
+                    current_stage_id: currentStageId,
+                    current_stage_name: stageObj?.name || 'Etapa',
+                    current_stage_slug: currentStageSlug,
+                    block_info: blockInfo,
+                    motivo_bloqueio: normalizeUtf8Text(blockInfo?.motivo || ord.observations || 'Bloqueado pelo PCP'),
+                    data_bloqueio: blockInfo?.data_bloqueio || ord.updated_at,
+                    bloqueado_por: normalizeUtf8Text(blockInfo?.bloqueado_por || 'PCP'),
+                });
+                continue;
+            }
+
+            const curProg = progMap.get(Number(currentStageId));
+            const quantidadePrevista = Math.max(0, Number(curProg?.quantidade_pedido || ord.quantity) || 0);
+            const quantidadeConcluida = Math.max(0, Number(curProg?.quantidade_boa) || 0);
+            const pendenciaReposicao = Math.max(0, Number(curProg?.pendencia_reposicao) || 0);
+            const saldoRestante = Math.max(0, quantidadePrevista - quantidadeConcluida + pendenciaReposicao);
+
+            // Se saldo restante for 0, não permanece na fila
+            if (quantidadePrevista > 0 && saldoRestante <= 0) {
+                continue;
+            }
+
+            const hasActiveExecution = Boolean(activeExForCurrentStage);
+            const activeOperatorId = activeExForCurrentStage ? Number(activeExForCurrentStage.user_id) : null;
+            const activeOperatorName = activeExForCurrentStage ? normalizeUtf8Text(activeExForCurrentStage.users?.name || `Operador #${activeExForCurrentStage.user_id}`) : null;
+            const isOwnedByCurrentUser = Boolean(hasActiveExecution && userId && Number(activeOperatorId) === Number(userId));
+
+            // Regra estrita Etapa C: nunca enviar EM_ANDAMENTO/PAUSADA com canStart=true
+            const canStart = Boolean(
+                !hasActiveExecution &&
+                (currentStageStatus === 'LIBERADA' || currentStageStatus === 'PARCIAL') &&
+                saldoRestante > 0 &&
+                !isBlocked
+            );
 
             const dl = ord.deadline ? ord.deadline.split('T')[0] : null;
             let urgencia = 'normal';
@@ -7477,14 +7989,22 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
                 justificativa = `📅 Entrega: ${formatBrDateShort(dl)} • Prioridade ${pcpPriorityLabel}`;
             }
 
-            const stageObj = (stagesData || []).find((s: any) => Number(s.id) === Number(currentStageId));
-
             fila.push({
                 ...ord,
                 current_stage_id: currentStageId,
                 current_stage_name: stageObj?.name || 'Etapa',
+                current_stage_slug: currentStageSlug,
                 current_stage_status: currentStageStatus,
                 is_stage_ready: isCurrentStageReady,
+                can_start: canStart,
+                canStart: canStart,
+                quantidade_prevista: quantidadePrevista,
+                quantidade_concluida: quantidadeConcluida,
+                saldo_restante: saldoRestante,
+                active_execution_id: activeExForCurrentStage?.id || null,
+                active_operator_id: activeOperatorId,
+                active_operator_name: activeOperatorName,
+                is_owned_by_current_user: isOwnedByCurrentUser,
                 active_executions: ordExecs,
                 urgencia,
                 justificativa_base: justificativa,
@@ -7499,7 +8019,8 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             item.justificativa = `${item.posicao_fila}º na Fila • ${item.justificativa_base}`;
         });
 
-        const pecasPendentesFila = fila.reduce((acc, o) => acc + (Number(o.quantity) || 0), 0);
+        // Soma das peças restantes reais na fila filtrada
+        const pecasPendentesFila = fila.reduce((acc, o) => acc + (Number(o.saldo_restante ?? o.quantity) || 0), 0);
         const tarefasEmAndamento = activeExecsRows.filter((e: any) => e.status === 'Em andamento').length;
 
         res.json({
@@ -7515,6 +8036,7 @@ app.get('/api/pcp-phase1/minha-fila', isAuthenticated, async (req: any, res: any
             filtro: {
                 user_id: userId,
                 stage_id: stageId,
+                stage_slug: stageSlugFilter || 'ALL',
             }
         });
     } catch (e: any) {

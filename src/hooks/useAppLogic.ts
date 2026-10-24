@@ -1190,17 +1190,21 @@ export function useAppLogic() {
           order_id: targetOrder.id, 
           stage_id: stageId, 
           user_id: currentUser?.id,
-          supervisor_override: isPrivileged,
-          motivo: isPrivileged ? 'Ação direta do Administrador/Supervisor' : undefined
+          supervisor_override: false
         })
       });
 
       let errData: any = null;
       if (!res.ok) {
         errData = await res.json().catch(() => ({}));
-        if (errData.code === 'SUPERVISOR_OVERRIDE_REQUIRED' || errData.code === 'PREVIOUS_STAGE_NOT_READY' || errData.code === 'CONCURRENT_STAGE_EXECUTION') {
+        if (
+          isPrivileged &&
+          (errData.code === 'SUPERVISOR_OVERRIDE_REQUIRED' ||
+           errData.code === 'PREVIOUS_STAGE_NOT_READY' ||
+           errData.code === 'CONCURRENT_STAGE_EXECUTION')
+        ) {
           const motivo = window.prompt(
-            `${errData.error || 'Ação requer override de supervisor.'}\n\nComo Supervisor/Administrador, informe o motivo para iniciar com override:`
+            `${errData.error || 'Ação requer autorização de supervisor.'}\n\nComo ${currentUser?.role}, informe a justificativa obrigatória para iniciar/transferir com override:`
           );
           if (motivo && motivo.trim()) {
             res = await apiFetch('/api/executions/start', {
@@ -1275,9 +1279,53 @@ export function useAppLogic() {
     }
   };
 
+  const syncOrderStageProgress = async (orderToSync: Order) => {
+    if (!orderToSync?.id) return;
+    try {
+      const progressList = await safeFetch(`/api/orders/${orderToSync.id}/stage-progress`);
+      if (Array.isArray(progressList) && progressList.length > 0) {
+        setSelectedOrder(prev => {
+          const base = prev && Number(prev.id) === Number(orderToSync.id) ? prev : orderToSync;
+          const progByStage = new Map<number, any>(progressList.map((p: any) => [Number(p.stage_id), p]));
+          const existingStages = Array.isArray(base.stages_status) ? base.stages_status : [];
+          const mergedStages = existingStages.length > 0
+            ? existingStages.map((s: any) => {
+                const p = progByStage.get(Number(s.id));
+                if (!p) return s;
+                return {
+                  ...s,
+                  quantidade_boa: Number(p.quantidade_boa) || 0,
+                  quantidade_perdida: Number(p.quantidade_perdida) || 0,
+                  saldo_pendente: Number(p.saldo_pendente ?? Math.max(0, (Number(p.quantidade_pedido || base.quantity) || 0) - (Number(p.quantidade_boa) || 0))),
+                  status_operacao: p.status_operacao || s.status_operacao,
+                  finished: Boolean(p.finished === true || p.status_operacao === 'CONCLUIDA'),
+                };
+              })
+            : progressList.map((p: any) => ({
+                id: Number(p.stage_id),
+                name: p.stage_name || 'Etapa',
+                quantidade_boa: Number(p.quantidade_boa) || 0,
+                quantidade_perdida: Number(p.quantidade_perdida) || 0,
+                saldo_pendente: Number(p.saldo_pendente ?? Math.max(0, (Number(p.quantidade_pedido || base.quantity) || 0) - (Number(p.quantidade_boa) || 0))),
+                status_operacao: p.status_operacao || 'LIBERADA',
+                finished: Boolean(p.finished === true || p.status_operacao === 'CONCLUIDA'),
+              }));
+          return {
+            ...base,
+            stages_status: mergedStages,
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('[syncOrderStageProgress] Aviso ao sincronizar progresso:', err);
+    }
+  };
+
   const handleOpenActionModal = (type: 'pause' | 'finish', executionId: number, stageId: number, customOrder?: Order) => {
-    if (customOrder) {
-      setSelectedOrder(customOrder);
+    const targetOrder = customOrder || selectedOrder;
+    if (targetOrder) {
+      setSelectedOrder(targetOrder);
+      syncOrderStageProgress(targetOrder);
     }
     setActionQuantityInput(0);
     setActionLossQuantityInput(0);
@@ -1498,11 +1546,12 @@ export function useAppLogic() {
     setIsActionLoading(true);
     try {
       const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
-      const actorReason = actionObservationInput || (isPrivileged ? `Apontamento por ${currentUser?.role || 'Administrador'}` : 'Apontamento de produção');
-      const progKey = `prog_${selectedOrder.id}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const actorReason = actionObservationInput || 'Apontamento de produção';
 
-      // 1. Se informou quantidade de peças boas > 0, registra o progresso primeiro
-      if (actionQuantityInput > 0) {
+      // 1. Se for PAUSA e informou quantidade de peças boas > 0, registra o progresso antes de pausar.
+      // Se for FINALIZAÇÃO (type === 'finish'), enviaremos quantidade_boa_incremento atomicamente no endpoint /finish!
+      if (type === 'pause' && actionQuantityInput > 0) {
+        const progKey = `prog_${selectedOrder.id}_${stageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const progRes = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${stageId}/progress`, {
           method: 'POST',
           headers: {
@@ -1512,7 +1561,7 @@ export function useAppLogic() {
           body: JSON.stringify({
             incremento: actionQuantityInput,
             idempotency_key: progKey,
-            supervisor_override: isPrivileged,
+            supervisor_override: false,
             override_reason: actorReason,
             observacao: actionObservationInput || undefined,
             user_id: currentUser?.id || 1,
@@ -1541,7 +1590,7 @@ export function useAppLogic() {
             motivo_detalhe: actionLossReasonDetailInput,
             etapa_reentrada_id: actionLossReentryStageIdInput || stageId,
             idempotency_key: lossKey,
-            supervisor_override: isPrivileged,
+            supervisor_override: false,
             override_reason: actorReason,
             user_id: currentUser?.id || 1,
             user_name: currentUser?.name || 'Operador'
@@ -1561,9 +1610,9 @@ export function useAppLogic() {
           headers: {
             'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            observation: actionObservationInput || (isPrivileged ? `Pausa pelo ${currentUser?.role || 'Administrador'}` : ''),
-            motivo: actionObservationInput || (isPrivileged ? `Pausa pelo ${currentUser?.role || 'Administrador'}` : undefined),
-            supervisor_override: isPrivileged
+            observation: actionObservationInput || 'Pausa operacional',
+            motivo: actionObservationInput || 'Pausa operacional',
+            supervisor_override: false
           })
         });
         if (!pauseRes.ok) {
@@ -1572,38 +1621,19 @@ export function useAppLogic() {
           return;
         }
         setExecutionActionModal(null);
-        if (actionQuantityInput > 0) {
-          setSelectedOrder(prev => {
-            if (!prev) return null;
-            const totalReq = prev.quantity || 0;
-            const updatedStages = (prev.stages_status || []).map(s => {
-              if (Number(s.id) === Number(stageId)) {
-                const nextGood = (s.quantidade_boa || 0) + actionQuantityInput;
-                const nextPending = Math.max(0, totalReq - nextGood);
-                const isFin = nextPending === 0 && nextGood > 0;
-                return {
-                  ...s,
-                  quantidade_boa: nextGood,
-                  saldo_pendente: nextPending,
-                  status_operacao: isFin ? 'CONCLUIDA' : 'PARCIAL',
-                  finished: isFin,
-                  status: isFin ? 'Concluído' : s.status,
-                };
-              }
-              return s;
-            });
-            return {
-              ...prev,
-              stages_status: updatedStages
-            };
-          });
-        }
+        await syncOrderStageProgress(selectedOrder);
         showToast("Etapa pausada com sucesso!");
         await fetchExecutions(selectedOrder.id);
         await fetchData();
         await fetchActiveExecution();
         window.dispatchEvent(new CustomEvent('reload-minha-fila'));
       } else if (type === 'finish') {
+        const stInfo = (selectedOrder.stages_status || []).find((s: any) => Number(s.id) === Number(stageId));
+        const curGood = Number(stInfo?.quantidade_boa) || 0;
+        const totalExpected = Number(selectedOrder.quantity) || 0;
+        const projectedGood = curGood + (Number(actionQuantityInput) || 0);
+        const isPartialFinish = forceFinish || (totalExpected > 0 && projectedGood < totalExpected);
+
         const finishKey = `fin_${executionId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const finishRes = await apiFetch(`/api/executions/${executionId}/finish`, {
           method: 'POST',
@@ -1612,9 +1642,10 @@ export function useAppLogic() {
             'x-idempotency-key': finishKey
           },
           body: JSON.stringify({ 
-            force: true, 
-            observation: actionObservationInput || (isPrivileged ? `Finalizado pelo ${currentUser?.role || 'Administrador'}` : 'Finalizado no apontamento'),
-            supervisor_override: isPrivileged,
+            quantidade_boa_incremento: Number(actionQuantityInput) || 0,
+            partial: isPartialFinish,
+            observation: actionObservationInput || 'Finalizado no apontamento',
+            supervisor_override: false,
             idempotency_key: finishKey
           })
         });
@@ -1622,24 +1653,37 @@ export function useAppLogic() {
         if (finishRes.ok) {
           const resData = await finishRes.json().catch(() => ({}));
           setExecutionActionModal(null);
-          showToast("Etapa finalizada com sucesso!");
 
+          const isStageTrulyDone = Boolean(resData?.finished === true || resData?.status_operacao === 'CONCLUIDA');
           const nextStages = (selectedOrder.stages_status || []).map(s =>
-            Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
+            Number(s.id) === Number(stageId)
+              ? {
+                  ...s,
+                  quantidade_boa: resData?.quantidade_boa !== undefined ? Number(resData.quantidade_boa) : projectedGood,
+                  saldo_pendente: resData?.saldo_pendente !== undefined ? Number(resData.saldo_pendente) : Math.max(0, totalExpected - projectedGood),
+                  status_operacao: resData?.status_operacao || (isStageTrulyDone ? 'CONCLUIDA' : 'PARCIAL'),
+                  finished: isStageTrulyDone,
+                }
+              : s
           );
           const allStagesFinished = nextStages.length > 0 && nextStages.every(s => s.finished);
           const isDelivered = resData?.order_status === 'Entregue' || resData?.order_status === 'Pronto' || allStagesFinished;
 
+          if (isDelivered) {
+            showToast("Produção concluída! Pedido movido para Pronto.");
+          } else if (isStageTrulyDone) {
+            showToast("Etapa finalizada com sucesso!");
+          } else {
+            showToast(`Apontamento parcial registrado (${resData?.quantidade_boa ?? projectedGood}/${totalExpected} peças).`);
+          }
+
           setSelectedOrder(prev => {
             if (!prev) return null;
             if (isDelivered && !showCompletedOrders) return null;
-            const updatedStages = (prev.stages_status || []).map(s =>
-              Number(s.id) === Number(stageId) ? { ...s, finished: true } : s
-            );
             return {
               ...prev,
               status: resData?.order_status || (allStagesFinished ? 'Pronto' : prev.status),
-              stages_status: updatedStages
+              stages_status: nextStages
             };
           });
 
@@ -1649,9 +1693,9 @@ export function useAppLogic() {
           window.dispatchEvent(new CustomEvent('reload-minha-fila'));
         } else {
           const err = await finishRes.json().catch(() => ({}));
-          if (err.canForce && !forceFinish) {
+          if ((err.canForce || err.code === 'INCOMPLETE_STAGE_BALANCE') && !forceFinish) {
             const confirmForce = window.confirm(
-              `${err.error}\n\nDeseja forçar a finalização desta etapa com saldo parcial?`
+              `${err.error}\n\nDeseja encerrar o turno/sessão mantendo a etapa com saldo parcial?`
             );
             if (confirmForce) {
               await handleConfirmExecutionAction('finish', true);
@@ -1721,8 +1765,10 @@ export function useAppLogic() {
   };
 
   const handleOpenProgressModal = (stageId: number, customOrder?: Order) => {
-    if (customOrder) {
-      setSelectedOrder(customOrder);
+    const targetOrder = customOrder || selectedOrder;
+    if (targetOrder) {
+      setSelectedOrder(targetOrder);
+      syncOrderStageProgress(targetOrder);
     }
     setProgressStageId(stageId);
     setProgressIncrementInput(0);
@@ -1731,7 +1777,6 @@ export function useAppLogic() {
 
   const handleSaveProgress = async () => {
     if (!selectedOrder || !progressStageId || progressIncrementInput <= 0) return;
-    const isPrivileged = currentUser?.role === 'Administrador' || currentUser?.role === 'Supervisor' || currentUser?.role === 'PCP';
     const idempKey = `prog_${selectedOrder.id}_${progressStageId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const res = await apiFetch(`/api/orders/${selectedOrder.id}/stages/${progressStageId}/progress`, {
       method: 'POST',
@@ -1742,8 +1787,7 @@ export function useAppLogic() {
       body: JSON.stringify({
         incremento: progressIncrementInput,
         idempotency_key: idempKey,
-        supervisor_override: isPrivileged,
-        override_reason: isPrivileged ? `Apontamento manual por ${currentUser?.role || 'Administrador'}` : undefined,
+        supervisor_override: false,
         user_id: currentUser?.id || 1,
         user_name: currentUser?.name || 'Operador'
       })
