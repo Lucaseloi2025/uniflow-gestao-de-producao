@@ -26,6 +26,14 @@ ALTER TABLE public.stage_executions
   ADD COLUMN IF NOT EXISTS invalidated_by BIGINT NULL,
   ADD COLUMN IF NOT EXISTS invalidation_reason TEXT NULL;
 
+-- 2.1. Desativação segura da constraint legada restritiva em public.stages
+ALTER TABLE public.stages
+  DROP CONSTRAINT IF EXISTS stages_calculation_type_check;
+
+ALTER TABLE public.stages
+  ADD CONSTRAINT stages_calculation_type_check
+  CHECK (calculation_type IN ('por_peca', 'por_pedido', 'por_kit_dtf', 'por_metro', 'por_lote', 'por_unidade', 'por_item') OR calculation_type IS NULL);
+
 -- 3. Normalização segura das unidades produtivas nas etapas existentes
 -- 3.1. Ficha de aprovação: cálculo por_pedido (1 ficha por pedido)
 UPDATE public.stages
