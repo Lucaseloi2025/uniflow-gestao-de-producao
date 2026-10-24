@@ -15,8 +15,12 @@ ALTER TABLE public.stages
   ADD COLUMN IF NOT EXISTS slug TEXT NULL,
   ADD COLUMN IF NOT EXISTS meta_diaria NUMERIC NULL;
 
--- 2. Colunas aditivas de rastreabilidade de invalidação auditada
+-- 2. Colunas aditivas em public.order_progress_logs e stage_executions
 ALTER TABLE public.order_progress_logs
+  ADD COLUMN IF NOT EXISTS quantidade_boa INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS quantidade_perdida INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS quantidade_retrabalho INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS quantidade_transferida INT DEFAULT 0,
   ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ NULL,
   ADD COLUMN IF NOT EXISTS invalidated_by BIGINT NULL,
   ADD COLUMN IF NOT EXISTS invalidation_reason TEXT NULL;
