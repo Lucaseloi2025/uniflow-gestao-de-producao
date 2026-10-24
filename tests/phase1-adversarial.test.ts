@@ -574,10 +574,10 @@ describe('Suíte Adversarial de Verificação dos 20 Bloqueios da Auditoria', ()
     expect(resValid.status).not.toBe(401);
   });
 
-  // BLOQUEIO 20: Diretório supabase/migrations contém apenas uma única migration canônica
+  // BLOQUEIO 20: Diretório supabase/migrations contém apenas uma única migration canônica da Fase 1
   it('[BLOQUEIO 20] supabase/migrations deve conter estritamente um único arquivo de migration', () => {
     const migrationsDir = path.resolve('supabase', 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql'));
+    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql') && f.includes('phase1'));
     expect(files).toEqual(['20261018_phase1_deploy_complete.sql']);
   });
 

@@ -1682,6 +1682,9 @@ BEGIN
     FOR UPDATE;
 
     IF FOUND THEN
+      IF COALESCE(v_prog.quantidade_pedido, 0) > 0 THEN
+        v_target_qty := v_prog.quantidade_pedido;
+      END IF;
       v_current_good := COALESCE(v_prog.quantidade_boa, 0);
       v_current_lost := COALESCE(v_prog.quantidade_perdida, 0);
       v_current_rework := COALESCE(v_prog.quantidade_retrabalho, 0);
@@ -2690,6 +2693,10 @@ BEGIN
   WHERE order_id = v_exec.order_id AND stage_id = v_exec.stage_id
   FOR UPDATE;
 
+  IF FOUND AND COALESCE(v_prog.quantidade_pedido, 0) > 0 THEN
+    v_target_qty := v_prog.quantidade_pedido;
+  END IF;
+
   v_current_good := COALESCE(v_prog.quantidade_boa, 0);
 
   -- 1. Determinação de conclusão do ITEM individual (se houver order_item_id)
@@ -2761,10 +2768,10 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF v_total_items_in_stage > 0 THEN
+  IF v_total_items_in_stage > 0 AND v_exec.order_item_id IS NOT NULL THEN
     v_is_completed := (v_finished_items_in_stage >= v_total_items_in_stage)
       AND (NOT COALESCE(p_partial, false))
-      AND (v_current_good >= v_order.quantity)
+      AND (v_current_good >= v_target_qty)
       AND (COALESCE(v_prog.pendencia_reposicao, 0) = 0);
   ELSE
     IF v_stage.calculation_type = 'por_peca' THEN
@@ -2895,6 +2902,7 @@ BEGIN
     'total_time', v_total_exec,
     'order_status', v_new_order_status,
     'status_operacao', v_status_op,
+    'finished', v_is_completed,
     'timestamp_sp', v_now_sp,
     'http_status', 200
   );

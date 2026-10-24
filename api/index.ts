@@ -276,6 +276,7 @@ export function getStageSlug(stage: any): string {
         .trim();
 
     if (nameStr.includes('FICHA') || nameStr.includes('APROVA')) return 'FICHA_APROVACAO';
+    if (nameStr.includes('CONFER') || (nameStr.includes('SEPARA') && nameStr.includes('ESTOQUE'))) return 'CONFERENCIA';
     if (nameStr.includes('CORTE') || nameStr.includes('SEPARA')) return 'CORTE';
     if (nameStr.includes('SUBLIMA')) return 'SUBLIMACAO';
     if (nameStr.includes('ESTAMPA') || nameStr.includes('PRENSA')) return 'ESTAMPAGEM';
@@ -851,11 +852,264 @@ async function safeUpsertOrderStageProgress(sb: any, prog: OrderStageProgress) {
     ...(prog.quantidade_recebida !== undefined ? { quantidade_recebida: Number(prog.quantidade_recebida) } : {}),
     ...(prog.quantidade_retrabalho !== undefined ? { quantidade_retrabalho: Number(prog.quantidade_retrabalho) } : {}),
     ...(prog.quantidade_transferida !== undefined ? { quantidade_transferida: Number(prog.quantidade_transferida) } : {}),
+    ...(prog.saldo_pendente !== undefined ? { saldo_pendente: Number(prog.saldo_pendente) } : {}),
     ...(prog.status_operacao !== undefined ? { status_operacao: prog.status_operacao } : {}),
   };
   const { error } = await sb.from('order_stage_progress').upsert(extendedRow, { onConflict: 'order_id,stage_id' });
   if (error) {
     await sb.from('order_stage_progress').upsert(baseRow, { onConflict: 'order_id,stage_id' });
+  }
+}
+
+async function auditOrderImageUpload(
+  sb: any,
+  params: {
+    orderId: number;
+    userId: number | null;
+    usuario: string;
+    fileNames: string[];
+    currentUrls: string[];
+    updatedUrls: string[];
+    primaryUrl: string | null;
+  }
+) {
+  const detailsText = `Upload de ${params.fileNames.length} arquivo(s): ${params.fileNames.join(', ')}`;
+  await logOrderHistory(sb, {
+    order_id: params.orderId,
+    usuario: params.usuario,
+    acao: 'anexou_imagem',
+    antes: { art_urls: params.currentUrls },
+    depois: { art_urls: params.updatedUrls, art_url: params.primaryUrl },
+    detalhes: detailsText,
+  });
+  await writeAuditLogStore(sb, {
+    entidade: 'orders',
+    order_id: params.orderId,
+    user_id: params.userId,
+    usuario: params.usuario,
+    acao: 'UPLOAD_IMAGEM_PEDIDO',
+    observacao: detailsText,
+    valor_anterior: { art_urls: params.currentUrls },
+    valor_novo: { art_urls: params.updatedUrls, art_url: params.primaryUrl },
+  });
+}
+
+async function executeSupervisorOperatorTransfer(
+  sb: any,
+  params: {
+    currentStageExecId: number;
+    previousUserId: number;
+    activeOperatorName: string;
+    orderIdNum: number;
+    stageIdNum: number;
+    userIdNum: number;
+    actorName: string;
+    actorRole: string;
+    effectiveMotivo: string;
+  }
+) {
+  const nowIso = new Date().toISOString();
+  await sb
+    .from('stage_executions')
+    .update({
+      status: 'Finalizado',
+      end_time: nowIso,
+      observation: `[TRANSFERENCIA_SUPERVISOR] Encerrada por ${params.actorName} (${params.actorRole}): ${params.effectiveMotivo}`,
+      updated_at: nowIso,
+    })
+    .eq('id', params.currentStageExecId);
+
+  await writeAuditLogStore(sb, {
+    entidade: 'stage_executions',
+    order_id: params.orderIdNum,
+    stage_id: params.stageIdNum,
+    user_id: params.userIdNum,
+    usuario: params.actorName,
+    acao: 'TRANSFERENCIA_OPERADOR',
+    motivo: params.effectiveMotivo,
+    observacao: `Execução #${params.currentStageExecId} de ${params.activeOperatorName} transferida para ${params.actorName}. Motivo: ${params.effectiveMotivo}`,
+    valor_anterior: {
+      execution_id: params.currentStageExecId,
+      previous_user_id: params.previousUserId,
+      previous_operator: params.activeOperatorName,
+    },
+    valor_novo: { new_user_id: params.userIdNum, motivo: params.effectiveMotivo },
+  });
+}
+
+async function syncOrderItemsAndProgressOnConfirmDraft(
+  sb: any,
+  orderId: number,
+  mergedItems: any[],
+  stagesArray: number[],
+  stageMetaById: Map<number, any>,
+  orderDraftWithItems: any
+) {
+  try {
+    for (let idx = 0; idx < stagesArray.length; idx++) {
+      const sid = Number(stagesArray[idx]);
+      const sMeta = stageMetaById.get(sid) || { id: sid };
+      const targetQty = calculateStageTargetQuantity(orderDraftWithItems, sid, sMeta);
+      await safeUpsertOrderStageProgress(sb, {
+        order_id: orderId,
+        stage_id: sid,
+        quantidade_pedido: targetQty,
+        quantidade_recebida: idx === 0 ? targetQty : 0,
+        quantidade_boa: 0,
+        quantidade_perdida: 0,
+        pendencia_reposicao: 0,
+        saldo_pendente: targetQty,
+        finished: false,
+        status_operacao: idx === 0 ? 'LIBERADA' : 'AGUARDANDO',
+      });
+    }
+  } catch (progInitErr) {
+    console.warn('[ConfirmDraft] Aviso ao inicializar order_stage_progress:', progInitErr);
+  }
+
+  try {
+    const { data: existingRows } = await sb
+      .from('order_items')
+      .select('id, item_index, sku, description')
+      .eq('order_id', orderId)
+      .order('item_index', { ascending: true });
+    const existingList = Array.isArray(existingRows) ? existingRows : [];
+
+    for (let idx = 0; idx < mergedItems.length; idx++) {
+      const it = mergedItems[idx];
+      const itemStageIds = Array.isArray(it?.required_stages) ? it.required_stages.map(Number).filter((n: number) => n > 0 && n !== 12) : stagesArray;
+      const matchedRow =
+        existingList.find((r: any) => Number(r.id) === Number(it?.id) || Number(r.id) === Number(it?.order_item_id)) ||
+        existingList.find((r: any) => Number(r.item_index) === idx + 1 || Number(r.item_index) === idx) ||
+        existingList[idx];
+
+      if (matchedRow && matchedRow.id) {
+        await sb
+          .from('order_items')
+          .update({
+            route_stages: itemStageIds,
+            print_type: it?.print_type || null,
+            product_type: it?.product_type || it?.modelo || null,
+            quantity: Math.max(1, Number(it?.quantity ?? it?.quantidade ?? 1)),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', matchedRow.id);
+      } else {
+        await sb.from('order_items').insert({
+          order_id: orderId,
+          item_index: idx + 1,
+          sku: it?.sku || it?.codigo || null,
+          description: it?.description || it?.descricao || it?.product_type || `Item #${idx + 1}`,
+          product_type: it?.product_type || it?.modelo || null,
+          print_type: it?.print_type || null,
+          fabric: it?.fabric || it?.tecido || null,
+          color: it?.color || it?.cor || null,
+          size: it?.size || it?.tamanho || null,
+          quantity: Math.max(1, Number(it?.quantity ?? it?.quantidade ?? 1)),
+          route_stages: itemStageIds,
+          status: 'LIBERADA',
+        });
+      }
+    }
+  } catch (itemSyncErr) {
+    console.warn('[ConfirmDraft] Aviso ao sincronizar order_items:', itemSyncErr);
+  }
+}
+
+async function prepareOrderRouteForStageStart(
+  sb: any,
+  ordRow: any,
+  orderIdNum: number,
+  stageIdNum: number
+) {
+  let reqStages: number[] =
+    Array.isArray(ordRow.required_stages) && ordRow.required_stages.length > 0
+      ? ordRow.required_stages.map(Number).filter((id: number) => id && id !== 12)
+      : [];
+
+  const stageIdsFromStatus = Array.isArray(ordRow.stages_status)
+    ? ordRow.stages_status.map((s: any) => Number(s.id)).filter((id: number) => id && id !== 12)
+    : [];
+
+  let shouldUpdateReqStages = false;
+  if (reqStages.length === 0 || (!reqStages.includes(stageIdNum) && stageIdsFromStatus.includes(stageIdNum))) {
+    reqStages =
+      stageIdsFromStatus.length > 0
+        ? stageIdsFromStatus
+        : reqStages.includes(stageIdNum)
+        ? reqStages
+        : [...reqStages, stageIdNum];
+    shouldUpdateReqStages = true;
+  }
+
+  const { data: existingAllProg } = await sb
+    .from('order_stage_progress')
+    .select('stage_id, finished, status_operacao, quantidade_boa, quantidade_pedido')
+    .eq('order_id', orderIdNum);
+  const existingMap = new Map<number, any>((existingAllProg || []).map((p: any) => [Number(p.stage_id), p]));
+
+  if (Array.isArray(ordRow.stages_status) && ordRow.stages_status.length > 0) {
+    const orderQty = ordRow.quantity || 1;
+    const finishedStages = ordRow.stages_status.filter(
+      (s: any) =>
+        (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado') &&
+        Number(s.id) !== 12 &&
+        Number(s.id) !== stageIdNum
+    );
+
+    for (const fs of finishedStages) {
+      const fsId = Number(fs.id);
+      if (!existingMap.has(fsId)) {
+        const upRow = {
+          order_id: orderIdNum,
+          stage_id: fsId,
+          quantidade_pedido: orderQty,
+          quantidade_boa: orderQty,
+          saldo_pendente: 0,
+          pendencia_reposicao: 0,
+          finished: true,
+          status: 'CONCLUIDA',
+          status_operacao: 'CONCLUIDA',
+          updated_at: new Date().toISOString(),
+        };
+        await sb.from('order_stage_progress').upsert(upRow, { onConflict: 'order_id,stage_id' });
+        existingMap.set(fsId, upRow);
+      }
+    }
+  }
+
+  // Verificar se a etapa está liberada pela rota específica dos itens (pedidos mistos com rotas paralelas)
+  const isStageFinishedFn = (sid: number): boolean => {
+    const p = existingMap.get(Number(sid));
+    if (p && (p.finished === true || p.status_operacao === 'CONCLUIDA')) return true;
+    const st = Array.isArray(ordRow.stages_status)
+      ? ordRow.stages_status.find((s: any) => Number(s.id) === Number(sid))
+      : null;
+    return Boolean(st && (st.finished === true || st.status === 'Concluído' || st.status === 'Finalizado'));
+  };
+
+  const itemAwareReady = isStagePrevFinishedForOrderItems(ordRow, stageIdNum, reqStages, isStageFinishedFn);
+  const currentIdx = reqStages.indexOf(stageIdNum);
+
+  if (itemAwareReady && currentIdx > 0) {
+    const prevGlobalStageId = reqStages[currentIdx - 1];
+    if (!isStageFinishedFn(prevGlobalStageId)) {
+      // Move a etapa liberada logo após a última etapa já concluída para que rpc_start_operation reconheça sua liberação
+      const withoutTarget = reqStages.filter((sid: number) => sid !== stageIdNum);
+      let insertPos = 0;
+      for (let i = 0; i < withoutTarget.length; i++) {
+        if (isStageFinishedFn(withoutTarget[i])) {
+          insertPos = i + 1;
+        }
+      }
+      withoutTarget.splice(insertPos, 0, stageIdNum);
+      reqStages = withoutTarget;
+      shouldUpdateReqStages = true;
+    }
+  }
+
+  if (shouldUpdateReqStages) {
+    await sb.from('orders').update({ required_stages: reqStages }).eq('id', orderIdNum);
   }
 }
 
@@ -3249,28 +3503,15 @@ app.post("/api/orders/:id/confirm-draft", isAdminOrComercial, async (req, res) =
 
         if (checkError(updateErr, res, "Erro ao liberar pedido para produção")) return;
 
-        // Inicializa order_stage_progress com quantidade_boa = 0 e quantidade_pedido específica de cada etapa
-        try {
-            for (let idx = 0; idx < stagesArray.length; idx++) {
-                const sid = Number(stagesArray[idx]);
-                const sMeta = stageMetaById.get(sid) || { id: sid };
-                const targetQty = calculateStageTargetQuantity(orderDraftWithItems, sid, sMeta);
-                await safeUpsertOrderStageProgress(supabaseAdmin, {
-                    order_id: orderId,
-                    stage_id: sid,
-                    quantidade_pedido: targetQty,
-                    quantidade_recebida: idx === 0 ? targetQty : 0,
-                    quantidade_boa: 0,
-                    quantidade_perdida: 0,
-                    pendencia_reposicao: 0,
-                    saldo_pendente: targetQty,
-                    finished: false,
-                    status_operacao: idx === 0 ? 'LIBERADA' : 'AGUARDANDO',
-                });
-            }
-        } catch (progInitErr) {
-            console.warn("[ConfirmDraft] Aviso ao inicializar order_stage_progress:", progInitErr);
-        }
+        // Inicializa order_stage_progress e sincroniza order_items.route_stages para cada item do pedido
+        await syncOrderItemsAndProgressOnConfirmDraft(
+            supabaseAdmin,
+            orderId,
+            mergedItems,
+            stagesArray,
+            stageMetaById,
+            orderDraftWithItems
+        );
 
         await logOrderHistory(supabaseAdmin, {
             order_id: orderId,
@@ -3989,10 +4230,16 @@ async function uploadFileToArtesStorage(
 
 const handleArtFilesUpload = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = String(req.headers['authorization'] || '').trim();
-    if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+    if (!authHeader) {
         return res.status(401).json({
             error: "Não autenticado. Header Authorization com Bearer token é obrigatório.",
             code: "UNAUTHENTICATED",
+        });
+    }
+    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+        return res.status(401).json({
+            error: "Formato de token inválido. Esperado 'Bearer <token>'.",
+            code: "INVALID_TOKEN",
         });
     }
     const contentType = String(req.headers['content-type'] || '').toLowerCase();
@@ -4220,23 +4467,14 @@ app.post("/api/orders/:id/images", handleArtFilesUpload, canUploadOrderImages, a
 
     // 4. Registro formal de auditoria
     const usuario = getActorName(req, "Operador");
-    await logOrderHistory(supabaseAdmin, {
-        order_id: Number(id),
+    await auditOrderImageUpload(supabaseAdmin, {
+        orderId: Number(id),
+        userId: getActorId(req),
         usuario,
-        acao: "anexou_imagem",
-        antes: { art_urls: current_urls },
-        depois: { art_urls: updated_urls, art_url: primaryUrl },
-        detalhes: `Upload de ${new_urls.length} arquivo(s): ${files.map((f: any) => f.originalname).join(', ')}`
-    });
-    await writeAuditLogStore(supabaseAdmin, {
-        entidade: "orders",
-        order_id: Number(id),
-        user_id: getActorId(req),
-        usuario,
-        acao: "UPLOAD_IMAGEM_PEDIDO",
-        observacao: `Upload de ${new_urls.length} arquivo(s): ${files.map((f: any) => f.originalname).join(', ')}`,
-        valor_anterior: { art_urls: current_urls },
-        valor_novo: { art_urls: updated_urls, art_url: primaryUrl },
+        fileNames: files.map((f: any) => f.originalname),
+        currentUrls: current_urls,
+        updatedUrls: updated_urls,
+        primaryUrl,
     });
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -4958,7 +5196,7 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
         const httpStatus = Number(rpcRecordData?.http_status) || 200;
 
         // Sincronização atômica de stages_status no pedido para garantir fonte única da verdade
-        if (httpStatus >= 200 && httpStatus < 300) {
+        if (httpStatus >= 200 && httpStatus < 300 && !rpcRecordData?.error) {
             try {
                 const { data: ordRow } = await supabaseAdmin
                     .from("orders")
@@ -4966,20 +5204,47 @@ app.post("/api/orders/:id/stages/:stageId/progress", canOperateProduction, async
                     .eq("id", orderId)
                     .maybeSingle();
 
+                const actualGood = unitInfo.isPerOrderUnit
+                    ? (Number(rpcRecordData?.quantidade_boa) > 0 ? 1 : 0)
+                    : (rpcRecordData?.quantidade_boa !== undefined ? Number(rpcRecordData.quantidade_boa) : effectiveGoodInc);
+                const actualTarget = stageTargetQty > 0 ? stageTargetQty : Number(ordRow?.quantity || 1);
+                const actualPending = Math.max(0, actualTarget - actualGood);
+                const actualFinished = Boolean(actualPending === 0 && actualGood > 0);
+                const actualStatusOp = actualFinished ? 'CONCLUIDA' : (actualGood > 0 ? 'PARCIAL' : (rpcRecordData?.status_operacao || 'EM_ANDAMENTO'));
+
+                if (rpcRecordData && typeof rpcRecordData === 'object') {
+                    rpcRecordData.quantidade_pedido = actualTarget;
+                    rpcRecordData.quantidade_boa = actualGood;
+                    rpcRecordData.saldo_pendente = actualPending;
+                    rpcRecordData.status_operacao = actualStatusOp;
+                    rpcRecordData.finished = actualFinished;
+                }
+
+                await supabaseAdmin
+                    .from("order_stage_progress")
+                    .update({
+                        quantidade_pedido: actualTarget,
+                        saldo_pendente: actualPending,
+                        status_operacao: actualStatusOp,
+                        finished: actualFinished,
+                    })
+                    .eq("order_id", orderId)
+                    .eq("stage_id", stageId);
+
                 if (ordRow && Array.isArray(ordRow.stages_status)) {
                     const updatedStagesStatus = ordRow.stages_status.map((st: any) => {
                         if (Number(st.id) === stageId) {
-                            const newGood = rpcRecordData?.quantidade_boa !== undefined ? Number(rpcRecordData.quantidade_boa) : ((st.quantidade_boa || 0) + (Number(incremento) || 0));
-                            const newPending = rpcRecordData?.saldo_pendente !== undefined ? Number(rpcRecordData.saldo_pendente) : Math.max(0, (ordRow.quantity || 0) - newGood);
-                            const newStatusOp = rpcRecordData?.status_operacao || (newPending === 0 ? 'CONCLUIDA' : 'PARCIAL');
-                            const isFin = Boolean(rpcRecordData?.finished || (newPending === 0 && newGood > 0));
                             return {
                                 ...st,
-                                quantidade_boa: newGood,
-                                saldo_pendente: newPending,
-                                status_operacao: newStatusOp,
-                                finished: isFin,
-                                status: isFin ? 'Concluído' : st.status,
+                                quantidade_pedido: actualTarget,
+                                quantidade_prevista: actualTarget,
+                                quantidade_boa: actualGood,
+                                quantidade_concluida: actualGood,
+                                saldo_pendente: actualPending,
+                                saldo_restante: actualPending,
+                                status_operacao: actualStatusOp,
+                                finished: actualFinished,
+                                status: actualFinished ? 'Concluído' : st.status,
                             };
                         }
                         return st;
@@ -5246,7 +5511,7 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
         // --- AUTO-HEALING & COMPATIBILIDADE PARA PEDIDOS JÁ EM PRODUÇÃO ---
         const { data: ordRow } = await supabaseAdmin
             .from('orders')
-            .select('id, order_number, quantity, required_stages, stages_status, status')
+            .select('id, order_number, quantity, items, required_stages, stages_status, status')
             .eq('id', orderIdNum)
             .maybeSingle();
 
@@ -5345,81 +5610,20 @@ app.post("/api/executions/start", canOperateProduction, async (req, res) => {
             }
 
             // Intervenção formal por Supervisor/PCP/Admin com justificativa auditável
-            const nowIso = new Date().toISOString();
-            await supabaseAdmin
-                .from('stage_executions')
-                .update({
-                    status: 'Finalizado',
-                    end_time: nowIso,
-                    observation: `[TRANSFERENCIA_SUPERVISOR] Encerrada por ${actorName} (${actorRole}): ${effectiveMotivo}`,
-                    updated_at: nowIso
-                })
-                .eq('id', currentStageExec.id);
-
-            await writeAuditLogStore(supabaseAdmin, {
-                entidade: "stage_executions",
-                order_id: orderIdNum,
-                stage_id: stageIdNum,
-                user_id: userIdNum,
-                usuario: actorName,
-                acao: "TRANSFERENCIA_OPERADOR",
-                motivo: effectiveMotivo,
-                observacao: `Execução #${currentStageExec.id} de ${activeOperatorName} transferida para ${actorName}. Motivo: ${effectiveMotivo}`,
-                valor_anterior: { execution_id: currentStageExec.id, previous_user_id: currentStageExec.user_id, previous_operator: activeOperatorName },
-                valor_novo: { new_user_id: userIdNum, motivo: effectiveMotivo },
+            await executeSupervisorOperatorTransfer(supabaseAdmin, {
+                currentStageExecId: currentStageExec.id,
+                previousUserId: currentStageExec.user_id,
+                activeOperatorName,
+                orderIdNum,
+                stageIdNum,
+                userIdNum,
+                actorName,
+                actorRole,
+                effectiveMotivo,
             });
         }
 
-        let reqStages: number[] = Array.isArray(ordRow.required_stages) && ordRow.required_stages.length > 0
-            ? ordRow.required_stages.map(Number).filter((id: number) => id && id !== 12)
-            : [];
-
-        const stageIdsFromStatus = Array.isArray(ordRow.stages_status)
-            ? ordRow.stages_status.map((s: any) => Number(s.id)).filter((id: number) => id && id !== 12)
-            : [];
-
-        // 1. Se required_stages estiver vazio ou não contiver a etapa atual, atualizar com a rota de stages_status
-        if (reqStages.length === 0 || (!reqStages.includes(stageIdNum) && stageIdsFromStatus.includes(stageIdNum))) {
-            reqStages = stageIdsFromStatus.length > 0 ? stageIdsFromStatus : (reqStages.includes(stageIdNum) ? reqStages : [...reqStages, stageIdNum]);
-            await supabaseAdmin
-                .from('orders')
-                .update({ required_stages: reqStages })
-                .eq('id', orderIdNum);
-        }
-
-        // 2. Sincronizar order_stage_progress apenas para etapas anteriores que não possuem linha ainda em order_stage_progress
-        if (Array.isArray(ordRow.stages_status) && ordRow.stages_status.length > 0) {
-            const { data: existingAllProg } = await supabaseAdmin
-                .from('order_stage_progress')
-                .select('stage_id, finished, status_operacao')
-                .eq('order_id', orderIdNum);
-            const existingMap = new Map<number, any>((existingAllProg || []).map((p: any) => [Number(p.stage_id), p]));
-
-            const orderQty = ordRow.quantity || 1;
-            const finishedStages = ordRow.stages_status.filter((s: any) =>
-                (s.finished === true || s.status === 'Concluído' || s.status === 'Finalizado') &&
-                Number(s.id) !== 12 &&
-                Number(s.id) !== stageIdNum
-            );
-
-            for (const fs of finishedStages) {
-                const fsId = Number(fs.id);
-                if (!existingMap.has(fsId)) {
-                    await supabaseAdmin.from('order_stage_progress').upsert({
-                        order_id: orderIdNum,
-                        stage_id: fsId,
-                        quantidade_pedido: orderQty,
-                        quantidade_boa: orderQty,
-                        saldo_pendente: 0,
-                        pendencia_reposicao: 0,
-                        finished: true,
-                        status: 'CONCLUIDA',
-                        status_operacao: 'CONCLUIDA',
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: 'order_id,stage_id' });
-                }
-            }
-        }
+        await prepareOrderRouteForStageStart(supabaseAdmin, ordRow, orderIdNum, stageIdNum);
 
         const { data: rpcStartData, error: rpcStartErr } = await supabaseAdmin.rpc("rpc_start_operation", {
             p_order_id: orderIdNum,
@@ -5820,16 +6024,27 @@ app.post("/api/executions/:id/finish", canOperateProduction, async (req, res) =>
                                         created_at: nowIso,
                                     });
                             }
-                            if (rpcFinishData) {
-                                rpcFinishData.quantidade_pedido = 1;
-                                rpcFinishData.quantidade_boa = 1;
-                                rpcFinishData.saldo_pendente = 0;
-                                rpcFinishData.finished = true;
-                                rpcFinishData.status_operacao = "CONCLUIDA";
-                                rpcFinishData.unidade_produtividade = "ficha";
-                            }
                         } catch (_logErr) {
                             // Best-effort log normalization
+                        }
+                    }
+
+                    if (rpcFinishData) {
+                        const finalTargetQty = isPerOrderStage
+                            ? 1
+                            : (preStageTargetQty || Number(curProg?.quantidade_pedido) || Number(rpcFinishData.quantidade_pedido) || 1);
+                        const finalGoodQty = isPerOrderStage
+                            ? 1
+                            : Math.max(finalTargetQty, Number(curProg?.quantidade_boa) || Number(rpcFinishData.quantidade_boa) || 0);
+                        rpcFinishData.quantidade_pedido = finalTargetQty;
+                        rpcFinishData.quantidade_boa = finalGoodQty;
+                        rpcFinishData.saldo_pendente = 0;
+                        rpcFinishData.finished = true;
+                        rpcFinishData.status_operacao = "CONCLUIDA";
+                        if (isPerOrderStage) {
+                            rpcFinishData.unidade_produtividade = "ficha";
+                        } else if (preStageUnitInfo?.unit) {
+                            rpcFinishData.unidade_produtividade = preStageUnitInfo.unit;
                         }
                     }
 
